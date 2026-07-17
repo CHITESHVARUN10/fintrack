@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Environment variables / secrets
+.env
+
+# Project-specific excludes
+stitch_screens/
+.claude/
