@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Field'
 import { UnsavedModal } from '../components/form16/UnsavedModal'
 import { formatCurrency } from '../lib/format'
 import { useTaxpayerContext } from '../context/TaxpayerContext'
-import { computeTax, computeTaxPreview, previewDeductionSplit } from '../lib/tax'
+import { computeTax, computeTaxPreview, previewDeductionSplit, TAX_CONFIG } from '../lib/tax'
 import type { Form16, Form16Regime, GrossSalarySource, DeductionLineItem } from '../types'
 
 
@@ -323,7 +323,10 @@ function ReviewForm({ record }: { record: Form16 }) {
             </div>
             {/* Applied deductions list */}
             <div>
-              <p className="font-bold text-xs uppercase text-on-surface-variant mb-2">Deductions That Will Be Applied</p>
+              <p className="font-bold text-xs uppercase text-on-surface-variant mb-2 flex items-center gap-2">
+                Chapter VI-A Deductions
+                <span className="text-[10px] bg-surface-container-high border border-on-surface/40 px-2 py-0.5 cursor-help" title="These are deductions available under the Old Regime only">INFO</span>
+              </p>
               <div className="bg-surface-container-low border-[3px] border-on-surface">
                 {split?.appliedDeductions.length === 0 && (
                   <p className="p-3 text-sm text-on-surface-variant">No verified deductions found.</p>
@@ -332,8 +335,70 @@ function ReviewForm({ record }: { record: Form16 }) {
                   <AppliedDeductionRow key={i} d={d} />
                 ))}
                 <div className="flex justify-between items-center px-4 py-3 bg-surface-container-high border-t-[3px] border-on-surface">
-                  <span className="font-bold uppercase text-sm">Total (excl. Standard Deduction)</span>
+                  <span className="font-bold uppercase text-sm">Chapter VI-A Total</span>
                   <span className="font-bold text-xl">{formatCurrency(verified)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Standard Deduction */}
+            <div className="mt-4">
+              <p className="font-bold text-xs uppercase text-on-surface-variant mb-2">Standard Deduction (Available to salaried taxpayers)</p>
+              <div className="bg-surface-container-low border-[3px] border-on-surface">
+                <div className="px-4 py-3 border-b border-on-surface/20">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">Old Regime Standard Deduction</span>
+                        <SourceBadge source="SYSTEM_DEFAULT" />
+                      </div>
+                    </div>
+                    {/* Reads TAX_CONFIG STANDARD_DEDUCTION.Old */}
+                    <span className="font-bold whitespace-nowrap">{formatCurrency(TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.Old)}</span>
+                  </div>
+                </div>
+                <div className="px-4 py-3">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">New Regime Standard Deduction</span>
+                        <SourceBadge source="SYSTEM_DEFAULT" />
+                      </div>
+                    </div>
+                    {/* Reads TAX_CONFIG STANDARD_DEDUCTION.New */}
+                    <span className="font-bold whitespace-nowrap">{formatCurrency(TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.New)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Computed Summary Box */}
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white border-[3px] border-on-surface p-4 flex flex-col justify-between">
+                <div>
+                  <p className="font-bold uppercase text-sm mb-2">Old Regime</p>
+                  <div className="text-sm space-y-1 mb-4 text-on-surface-variant">
+                    <div className="flex justify-between"><span>Chapter VI-A Total</span><span>{formatCurrency(verified)}</span></div>
+                    <div className="flex justify-between"><span>+ Standard Deduction Old</span><span>{formatCurrency(TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.Old)}</span></div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center border-t-2 border-on-surface/20 pt-2 mt-auto">
+                  <span className="font-bold uppercase text-sm">Total Deductions Old</span>
+                  <span className="font-bold text-lg">{formatCurrency(verified + TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.Old)}</span>
+                </div>
+              </div>
+              
+              <div className="bg-white border-[3px] border-on-surface p-4 flex flex-col justify-between">
+                <div>
+                  <p className="font-bold uppercase text-sm mb-2">New Regime</p>
+                  <div className="text-sm space-y-1 mb-4 text-on-surface-variant">
+                    <div className="flex justify-between"><span>No Chapter VI-A Deductions</span><span>₹0</span></div>
+                    <div className="flex justify-between"><span>+ Standard Deduction New</span><span>{formatCurrency(TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.New)}</span></div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center border-t-2 border-on-surface/20 pt-2 mt-auto">
+                  <span className="font-bold uppercase text-sm">Total Deductions New</span>
+                  <span className="font-bold text-lg">{formatCurrency(TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.New)}</span>
                 </div>
               </div>
             </div>

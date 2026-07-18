@@ -116,7 +116,16 @@ export function buildRegimeTrace(
 // for the Form 16-only subset so the SAME numbers appear on every screen.
 // The authoritative figures always come from the saved backend recommendation.
 // -----------------------------------------------------------------------------
-const SD_PREVIEW: Record<Form16Regime, number> = { Old: 50000, New: 75000 }
+export const TAX_CONFIG = {
+  '2025-26': {
+    STANDARD_DEDUCTION: {
+      Old: 50000,
+      New: 75000,
+    }
+  }
+}
+
+const SD_PREVIEW: Record<Form16Regime, number> = TAX_CONFIG['2025-26'].STANDARD_DEDUCTION
 const CAPS_PREVIEW: Record<string, number | null> = {
   '80C': 150000,
   '80CCD1B': 50000,

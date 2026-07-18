@@ -491,7 +491,20 @@ export function TaxRecommendation() {
           <Icon name="warning" className="text-2xl mt-0.5 shrink-0" />
           <div>
             <p className="font-bold uppercase">Gross Salary mismatch detected</p>
-            <p className="font-medium">{data.mismatchDetail}</p>
+            <p className="font-medium mb-1">{data.mismatchDetail}</p>
+            {(() => {
+              const matches = data.mismatchDetail?.match(/₹([0-9,]+)/g);
+              if (matches && matches.length >= 2) {
+                const gross = parseInt(matches[0].replace(/[^\d]/g, ''), 10);
+                const sum = parseInt(matches[1].replace(/[^\d]/g, ''), 10);
+                return (
+                  <p className="font-bold">
+                    Difference: {formatCurrency(Math.abs(gross - sum))}
+                  </p>
+                );
+              }
+              return null;
+            })()}
           </div>
         </div>
       )}
@@ -535,20 +548,21 @@ export function TaxRecommendation() {
         <h3 className="font-bold text-xl uppercase mb-6">Tax Saving Suggestions (Next FY)</h3>
         <div className="flex overflow-x-auto gap-6 pb-8 no-scrollbar">
           {(() => {
+            // THIS IS THE ONLY PLACE SUGGESTIONS ARE RENDERED — DO NOT ADD ANOTHER MAP FOR SUGGESTIONS ANYWHERE IN THIS FILE.
             // Client-side last-resort dedup guard (Final 3% Part 2).
             // rawSuggestions is the direct API response; suggestions is deduplicated.
             // This catches any duplicates that survive the backend buildFinalSuggestions pass.
             // Both the backend fix AND this guard must be in place.
             const rawSuggestions = data.taxSavingSuggestions
-            const suggestions = Array.from(
+            const dedupedSuggestions = Array.from(
               new Map(
                 rawSuggestions.map((s) => [
-                  (s.title || s.detail || '').toLowerCase().trim().replace(/\s+/g, ' ').slice(0, 60),
+                  (s.title || s.detail || '').toLowerCase().replace(/[\s\W]+/g, '').slice(0, 60),
                   s,
                 ])
               ).values()
             )
-            return suggestions.map((s) => (
+            return dedupedSuggestions.map((s) => (
               <div
                 key={s.id}
                 className="min-w-[300px] md:min-w-[340px] bg-white brutal p-lg flex flex-col"
