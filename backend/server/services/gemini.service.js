@@ -153,12 +153,20 @@ STRICT RULES:
  * used ONLY to narrate the result into plain English (Part 7/8) — it never
  * computes, and may only mention deductions that appear in the computed result.
  */
-async function generateRecommendation(form16, financials, agg, eduTuition = 0) {
+async function generateRecommendation(form16, financials, agg, eduTuition = 0, overrideDeductions = null) {
   const fy = form16.financialYear || '2025-26';
 
   // --- Build the ONE canonical context (Part 1). eduTuition (children's tuition
   // fees) folds into the 80C records figure here, not in a separate layer.
   const ctx = fromForm16(form16, { recordsAgg: agg, eduTuition });
+
+  // --- Finalization override (Final 3% Part 1): when the Review page has been
+  // finalized, replace ctx.deductions with the stored approved array so
+  // computeTax uses EXACTLY what the user saw and approved — never re-merged.
+  if (overrideDeductions && Array.isArray(overrideDeductions) && overrideDeductions.length > 0) {
+    ctx.deductions = overrideDeductions;
+    ctx.isFinalized = true;
+  }
 
   // --- Validation (Part 5) — drives the gross-salary-mismatch flag etc.
   const validation = validateTaxpayerContext(ctx);

@@ -217,6 +217,18 @@ export const form16Service = {
       .post(`/form16/${id}/duplicate`, financialYear ? { financialYear } : {})
       .then((r) => normalizeForm16(r.data)),
 
+  // GET /api/form16/:id/deductions-preview
+  // Returns the COMPLETE merged DeductionLineItem array from all three sources
+  // (Form16 OCR + Investment Records + User Manual). Called by the Review page
+  // on mount to populate TaxpayerContext.deductions before rendering.
+  getDeductionsPreview: (id: string): Promise<{ deductions: import('../types').DeductionLineItem[]; isFinalized: boolean }> =>
+    apiClient.get(`/form16/${id}/deductions-preview`).then((r) => r.data),
+
+  // PATCH /api/form16/:id — store isFinalized + finalizedDeductions.
+  // Called when the user clicks "Save and Continue" on the Review page.
+  finalizeForm16: (id: string, finalizedDeductions: import('../types').DeductionLineItem[]): Promise<{ isFinalized: boolean }> =>
+    apiClient.patch(`/form16/${id}`, { isFinalized: true, finalizedDeductions }).then((r) => r.data),
+
   remove: (id: string): Promise<void> =>
     apiClient.delete(`/form16/${id}`).then(() => undefined),
 

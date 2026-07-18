@@ -534,22 +534,37 @@ export function TaxRecommendation() {
       <div className="pt-lg border-t-[3px] border-on-surface">
         <h3 className="font-bold text-xl uppercase mb-6">Tax Saving Suggestions (Next FY)</h3>
         <div className="flex overflow-x-auto gap-6 pb-8 no-scrollbar">
-          {data.taxSavingSuggestions.map((s) => (
-            <div
-              key={s.id}
-              className="min-w-[300px] md:min-w-[340px] bg-white brutal p-lg flex flex-col"
-            >
-              <div className="w-12 h-12 bg-brand-yellow brutal flex items-center justify-center mb-4">
-                <Icon name={s.icon} />
+          {(() => {
+            // Client-side last-resort dedup guard (Final 3% Part 2).
+            // rawSuggestions is the direct API response; suggestions is deduplicated.
+            // This catches any duplicates that survive the backend buildFinalSuggestions pass.
+            // Both the backend fix AND this guard must be in place.
+            const rawSuggestions = data.taxSavingSuggestions
+            const suggestions = Array.from(
+              new Map(
+                rawSuggestions.map((s) => [
+                  (s.title || s.detail || '').toLowerCase().trim().replace(/\s+/g, ' ').slice(0, 60),
+                  s,
+                ])
+              ).values()
+            )
+            return suggestions.map((s) => (
+              <div
+                key={s.id}
+                className="min-w-[300px] md:min-w-[340px] bg-white brutal p-lg flex flex-col"
+              >
+                <div className="w-12 h-12 bg-brand-yellow brutal flex items-center justify-center mb-4">
+                  <Icon name={s.icon} />
+                </div>
+                <h4 className="font-bold text-lg mb-2">{s.title}</h4>
+                <p className="font-medium text-on-surface-variant flex-1 mb-4">{s.detail}</p>
+                <div className="bg-surface-container-low brutal-thin flex justify-between items-center p-3">
+                  <span className="font-bold uppercase">Potential Savings:</span>
+                  <span className="font-mono-data font-bold">{formatCurrency(s.potentialSaving)}</span>
+                </div>
               </div>
-              <h4 className="font-bold text-lg mb-2">{s.title}</h4>
-              <p className="font-medium text-on-surface-variant flex-1 mb-4">{s.detail}</p>
-              <div className="bg-surface-container-low brutal-thin flex justify-between items-center p-3">
-                <span className="font-bold uppercase">Potential Savings:</span>
-                <span className="font-mono-data font-bold">{formatCurrency(s.potentialSaving)}</span>
-              </div>
-            </div>
-          ))}
+            ))
+          })()}
         </div>
       </div>
 

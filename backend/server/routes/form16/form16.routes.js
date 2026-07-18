@@ -11,6 +11,7 @@ const EducationPayment = require('../../models/education.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { extractForm16, generateRecommendation, normalizeForm16 } = require('../../services/gemini.service');
 const { annualize, aggregateDeductions, buildDeductionBreakdown } = require('../../services/tax.service');
+const { fromForm16 } = require('../../services/taxEngine.service');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -30,12 +31,54 @@ function ownsForm16(req, doc) {
 // strings to Numbers and drops an invalid taxRegimeUsed, so the model's
 // validation never rejects the document on save.
 
-// Section 80C has a hard cap of ₹1,50,000 (incl. tuition fees).
-const EIGHTYC_CAP = 150000;
-
-// The education tuition fold-in now happens inside the canonical engine's
+// The education tuition fold-in happens inside the canonical engine's
 // `fromForm16` builder (which merges `eduTuition` into the 80C records
 // figure with provenance). We no longer mutate the stored Form16 here.
+
+// =============================================================================
+// GET /api/form16/:id/deductions-preview
+//
+// Returns the COMPLETE merged DeductionLineItem array built from all three sources:
+//   1. FORM16_OCR  — items extracted from the Form 16 PDF
+//   2. INVESTMENT_RECORD — items pulled from the user's loans, insurance, and
+//                          investment MongoDB collections for the current FY
+//   3. USER_MANUAL — any manually entered items (currently folded in via Form16)
+//
+// This runs the SAME merging logic the recommendation flow uses (fromForm16 +
+// aggregateDeductions) so the two are GUARANTEED to produce the same input to
+// computeTax. The Review page calls this on mount and stores the result in
+// TaxpayerContext.deductions before rendering the deduction list.
+// =============================================================================
+router.get('/:id/deductions-preview', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const form16 = await Form16.findById(req.params.id);
+    if (!form16) return res.status(404).json({ error: 'Not found' });
+    if (!ownsForm16(req, form16)) return res.status(403).json({ error: 'Forbidden' });
+
+    // If already finalized, return the stored array — never re-merge.
+    if (form16.isFinalized && form16.finalizedDeductions) {
+      return res.json({ deductions: form16.finalizedDeductions, isFinalized: true });
+    }
+
+    // Aggregate deductions from all investment/insurance/loan/education records.
+    const agg = await aggregateDeductions(form16.userId);
+    const education = await EducationPayment.find({ memberId: form16.userId });
+    const eduTuition = education.reduce(
+      (s, e) => s + annualize(e.amount, e.frequency),
+      0,
+    );
+
+    // Build the canonical context using the SAME logic as the recommendation flow.
+    const ctx = fromForm16(form16, { recordsAgg: agg, eduTuition });
+
+    res.json({ deductions: ctx.deductions, isFinalized: false });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // POST /api/form16/upload — PDF -> Gemini extraction.
 router.post('/upload', upload.single('pdf'), async (req, res, next) => {
@@ -117,15 +160,35 @@ router.get('/:id/recommendation', async (req, res, next) => {
     // interest under 24 + principal under 80C) and education tuition fees.
     // This is the SAME data used to compute both regimes below, so loans and
     // education are reflected in the tax calculation.
-    const agg = await aggregateDeductions(form16.userId);
+    // -----------------------------------------------------------------
+    // FINALIZATION GUARD (Final 3% Part 1):
+    // When the user has clicked "Save and Continue" on the Review page,
+    // form16.isFinalized is true and form16.finalizedDeductions holds
+    // the exact DeductionLineItem array the user saw and approved.
+    // In that case, pass a special sentinel to generateRecommendation so
+    // computeTax reads from the stored array — never re-merges from records.
+    // -----------------------------------------------------------------
+    let agg;
+    let eduTuition;
+    let overrideDeductions = null;
 
-    // Fold education tuition fees into the 80C records figure inside the
-    // canonical engine builder (the stored Form16 doc is NOT mutated).
-    const eduTuition = financials.education.reduce(
-      (s, e) => s + annualize(e.amount, e.frequency),
-      0,
-    );
-    const rec = await generateRecommendation(form16, financials, agg, eduTuition);
+    if (form16.isFinalized && form16.finalizedDeductions) {
+      // Use the stored finalized deductions array directly.
+      overrideDeductions = form16.finalizedDeductions;
+      // Set agg + eduTuition to zero so generateRecommendation's fromForm16 call
+      // produces only FormOCR items — which will then be replaced by the override.
+      agg = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section24: 0, totalDeductions: 0 };
+      eduTuition = 0;
+    } else {
+      agg = await aggregateDeductions(form16.userId);
+      const education = await EducationPayment.find({ memberId: form16.userId });
+      eduTuition = education.reduce(
+        (s, e) => s + annualize(e.amount, e.frequency),
+        0,
+      );
+    }
+
+    const rec = await generateRecommendation(form16, financials, agg, eduTuition, overrideDeductions);
 
     // Static, plain-English breakdown of what was claimed (no AI involved).
     const deductionBreakdown = buildDeductionBreakdown(agg);
@@ -179,6 +242,30 @@ router.get('/:id', async (req, res, next) => {
     if (!doc) return res.status(404).json({ error: 'Not found' });
     if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
     res.json(doc);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/form16/:id — finalization endpoint.
+// Called by the Review page's "Save and Continue" button.
+// Stores isFinalized=true and the complete finalizedDeductions array.
+// Once stored, the recommendation flow reads exclusively from this array.
+router.patch('/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const doc = await Form16.findById(req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Not found' });
+    if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
+    if (req.body.isFinalized === true && req.body.finalizedDeductions) {
+      doc.isFinalized = true;
+      doc.finalizedDeductions = req.body.finalizedDeductions;
+      doc.isEdited = true; // mark stale so recommendation is regenerated
+    }
+    await doc.save();
+    res.json({ isFinalized: doc.isFinalized });
   } catch (err) {
     next(err);
   }

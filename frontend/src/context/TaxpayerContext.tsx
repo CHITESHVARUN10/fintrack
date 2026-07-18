@@ -146,6 +146,7 @@ interface State {
 type Action =
   | { type: 'LOAD'; record: Form16 }
   | { type: 'SET_FROM_FORM'; form: Partial<Form16> }
+  | { type: 'LOAD_DEDUCTIONS'; items: DeductionLineItem[] }
   | { type: 'FINALIZE' }
   | { type: 'RESET' }
 
@@ -173,6 +174,25 @@ function reducer(state: State, action: Action): State {
       ctx.metadata.lastEditedTimestamp = new Date().toISOString()
       return { base: merged, ctx }
     }
+    case 'LOAD_DEDUCTIONS': {
+      if (!state.ctx) return state
+      // Part 1 / Final 3%: Replace ctx.deductions with the complete merged
+      // array returned by GET /api/form16/:id/deductions-preview.
+      // This is the authoritative list for the Review page — it includes
+      // INVESTMENT_RECORD items (like 24b from loans) that the Form16-only
+      // builder cannot produce.
+      if (state.ctx.isFinalized) {
+        // Already finalized — never mutate.
+        return state
+      }
+      return {
+        ...state,
+        ctx: {
+          ...state.ctx,
+          deductions: action.items,
+        },
+      }
+    }
     case 'FINALIZE':
       if (!state.ctx) return state
       return {
@@ -193,6 +213,7 @@ interface TaxpayerContextValue {
   ctx: TaxpayerContextType | null
   load: (record: Form16) => void
   setFromForm: (form: Partial<Form16>) => void
+  loadDeductions: (items: DeductionLineItem[]) => void
   finalize: () => void
   reset: () => void
 }
@@ -205,6 +226,7 @@ export function TaxpayerProvider({ children }: { children: ReactNode }) {
     ctx: state.ctx,
     load: (record) => dispatch({ type: 'LOAD', record }),
     setFromForm: (form) => dispatch({ type: 'SET_FROM_FORM', form }),
+    loadDeductions: (items) => dispatch({ type: 'LOAD_DEDUCTIONS', items }),
     finalize: () => dispatch({ type: 'FINALIZE' }),
     reset: () => dispatch({ type: 'RESET' }),
   }

@@ -44,6 +44,16 @@ const form16Schema = new mongoose.Schema(
     // tax data. Any PUT to this doc updates these fields and the stale hook
     // marks the linked TaxRecommendation isStale.
     taxpayerContext: { type: mongoose.Schema.Types.Mixed },
+    // Part 1 / Final 3%: Finalization lock. Set to true when the user clicks
+    // "Save and Continue" on the Review page. Once true, computeTax in the
+    // recommendation flow reads deductions exclusively from finalizedDeductions
+    // and NEVER re-fetches or re-merges from investment records.
+    isFinalized: { type: Boolean, default: false },
+    // Part 1 / Final 3%: The complete, user-approved DeductionLineItem array
+    // built by the /deductions-preview endpoint (Form16 OCR + Investment Records
+    // + User Manual). Stored so what the user saw on Review equals what
+    // computeTax uses — guaranteed immutable after finalization.
+    finalizedDeductions: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );

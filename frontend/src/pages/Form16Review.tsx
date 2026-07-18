@@ -10,7 +10,7 @@ import { UnsavedModal } from '../components/form16/UnsavedModal'
 import { formatCurrency } from '../lib/format'
 import { useTaxpayerContext } from '../context/TaxpayerContext'
 import { computeTax, computeTaxPreview, previewDeductionSplit } from '../lib/tax'
-import type { Form16, Form16Regime, GrossSalarySource } from '../types'
+import type { Form16, Form16Regime, GrossSalarySource, DeductionLineItem } from '../types'
 
 
 type TagKind = 'ai' | 'modified' | 'none'
@@ -29,6 +29,53 @@ function Tag({ kind }: { kind: TagKind }) {
       </span>
     )
   return null
+}
+
+// Source badge colours: INVESTMENT_RECORD=teal (distinct) vs FORM16_OCR=yellow.
+// Users immediately see which deductions came from stored financial data vs the PDF.
+function SourceBadge({ source }: { source: string | null | undefined }) {
+  if (!source) return null
+  const cls =
+    source === 'INVESTMENT_RECORD'
+      ? 'bg-teal-100 text-teal-800 border border-teal-400'
+      : source === 'FORM16_OCR'
+        ? 'bg-brand-yellow text-on-surface border border-on-surface'
+        : 'bg-surface-container-high text-on-surface-variant border border-on-surface/40'
+  return (
+    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm whitespace-nowrap ${cls}`}>
+      {source.replace(/_/g, ' ')}
+    </span>
+  )
+}
+
+// Single applied-deduction row. 24b gets special treatment: bold subheading +
+// inline regime note (immediately visible, no hover required).
+function AppliedDeductionRow({ d }: { d: { section: string; subtype: string | null; amount: number; source: string | null } }) {
+  const is24b = d.section.startsWith('24')
+  return (
+    <div className="px-4 py-3 border-b border-on-surface/20 last:border-0">
+      <div className="flex justify-between items-start gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{d.section}</span>
+            <SourceBadge source={d.source} />
+          </div>
+          {is24b && (
+            <>
+              <p className="font-bold text-xs mt-1">Home Loan Interest</p>
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-300 px-2 py-0.5 mt-1 rounded-sm font-medium">
+                ⚠ Applies in Old Regime only — not applicable in New Regime
+              </p>
+            </>
+          )}
+          {d.source === 'INVESTMENT_RECORD' && !is24b && (
+            <p className="text-[11px] text-teal-700 mt-0.5">From your stored financial records</p>
+          )}
+        </div>
+        <span className="font-bold whitespace-nowrap">{formatCurrency(d.amount)}</span>
+      </div>
+    </div>
+  )
 }
 
 function EditableField({
@@ -83,14 +130,25 @@ function ReviewForm({ record }: { record: Form16 }) {
   const [modified, setModified] = useState<Set<string>>(new Set())
   const [regime, setRegime] = useState<Form16Regime>(record.taxRegimeUsed)
   const [unsavedOpen, setUnsavedOpen] = useState(false)
+  const [deductionsLoaded, setDeductionsLoaded] = useState(false)
 
-  // The TaxpayerContext is the SINGLE source of truth (Part 1 / Part 6).
-  // We load it from the record and keep it in sync on every edit; the
-  // computed boxes below read from it (never an independent re-sum).
-  const { ctx, load, setFromForm, finalize } = useTaxpayerContext()
+  const { ctx, load, setFromForm, loadDeductions, finalize } = useTaxpayerContext()
+
+  // Step 1: Load Form16 record into TaxpayerContext (Form16-only fields).
   useEffect(() => {
     if (record) load(record)
   }, [record, load])
+
+  // Step 2 (Final 3% Part 1): Fetch complete merged deductions from all three
+  // sources via /deductions-preview and populate ctx.deductions.
+  useEffect(() => {
+    if (!record.id) return
+    form16Service.getDeductionsPreview(record.id).then(({ deductions }) => {
+      if (deductions && deductions.length > 0) loadDeductions(deductions)
+      setDeductionsLoaded(true)
+    }).catch(() => setDeductionsLoaded(true))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.id])
 
   const aiExtracted = record.sourceType !== 'Manual'
 
@@ -149,10 +207,24 @@ function ReviewForm({ record }: { record: Form16 }) {
   }
 
   const save = async (then: 'list' | 'recommend') => {
-    finalize() // freeze the canonical context as the values sent to the engine
+    // Part 1 / Final 3%: finalize context lock BEFORE saving.
+    finalize()
+    // Persist finalized deductions to backend so recommendation flow uses them.
+    if (ctx && ctx.deductions && ctx.deductions.length > 0) {
+      try {
+        await form16Service.finalizeForm16(record.id, ctx.deductions as DeductionLineItem[])
+      } catch {
+        console.warn('[Form16Review] Failed to persist finalized deductions.')
+      }
+    }
     const updated = await form16Service.update(record.id, { ...form, taxRegimeUsed: regime })
     if (then === 'list' || !updated) navigate('/form16')
     else navigate(`/form16/recommendation/loading?form=${record.id}`)
+  }
+
+  // Brief loading state while fetching merged deductions from all sources.
+  if (!deductionsLoaded) {
+    return <LoadingBlock label="Loading deduction preview from all sources…" />
   }
 
   return (
@@ -243,6 +315,12 @@ function ReviewForm({ record }: { record: Form16 }) {
               vs exclude. Produced by previewDeductionSplit() which mirrors the
               three-condition filter in computeRegimeResult identically. */}
           <div className="mt-lg space-y-4">
+            {/* Source legend */}
+            <div className="flex items-center gap-3 text-[11px] text-on-surface-variant">
+              <span className="font-bold uppercase">Source:</span>
+              <SourceBadge source="FORM16_OCR" /><span>Form 16 PDF</span>
+              <SourceBadge source="INVESTMENT_RECORD" /><span>Your financial records</span>
+            </div>
             {/* Applied deductions list */}
             <div>
               <p className="font-bold text-xs uppercase text-on-surface-variant mb-2">Deductions That Will Be Applied</p>
@@ -251,10 +329,7 @@ function ReviewForm({ record }: { record: Form16 }) {
                   <p className="p-3 text-sm text-on-surface-variant">No verified deductions found.</p>
                 )}
                 {split?.appliedDeductions.map((d, i) => (
-                  <div key={i} className="flex justify-between items-center px-4 py-2 border-b border-on-surface/20 last:border-0">
-                    <span className="text-sm font-medium">{d.section}</span>
-                    <span className="font-bold">{formatCurrency(d.amount)}</span>
-                  </div>
+                  <AppliedDeductionRow key={i} d={d} />
                 ))}
                 <div className="flex justify-between items-center px-4 py-3 bg-surface-container-high border-t-[3px] border-on-surface">
                   <span className="font-bold uppercase text-sm">Total (excl. Standard Deduction)</span>
@@ -274,7 +349,10 @@ function ReviewForm({ record }: { record: Form16 }) {
                   {split.excludedDeductions.map((d, i) => (
                     <div key={i} className="flex justify-between items-start px-4 py-2 border-b border-on-surface/20 last:border-0">
                       <div>
-                        <p className="text-sm font-medium">{d.section}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{d.section}</p>
+                          <SourceBadge source={d.source} />
+                        </div>
                         <p className="text-[11px] text-on-surface-variant">{d.reason}</p>
                       </div>
                       <span className="font-bold ml-4">{formatCurrency(d.amount)}</span>

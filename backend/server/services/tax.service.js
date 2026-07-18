@@ -163,13 +163,13 @@ const DED_META = {
   section80C: {
     label: 'Section 80C',
     allowed: { Old: true, New: false },
-    max: 150000,
+    max: _cfg.DEDUCTION_CAPS.SECTION_80C_GROUP,
     note: 'ELSS, PPF, life-insurance premiums, home-loan principal, children’s tuition fees. Capped at ₹1,50,000.',
   },
   section80CCD1B: {
     label: 'Section 80CCD(1B) — NPS',
     allowed: { Old: true, New: false },
-    max: 50000,
+    max: _cfg.DEDUCTION_CAPS.SECTION_80CCD1B,
     note: 'Additional deduction for your own NPS contribution, up to ₹50,000 (over and above 80C).',
   },
   section80CCD2: {
@@ -181,7 +181,7 @@ const DED_META = {
   section80D: {
     label: 'Section 80D — Health Insurance',
     allowed: { Old: true, New: false },
-    max: 25000,
+    max: _cfg.DEDUCTION_CAPS.SECTION_80D_SELF,
     note: 'Health-insurance premium for self/family. Up to ₹25,000 (₹50,000 for senior citizens).',
   },
   section80E: {
@@ -199,7 +199,7 @@ const DED_META = {
   section24: {
     label: 'Section 24(b) — Home Loan Interest',
     allowed: { Old: true, New: false },
-    max: 200000,
+    max: _cfg.DEDUCTION_CAPS.SECTION_24B,
     note: 'Interest paid on a home loan. Deduct up to ₹2,00,000 (self-occupied).',
   },
 };
@@ -483,7 +483,7 @@ async function generateTips(userId) {
   const d = await aggregateDeductions(userId);
   const tips = [];
 
-  const unused80C = Math.max(0, 150000 - d.section80C);
+  const unused80C = Math.max(0, _cfg.DEDUCTION_CAPS.SECTION_80C_GROUP - d.section80C);
   if (unused80C > 0) {
     const saving = round(unused80C * 0.3);
     tips.push(
@@ -491,7 +491,7 @@ async function generateTips(userId) {
     );
   }
 
-  const unused80D = Math.max(0, 25000 - d.section80D);
+  const unused80D = Math.max(0, _cfg.DEDUCTION_CAPS.SECTION_80D_SELF - d.section80D);
   if (unused80D > 0) {
     tips.push(`You can claim up to ${inr(unused80D)} more under Section 80D (health insurance).`);
   }

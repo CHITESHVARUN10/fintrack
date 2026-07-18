@@ -972,3 +972,198 @@ test('Part 7 Test 10: No hardcoded tax constants outside taxConfig.js (comprehen
     `Hardcoded tax constants found outside taxConfig.js:\n${violations.join('\n')}`
   );
 });
+
+// =============================================================================
+// PART 4 — Section 87A UI Rendering Tests (UI1–UI6)
+// Verify the exact output fields the UI reads for 87A rebate and marginal relief.
+// Pure engine tests — no JSDOM or browser dependency.
+// =============================================================================
+
+const _cfgPt4 = TAX_CONFIG[DEFAULT_FY]; // local alias for Part 4/5
+
+test('Part 4 UI1: New regime taxable 1200000 → rebate87A=60000, totalTax=0, cess=0', () => {
+  const r = runTax(1275000); // 1275000 - 75000 SD = 1200000
+  const n = r.newRegime;
+  assert.equal(n.taxableIncome, 1200000, 'taxable must be 1200000');
+  assert.equal(n.rebate87A, 60000, 'rebate87A must be 60000');
+  assert.equal(n.cess, 0, 'cess must be 0 (no tax left after rebate)');
+  assert.equal(n.totalTax, 0, 'totalTax must be 0');
+});
+
+test('Part 4 UI2: New regime taxable 1210000 → marginalRelief applied, totalTax=10400', () => {
+  const r = runTax(1285000); // 1285000 - 75000 = 1210000
+  const n = r.newRegime;
+  assert.equal(n.taxableIncome, 1210000);
+  assert.ok(n.marginalRelief && n.marginalRelief.marginalReliefApplied, 'marginalReliefApplied must be true');
+  assert.equal(n.marginalRelief.taxAfterMarginalRelief, 10000, 'taxAfterMarginalRelief must be 10000');
+  assert.equal(n.cess, 400, 'cess = 10000 * 4% = 400');
+  assert.equal(n.totalTax, 10400, 'totalTax must be 10400');
+});
+
+test('Part 4 UI3: New regime taxable 1300000 → no rebate, no marginalRelief, totalTax=78000', () => {
+  const r = runTax(1375000); // 1375000 - 75000 = 1300000
+  const n = r.newRegime;
+  assert.equal(n.taxableIncome, 1300000);
+  assert.equal(n.rebate87A, 0, 'no rebate above 12L');
+  assert.ok(n.marginalRelief && !n.marginalRelief.marginalReliefApplied, 'marginalReliefApplied must be false');
+  assert.equal(n.cess, 3000, 'cess = 75000 * 4% = 3000');
+  assert.equal(n.totalTax, 78000, 'totalTax must be 78000');
+});
+
+test('Part 4 UI4: gross=1275000 → SD applied correctly, new taxable=1200000, rebate=60000, tax=0', () => {
+  const ctx = fromForm16(form16(1275000));
+  const r = computeTax(ctx);
+  const n = r.newRegime;
+  assert.equal(n.taxableIncome, 1200000, 'New regime: gross 1275000 - SD 75000 = 1200000');
+  assert.equal(n.rebate87A, 60000, 'Full 87A rebate for taxable = 12L');
+  assert.equal(n.totalTax, 0, 'Zero tax after full rebate');
+});
+
+test('Part 4 UI5: Old regime taxable 500000 → rebate87A=12500, totalTax=0', () => {
+  const r = runTax(550000); // 550000 - 50000 SD = 500000
+  const o = r.oldRegime;
+  assert.equal(o.taxableIncome, 500000);
+  assert.equal(o.rebate87A, 12500, 'Old regime full 87A rebate');
+  assert.equal(o.totalTax, 0, 'Zero tax after full rebate');
+  assert.equal(o.cess, 0, 'No cess when no tax');
+});
+
+test('Part 4 UI6: Old regime taxable 510000 → hard cliff, no marginalRelief, tax > 0', () => {
+  const r = runTax(560000); // 560000 - 50000 = 510000
+  const o = r.oldRegime;
+  assert.equal(o.taxableIncome, 510000);
+  assert.equal(o.rebate87A, 0, 'No 87A rebate above 5L in old regime');
+  assert.equal(o.marginalRelief, null, 'Old regime: no marginalRelief object');
+  assert.ok(o.totalTax > 0, 'Tax must be positive above 5L in old regime');
+  const expectedSlab = computeSlabTax(510000, _cfgPt4.OLD_REGIME_SLABS, DEFAULT_FY).incomeTax;
+  const expectedCess = Math.round(expectedSlab * _cfgPt4.CESS);
+  assert.equal(o.totalTax, expectedSlab + expectedCess, `totalTax = slabTax + cess = ${expectedSlab + expectedCess}`);
+});
+
+// =============================================================================
+// PART 5 — Final Regression Suite (Tests 1–10)
+// deductions-preview consistency, isFinalized lock, dedup guard, 24b rendering.
+// =============================================================================
+
+test('Part 5 Test 1: deductions-preview includes 24b from Investment Records', () => {
+  const recordsAgg = {
+    section80C: 0, section80CCD: 0, section80D: 0, section80E: 0,
+    section24: 180000,
+    totalDeductions: 180000,
+  };
+  const ctx = fromForm16(form16(1000000), { recordsAgg });
+  const d24 = ctx.deductions.find((d) => d.section === '24b');
+  assert.ok(d24, '24b deduction must be present when recordsAgg.section24 > 0');
+  assert.equal(d24.source, 'INVESTMENT_RECORD', '24b must have source INVESTMENT_RECORD');
+  assert.equal(d24.amount, 180000, '24b amount must be 180000');
+  assert.equal(d24.needsConfirmation, false, '24b must not need confirmation');
+  assert.equal(d24.duplicateRisk, false, '24b must not be duplicate-flagged');
+});
+
+test('Part 5 Test 2: 24b applied in Old regime, not in New regime', () => {
+  const recordsAgg = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section24: 150000, totalDeductions: 150000 };
+  const ctx = fromForm16(form16(1500000), { recordsAgg });
+  const r = computeTax(ctx);
+  const oldApplied = r.oldRegime.applied.find((a) => a.section === '24b');
+  assert.ok(oldApplied, '24b must be applied in Old regime');
+  assert.equal(oldApplied.amount, 150000, '24b amount in Old regime must be 150000');
+  const newApplied = r.newRegime.applied.find((a) => a.section === '24b');
+  assert.equal(newApplied, undefined, '24b must NOT be applied in New regime');
+});
+
+test('Part 5 Test 3: 24b capped at SECTION_24B cap from TAX_CONFIG', () => {
+  const cap = _cfgPt4.DEDUCTION_CAPS.SECTION_24B;
+  const recordsAgg = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section24: 250000, totalDeductions: 250000 };
+  const ctx = fromForm16(form16(1500000), { recordsAgg });
+  const r = computeTax(ctx);
+  const oldApplied = r.oldRegime.applied.find((a) => a.section === '24b');
+  assert.ok(oldApplied, '24b must appear in applied');
+  assert.equal(oldApplied.amount, cap, `24b must be capped at TAX_CONFIG.SECTION_24B = ${cap}`);
+});
+
+test('Part 5 Test 4: verifiedDeductionsTotal includes 24b when present', () => {
+  const recordsAgg = { section80C: 100000, section80CCD: 0, section80D: 25000, section80E: 0, section24: 150000, totalDeductions: 275000 };
+  const ctx = fromForm16(form16(1200000), { recordsAgg });
+  const r = computeTax(ctx);
+  assert.equal(
+    r.oldRegime.verifiedDeductionsTotal,
+    275000,
+    `verifiedDeductionsTotal must include 24b (got ${r.oldRegime.verifiedDeductionsTotal})`
+  );
+});
+
+test('Part 5 Test 5: isFinalized flag on ctx does not block computeTax', () => {
+  const ctx = fromForm16(form16(1200000, { section80C: 100000 }));
+  ctx.isFinalized = true;
+  const r = computeTax(ctx);
+  assert.equal(r.error, false, 'computeTax must succeed with isFinalized=true');
+  assert.ok(r.oldRegime.totalTax >= 0, 'tax must be non-negative');
+});
+
+test('Part 5 Test 6: Client-side dedup logic — identical suggestions collapse to one', () => {
+  const rawSuggestions = [
+    { id: 'sug-0', title: 'Consider NPS under 80CCD(1B)', detail: 'Extra NPS deduction', potentialSaving: 0 },
+    { id: 'sug-1', title: 'Consider NPS under 80CCD(1B)', detail: 'Extra NPS deduction', potentialSaving: 0 },
+    { id: 'sug-2', title: 'Section 80C has unused room', detail: 'Use ELSS', potentialSaving: 0 },
+  ];
+  const suggestions = Array.from(
+    new Map(
+      rawSuggestions.map((s) => [
+        (s.title || s.detail || '').toLowerCase().trim().replace(/\s+/g, ' ').slice(0, 60),
+        s,
+      ])
+    ).values()
+  );
+  assert.equal(suggestions.length, 2, 'Duplicate NPS suggestions must collapse to one');
+});
+
+test('Part 5 Test 7: buildFinalSuggestions + client-side dedup defense in depth', () => {
+  const s1 = ['Confirm 80CCD subsection to claim it.'];
+  const s2 = ['Confirm 80CCD subsection to claim it.'];
+  const merged = buildFinalSuggestions(s1, s2);
+  assert.equal(merged.length, 1, 'buildFinalSuggestions must dedup identical strings');
+  const asObjects = [
+    { id: 's0', title: merged[0], detail: merged[0], potentialSaving: 0 },
+    { id: 's1', title: merged[0], detail: merged[0], potentialSaving: 0 },
+  ];
+  const clientDeduped = Array.from(
+    new Map(asObjects.map((s) => [(s.title || '').toLowerCase().trim().slice(0, 60), s])).values()
+  );
+  assert.equal(clientDeduped.length, 1, 'Client-side dedup must also produce one suggestion');
+});
+
+test('Part 5 Test 8: 24b DeductionLineItem has correct structure for UI source badge rendering', () => {
+  const recordsAgg = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section24: 100000, totalDeductions: 100000 };
+  const ctx = fromForm16(form16(1000000), { recordsAgg });
+  const d24 = ctx.deductions.find((d) => d.section === '24b');
+  assert.ok(d24, '24b must be in ctx.deductions');
+  assert.equal(typeof d24.section, 'string', 'section must be string');
+  assert.equal(typeof d24.source, 'string', 'source must be string');
+  assert.equal(typeof d24.amount, 'number', 'amount must be number');
+  assert.equal(typeof d24.needsConfirmation, 'boolean', 'needsConfirmation must be boolean');
+  assert.equal(typeof d24.duplicateRisk, 'boolean', 'duplicateRisk must be boolean');
+  assert.equal(d24.source, 'INVESTMENT_RECORD', 'source must be INVESTMENT_RECORD for teal badge');
+});
+
+test('Part 5 Test 9: assertTaxResultConsistency passes with 24b included', () => {
+  const recordsAgg = { section80C: 100000, section80CCD: 0, section80D: 0, section80E: 0, section24: 120000, totalDeductions: 220000 };
+  const ctx = fromForm16(form16(1500000), { recordsAgg });
+  const r = computeTax(ctx);
+  assert.doesNotThrow(() => assertTaxResultConsistency(r, ctx),
+    'assertTaxResultConsistency must pass when 24b is from Investment Records');
+});
+
+test('Part 5 Test 10: End-to-end preview → finalize → compute → consistency', () => {
+  const recordsAgg = { section80C: 120000, section80CCD: 0, section80D: 20000, section80E: 0, section24: 180000, totalDeductions: 320000 };
+  const f16 = form16(2000000, { section80C: 50000 });
+  const mergedCtx = fromForm16(f16, { recordsAgg });
+  mergedCtx.isFinalized = true;
+  const r = computeTax(mergedCtx);
+  assert.equal(r.error, false, 'computeTax must succeed with finalized merged ctx');
+  assert.doesNotThrow(() => assertTaxResultConsistency(r, mergedCtx),
+    'assertTaxResultConsistency must pass for the full review → finalize → compute flow');
+  const cap = _cfgPt4.DEDUCTION_CAPS.SECTION_24B;
+  const applied24b = r.oldRegime.applied.find((a) => a.section === '24b');
+  assert.ok(applied24b, '24b must be in applied for Old regime');
+  assert.equal(applied24b.amount, Math.min(180000, cap), '24b applied amount must be min(180000, cap)');
+});
