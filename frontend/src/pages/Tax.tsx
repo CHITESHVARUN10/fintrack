@@ -3,7 +3,6 @@ import { useAsync } from '../hooks/useAsync'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
-import { Badge } from '../components/ui/Badge'
 import { formatCurrency } from '../lib/format'
 import type { TaxRegimeResult } from '../types'
 
@@ -85,21 +84,59 @@ export function Tax() {
         </div>
       </div>
 
-      <h3 className="text-2xl font-bold uppercase mb-md">Tax-Saving Tips</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-        {data.tips.map((tip) => (
-          <div key={tip.id} className="bg-white brutal p-md flex flex-col gap-2">
-            <div className="flex items-center gap-xs">
-              <div className="w-9 h-9 bg-brand-yellow brutal-thin flex items-center justify-center">
-                <Icon name="lightbulb" />
-              </div>
-              <span className="font-bold">{tip.title}</span>
-            </div>
-            <p className="font-medium text-sm">{tip.detail}</p>
-            <Badge color="cyan">Save {formatCurrency(tip.potentialSaving)}</Badge>
+      <div className="bg-white brutal p-md mb-xl flex flex-col gap-xs nb-card-enter nb-card-hover">
+        <span className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
+          Deductions Claimed (annual)
+        </span>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-sm">
+          <div className="brutal-thin bg-surface-container-high p-sm">
+            <span className="block text-xs font-bold uppercase">80C</span>
+            <span className="font-bold">{formatCurrency(data.deductions.section80C)}</span>
           </div>
-        ))}
+          <div className="brutal-thin bg-surface-container-high p-sm">
+            <span className="block text-xs font-bold uppercase">80CCD</span>
+            <span className="font-bold">{formatCurrency(data.deductions.section80CCD)}</span>
+          </div>
+          <div className="brutal-thin bg-surface-container-high p-sm">
+            <span className="block text-xs font-bold uppercase">80D</span>
+            <span className="font-bold">{formatCurrency(data.deductions.section80D)}</span>
+          </div>
+          <div className="brutal-thin bg-surface-container-high p-sm">
+            <span className="block text-xs font-bold uppercase">80E</span>
+            <span className="font-bold">{formatCurrency(data.deductions.section80E)}</span>
+          </div>
+          <div className="brutal-thin bg-surface-container-high p-sm">
+            <span className="block text-xs font-bold uppercase">24 (Home)</span>
+            <span className="font-bold">{formatCurrency(data.deductions.section24)}</span>
+          </div>
+          <div className="brutal-thin bg-brand-yellow p-sm">
+            <span className="block text-xs font-bold uppercase">Total</span>
+            <span className="font-bold">{formatCurrency(data.deductions.totalDeductions)}</span>
+          </div>
+        </div>
       </div>
+
+      <h3 className="text-2xl font-bold uppercase mb-md">Tax-Saving Tips</h3>
+      {data.tips.length === 0 ? (
+        <p className="font-bold text-on-surface-variant">
+          No specific tips yet — add investments, insurance or loans to get personalised
+          suggestions.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+          {data.tips.map((tip, i) => (
+            <div key={i} className="bg-white brutal p-md flex flex-col gap-2 nb-card-enter nb-card-hover">
+              <div className="flex items-center gap-xs">
+                <div className="w-9 h-9 bg-brand-yellow brutal-thin flex items-center justify-center">
+                  <Icon name="lightbulb" />
+                </div>
+                <span className="font-bold">Tip {i + 1}</span>
+              </div>
+              <p className="font-medium text-sm">{tip}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -14,7 +14,7 @@ export function ProgressBar({
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
   return (
     <div className={cn('h-4 border-2 border-on-surface bg-white overflow-hidden', className)}>
-      <div className={cn('h-full', color)} style={{ width: `${pct}%` }} />
+      <div className={cn('h-full nb-progress-fill', color)} style={{ width: `${pct}%` }} />
     </div>
   )
 }

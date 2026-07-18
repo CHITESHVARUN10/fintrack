@@ -15,7 +15,7 @@ const Form16 = require('../models/form16.model');
 const TaxRecommendation = require('../models/taxrecommendation.model');
 
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
-const { calculateTax, aggregateDeductions, generateTips } = require('../services/tax.service');
+const { computeRegimeTaxes, aggregateDeductions, generateTips } = require('../services/tax.service');
 
 const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
 
@@ -216,10 +216,18 @@ async function buildTaxData(userId, year) {
   const incomes = await Income.find({ memberId: userId });
   const annualGross = incomes.reduce((s, i) => s + (i.amount || 0) * 12, 0);
   const deductions = await aggregateDeductions(userId);
-  const oldRegime = calculateTax(annualGross, deductions.totalDeductions, 'Old');
-  const newRegime = calculateTax(annualGross, deductions.totalDeductions, 'New');
-  const recommended = oldRegime.totalTax <= newRegime.totalTax ? 'Old' : 'New';
-  const savings = Math.abs(oldRegime.totalTax - newRegime.totalTax);
+  const { old, new: newR } = computeRegimeTaxes(annualGross, deductions);
+  // Map the full trace to the lightweight shape the report renders.
+  const toReport = (t) => ({
+    taxableIncome: t.taxableIncome,
+    taxBeforeCess: t.incomeTaxAfterRebate,
+    cess: t.cess,
+    totalTax: t.finalTax,
+  });
+  const oldRegime = toReport(old);
+  const newRegime = toReport(newR);
+  const recommended = old.finalTax <= newR.finalTax ? 'Old' : 'New';
+  const savings = Math.abs(old.finalTax - newR.finalTax);
   const tips = await generateTips(userId);
 
   // Pull any stored recommendation for context.

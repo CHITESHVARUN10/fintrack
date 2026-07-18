@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { cn } from '../lib/cn'
 import { Field, Input } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
+import { AuthBackground } from '../components/layout/AuthBackground'
+import { PasswordInput } from '../components/ui/PasswordInput'
 
 export function Login() {
   const { login } = useAuth()
@@ -11,17 +14,40 @@ export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState(false)
+  const [shake, setShake] = useState(false)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setLoading(true)
-    await login(email, password)
-    navigate('/')
+    try {
+      await login(email, password)
+      setFlash(true)
+      window.setTimeout(() => navigate('/dashboard'), 220)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Login failed. Please try again.'
+      setError(msg)
+      setShake(true)
+      window.setTimeout(() => setShake(false), 420)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-md bg-white">
-      <div className="w-full max-w-md bg-white border-[3px] border-on-surface shadow-brutal p-lg">
+    <div className="min-h-screen flex items-center justify-center p-md bg-white relative">
+      <AuthBackground />
+      <div
+        className={cn(
+          'w-full max-w-md bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10',
+          shake && 'nb-shake',
+        )}
+        style={flash ? ({ ['--nb-flash-from' as string]: '#ffffff' } as CSSProperties) : undefined}
+      >
         <div className="mb-lg">
           <h1 className="text-4xl font-bold uppercase tracking-tighter text-on-surface">
             FinStack
@@ -31,6 +57,12 @@ export function Login() {
             Enter your credentials to continue.
           </p>
         </div>
+
+        {error && (
+          <div className="mb-md border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
+            {error}
+          </div>
+        )}
 
         <form className="flex flex-col gap-sm" onSubmit={onSubmit}>
           <Field label="Email Address">
@@ -56,9 +88,8 @@ export function Login() {
                 Forgot password?
               </a>
             </div>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -67,7 +98,15 @@ export function Login() {
           </div>
 
           <div className="pt-sm">
-            <Button type="submit" variant="yellow" size="lg" block disabled={loading}>
+            <Button
+              type="submit"
+              variant="yellow"
+              size="lg"
+              block
+              disabled={loading}
+              className={flash ? 'nb-yellow-flash' : undefined}
+              style={flash ? ({ ['--nb-flash-from' as string]: '#ffe500' } as CSSProperties) : undefined}
+            >
               {loading ? 'Logging in…' : 'Login'}
               {!loading && <Icon name="login" className="text-xl" />}
             </Button>

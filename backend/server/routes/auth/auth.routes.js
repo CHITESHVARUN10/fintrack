@@ -32,6 +32,7 @@ const inviteSchema = Joi.object({
 
 const acceptInviteSchema = Joi.object({
   password: Joi.string().min(6).required(),
+  name: Joi.string().optional(),
 });
 
 function validationError(res, err) {
@@ -147,16 +148,25 @@ router.post('/invite', isAuthenticated, isAdmin, async (req, res, next) => {
     });
     await invited.save();
 
-    const inviteUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/accept-invite?token=${inviteToken}`;
-    await sendEmail({
-      to: email,
-      subject: 'You have been invited to FinTrack',
-      text: `You have been invited to join a FinTrack family account. Use this link to set your password: ${inviteUrl}`,
-      html: `<p>You have been invited to join a FinTrack family account.</p>
-             <p><a href="${inviteUrl}">Set your password &amp; activate your account</a></p>`,
-    });
+    const inviteUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/accept-invite/${inviteToken}`;
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'You have been invited to FinTrack',
+        text: `You have been invited to join a FinTrack family account. Use this link to set your password: ${inviteUrl}`,
+        html: `<p>You have been invited to join a FinTrack family account.</p>
+               <p><a href="${inviteUrl}">Set your password &amp; activate your account</a></p>`,
+      });
+    } catch (mailErr) {
+      // Email is best-effort; the invite (and activation link) still work.
+      console.warn('[auth] invite email failed:', mailErr?.message || mailErr);
+    }
 
-    return res.json({ message: 'Invite sent', invited: sanitizeUser(invited) });
+    return res.json({
+      message: 'Invite sent',
+      invited: sanitizeUser(invited),
+      inviteToken,
+    });
   } catch (err) {
     next(err);
   }
@@ -175,6 +185,7 @@ router.post('/accept-invite/:token', async (req, res, next) => {
     if (!user) return res.status(400).json({ error: 'Invalid or expired invite token' });
 
     user.passwordHash = await bcrypt.hash(value.password, 12);
+    if (value.name) user.name = value.name;
     user.inviteToken = undefined;
     user.inviteExpiry = undefined;
     user.isActive = true;

@@ -1,0 +1,8 @@
+
+> backend@1.0.0 dev
+> node --watch server/index.js
+
+◇ injected env (12) from .env // tip: ⌘ suppress logs { quiet: true }
+[cron] scheduled daily job at 08:00
+[db] Connected to MongoDB (fintrack)
+[server] FinTrack API listening on http://localhost:5000

@@ -9,7 +9,8 @@ const Insurance = require('../../models/insurance.model');
 const EMILoan = require('../../models/loan.model');
 const EducationPayment = require('../../models/education.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
-const { extractForm16, generateRecommendation } = require('../../services/gemini.service');
+const { extractForm16, generateRecommendation, normalizeForm16 } = require('../../services/gemini.service');
+const { annualize, aggregateDeductions, buildDeductionBreakdown } = require('../../services/tax.service');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -25,12 +26,23 @@ function ownsForm16(req, doc) {
   return doc.userId.equals(req.user._id) || req.user.role === 'admin';
 }
 
+// normalizeForm16 (from gemini.service) coerces comma/₹-formatted numeric
+// strings to Numbers and drops an invalid taxRegimeUsed, so the model's
+// validation never rejects the document on save.
+
+// Section 80C has a hard cap of ₹1,50,000 (incl. tuition fees).
+const EIGHTYC_CAP = 150000;
+
+// The education tuition fold-in now happens inside the canonical engine's
+// `fromForm16` builder (which merges `eduTuition` into the 80C records
+// figure with provenance). We no longer mutate the stored Form16 here.
+
 // POST /api/form16/upload — PDF -> Gemini extraction.
 router.post('/upload', upload.single('pdf'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'A PDF file is required' });
     const b64 = req.file.buffer.toString('base64');
-    const data = await extractForm16(b64);
+    const data = normalizeForm16(await extractForm16(b64));
     const doc = new Form16({
       ...data,
       userId: req.user._id,
@@ -47,7 +59,7 @@ router.post('/upload', upload.single('pdf'), async (req, res, next) => {
 // POST /api/form16/manual — manual entry.
 router.post('/manual', async (req, res, next) => {
   try {
-    const doc = new Form16({ ...req.body, userId: req.user._id, sourceType: 'Manual' });
+    const doc = new Form16({ ...normalizeForm16({ ...req.body }), userId: req.user._id, sourceType: 'Manual' });
     await doc.save();
     res.status(201).json(doc);
   } catch (err) {
@@ -71,6 +83,7 @@ router.post('/:id/duplicate', async (req, res, next) => {
     copy.originalForm16Id = src._id;
     copy.isEdited = false;
     if (req.body.financialYear) copy.financialYear = req.body.financialYear;
+    normalizeForm16(copy);
     const doc = new Form16(copy);
     await doc.save();
     res.status(201).json(doc);
@@ -99,7 +112,33 @@ router.get('/:id/recommendation', async (req, res, next) => {
       loans: await EMILoan.find({ memberId: form16.userId }),
       education: await EducationPayment.find({ memberId: form16.userId }),
     };
-    const rec = await generateRecommendation(form16, financials);
+
+    // Aggregate deductions across investments, insurance, loans (home-loan
+    // interest under 24 + principal under 80C) and education tuition fees.
+    // This is the SAME data used to compute both regimes below, so loans and
+    // education are reflected in the tax calculation.
+    const agg = await aggregateDeductions(form16.userId);
+
+    // Fold education tuition fees into the 80C records figure inside the
+    // canonical engine builder (the stored Form16 doc is NOT mutated).
+    const eduTuition = financials.education.reduce(
+      (s, e) => s + annualize(e.amount, e.frequency),
+      0,
+    );
+    const rec = await generateRecommendation(form16, financials, agg, eduTuition);
+
+    // Static, plain-English breakdown of what was claimed (no AI involved).
+    const deductionBreakdown = buildDeductionBreakdown(agg);
+
+    // totalDeductions must come from the canonical engine result (which includes
+    // standard deduction + all verified Chapter VI-A deductions), NOT from agg
+    // (which only sums investment/insurance/loan records without standard deduction).
+    // Using agg.totalDeductions here was the root cause of the Review/Recommendation
+    // mismatch reported in Part 6 of the audit.
+    const canonicalTotalDeductions =
+      rec.regimes && rec.regimes.old
+        ? rec.regimes.old.totalDeductions
+        : agg.totalDeductions;
 
     const upserted = await TaxRecommendation.findOneAndUpdate(
       { form16Id: form16._id },
@@ -107,6 +146,8 @@ router.get('/:id/recommendation', async (req, res, next) => {
         userId: form16.userId,
         form16Id: form16._id,
         ...rec,
+        totalDeductions: canonicalTotalDeductions,
+        deductionBreakdown,
         isStale: false,
         generatedAt: new Date(),
       },
@@ -153,6 +194,7 @@ router.put('/:id', async (req, res, next) => {
     if (!doc) return res.status(404).json({ error: 'Not found' });
     if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
     const { userId, sourceType, originalForm16Id, pdfReference, _id, ...updates } = req.body;
+    normalizeForm16(updates);
     Object.assign(doc, updates);
     doc.isEdited = true; // triggers the stale hook on save
     await doc.save();

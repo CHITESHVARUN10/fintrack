@@ -5,7 +5,7 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { label: 'Dashboard', to: '/', icon: 'dashboard' },
+  { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
   { label: 'Income', to: '/income', icon: 'account_balance_wallet' },
   { label: 'Subscriptions', to: '/subscriptions', icon: 'subscriptions' },
   { label: 'Recurring Payments', to: '/recurring', icon: 'autorenew' },
@@ -22,7 +22,7 @@ export const navItems: NavItem[] = [
 ]
 
 export const routeTitles: Record<string, string> = {
-  '/': 'FinStack Dashboard',
+  '/dashboard': 'FinStack Dashboard',
   '/income': 'Income Tracker',
   '/subscriptions': 'Subscriptions',
   '/recurring': 'Recurring Payments',

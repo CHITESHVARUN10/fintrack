@@ -1,316 +1,293 @@
-// Service layer for FinStack.
-//
-// Today every call resolves from the in-memory mock data in `data/mock.ts`.
-// When the backend is ready, flip USE_MOCK to false and the axios-based
-// branch (TODO stubs) will be used — call sites in the UI never change.
+// Service layer for FinStack. Every call goes through the central `apiClient`
+// instance (see ./apiClient) with `withCredentials`, so cookies/sessions work
+// end-to-end through the Vite proxy to the Express backend.
 
-import axios from 'axios'
-import {
-  dashboardSummary,
-  draftForm16,
-  educationPayments,
-  expenses,
-  form16Records,
-  incomes,
-  insurances,
-  investments,
-  loans,
-  members,
-  notifications,
-  recurringPayments,
-  subscriptions,
-  taxEstimate,
-  taxRecommendation,
-} from '../data/mock'
+import { apiClient } from './apiClient'
+import { buildRegimeTrace } from '../lib/tax'
 import type {
   AdHocExpense,
   AppNotification,
   DashboardSummary,
   EducationPayment,
   EMILoan,
+  FamilyMember,
   Form16,
+  Form16Regime,
   Income,
   Insurance,
   Investment,
   RecurringPayment,
+  RegimeTrace,
   Subscription,
   TaxEstimate,
   TaxRecommendation,
+  TaxRegimeResult,
+  TaxSavingSuggestion,
+  DeductionBreakdown,
+  DeductionLineItem,
+  CalculationTraceStep,
 } from '../types'
 
-const USE_MOCK = true
-
-// Simulate network latency so loading states are exercised.
-const delay = <T>(data: T, ms = 250): Promise<T> =>
-  new Promise((resolve) => setTimeout(() => resolve(data), ms))
-
-const api = axios.create({
-  baseURL: '/api',
-  withCredentials: true,
-})
-
-// Mutable in-memory stores for the Form 16 flow so create/update/duplicate
-// behave realistically within a session.
-const form16Store: Form16[] = [
-  ...form16Records.map((r) => ({ ...r })),
-  { ...draftForm16 },
-]
-const recommendationStore: Record<string, TaxRecommendation> = {
-  [taxRecommendation.form16Id]: { ...taxRecommendation },
-}
-let form16Seq = 100
-
-// Re-export raw mock collections where the UI may need a synchronous list
-// (e.g. select options). Not used by async service calls.
-export const mockCollections = {
-  incomes,
-  subscriptions,
-  recurringPayments,
-  investments,
-  loans,
-  expenses,
-  insurances,
-  educationPayments,
-  notifications,
-  members,
-  form16: form16Store,
-}
-
 export const dashboardService = {
-  getSummary: (): Promise<DashboardSummary> => {
-    if (!USE_MOCK) return api.get('/dashboard').then((r) => r.data)
-    return delay(dashboardSummary)
-  },
+  getSummary: (): Promise<DashboardSummary> =>
+    apiClient.get('/dashboard').then((r) => r.data),
 }
 
 export const incomeService = {
-  list: (): Promise<Income[]> => {
-    if (!USE_MOCK) return api.get('/income').then((r) => r.data)
-    return delay(incomes)
-  },
+  list: (): Promise<Income[]> => apiClient.get('/income').then((r) => r.data),
 }
 
 export const subscriptionService = {
-  list: (frequency?: 'monthly' | 'yearly'): Promise<Subscription[]> => {
-    if (!USE_MOCK)
-      return api.get('/subscriptions', { params: { frequency } }).then((r) => r.data)
-    const filtered = frequency
-      ? subscriptions.filter((s) => s.frequency === frequency)
-      : subscriptions
-    return delay(filtered)
-  },
+  list: (frequency?: 'monthly' | 'yearly'): Promise<Subscription[]> =>
+    apiClient
+      .get('/subscriptions', { params: { frequency } })
+      .then((r) => r.data),
 }
 
 export const recurringService = {
-  list: (): Promise<RecurringPayment[]> => {
-    if (!USE_MOCK) return api.get('/recurring').then((r) => r.data)
-    return delay(recurringPayments)
-  },
+  list: (): Promise<RecurringPayment[]> =>
+    apiClient.get('/recurring').then((r) => r.data),
 }
 
 export const investmentService = {
-  list: (type?: string): Promise<Investment[]> => {
-    if (!USE_MOCK)
-      return api.get('/investments', { params: { type } }).then((r) => r.data)
-    const filtered = type
-      ? investments.filter((i) => i.investmentType === type)
-      : investments
-    return delay(filtered)
-  },
-  summary: (): Promise<{ totalInvested: number; currentValue: number }> => {
-    if (!USE_MOCK) return api.get('/investments/summary').then((r) => r.data)
-    const totalInvested = investments.reduce((s, i) => s + i.totalInvested, 0)
-    const currentValue = investments.reduce((s, i) => s + i.currentValue, 0)
-    return delay({ totalInvested, currentValue })
-  },
+  list: (type?: string): Promise<Investment[]> =>
+    apiClient.get('/investments', { params: { type } }).then((r) => r.data),
+  summary: (): Promise<{ totalInvested: number; currentValue: number }> =>
+    apiClient.get('/investments/summary').then((r) => r.data.overall),
 }
 
 export const loanService = {
-  list: (): Promise<EMILoan[]> => {
-    if (!USE_MOCK) return api.get('/loans').then((r) => r.data)
-    return delay(loans)
-  },
+  list: (): Promise<EMILoan[]> => apiClient.get('/loans').then((r) => r.data),
 }
 
 export const expenseService = {
-  list: (): Promise<AdHocExpense[]> => {
-    if (!USE_MOCK) return api.get('/expenses').then((r) => r.data)
-    return delay(expenses)
-  },
+  list: (): Promise<AdHocExpense[]> => apiClient.get('/expenses').then((r) => r.data),
 }
 
 export const insuranceService = {
-  list: (): Promise<Insurance[]> => {
-    if (!USE_MOCK) return api.get('/insurance').then((r) => r.data)
-    return delay(insurances)
-  },
+  list: (): Promise<Insurance[]> => apiClient.get('/insurance').then((r) => r.data),
 }
 
 export const educationService = {
-  list: (): Promise<EducationPayment[]> => {
-    if (!USE_MOCK) return api.get('/education').then((r) => r.data)
-    return delay(educationPayments)
-  },
+  list: (): Promise<EducationPayment[]> => apiClient.get('/education').then((r) => r.data),
 }
 
 export const taxService = {
-  estimate: (): Promise<TaxEstimate> => {
-    if (!USE_MOCK) return api.get('/tax/estimate').then((r) => r.data)
-    return delay(taxEstimate)
+  estimate: async (): Promise<TaxEstimate> => {
+    const [est, tips] = await Promise.all([
+      apiClient.get('/tax/estimate'),
+      apiClient.get('/tax/tips'),
+    ])
+    const e = est.data
+    const effectiveRate = (t: { totalTax: number }) =>
+      e.grossIncome ? +((t.totalTax / e.grossIncome) * 100).toFixed(1) : 0
+    const toRegime = (
+      r: { taxableIncome: number; taxBeforeCess: number; cess: number; totalTax: number },
+      regime: 'Old' | 'New',
+    ): TaxRegimeResult => ({
+      regime,
+      grossIncome: e.grossIncome,
+      deductions: e.deductions.totalDeductions,
+      taxableIncome: r.taxableIncome,
+      taxBeforeCess: r.taxBeforeCess,
+      cess: r.cess,
+      totalTax: r.totalTax,
+      effectiveRate: effectiveRate(r),
+    })
+    return {
+      grossIncome: e.grossIncome,
+      deductions: e.deductions,
+      oldRegime: toRegime(e.old, 'Old'),
+      newRegime: toRegime(e.new, 'New'),
+      recommended: e.recommended,
+      savings: e.savings,
+      tips: tips.data,
+    }
   },
+}
+
+// Backend Notification docs use Mongo `_id`; normalize so `id` stays consistent
+// across the UI (the `AppNotification` type uses `id`, not `_id`).
+export function normalizeNotification(raw: Record<string, unknown>): AppNotification {
+  const { _id, __v, ...rest } = raw
+  return {
+    ...(rest as unknown as Omit<AppNotification, 'id'>),
+    id: String(raw._id ?? raw.id),
+  }
 }
 
 export const notificationService = {
-  list: (): Promise<AppNotification[]> => {
-    if (!USE_MOCK) return api.get('/notifications').then((r) => r.data)
-    return delay(notifications)
-  },
-  unreadCount: (): Promise<number> => {
-    const count = notifications.filter((n) => !n.isRead).length
-    return delay(count)
-  },
+  list: (): Promise<AppNotification[]> =>
+    apiClient
+      .get('/notifications')
+      .then((r) => (r.data ?? []).map((n: Record<string, unknown>) => normalizeNotification(n))),
+
+  // PUT /api/notifications/read-all — mark every notification for the user read.
+  markAllRead: (): Promise<void> =>
+    apiClient.put('/notifications/read-all').then(() => undefined),
+}
+
+export type ReportKind = 'monthly' | 'annual' | 'category' | 'tax'
+export type ReportFormat = 'pdf' | 'excel'
+
+// Reports are generated on demand and streamed back as binary blobs
+// (application/pdf or .xlsx). The backend scopes every report to the
+// requesting user (it ignores any memberId the client might send for
+// non-admins), so no member scoping is needed on the client.
+export const reportService = {
+  // GET /api/reports/:kind?...&format=pdf|excel — returns the file buffer.
+  download: (
+    kind: ReportKind,
+    params: Record<string, string | number>,
+    format: ReportFormat,
+  ): Promise<Blob> =>
+    apiClient
+      .get(`/reports/${kind}`, {
+        params: { ...params, format },
+        responseType: 'blob',
+      })
+      .then((r) => r.data as Blob),
+}
+
+// Backend user documents use Mongo `_id`; normalize so the frontend
+// `FamilyMember` type (and all call sites) stay unchanged.
+export function normalizeMember(raw: Record<string, unknown>): FamilyMember {
+  return {
+    id: String(raw._id ?? raw.id),
+    name: (raw.name as string) ?? '',
+    email: (raw.email as string) ?? '',
+    role: (raw.role as FamilyMember['role']) ?? 'member',
+    familyAccountId: raw.familyAccountId ? String(raw.familyAccountId) : '',
+    isActive: (raw.isActive as boolean) ?? true,
+    createdAt: (raw.createdAt as string) ?? '',
+  }
 }
 
 export const memberService = {
-  list: (): Promise<typeof members> => {
-    if (!USE_MOCK) return api.get('/members').then((r) => r.data)
-    return delay(members)
-  },
+  list: (): Promise<FamilyMember[]> =>
+    apiClient
+      .get('/members')
+      .then((r) => (r.data ?? []).map((m: Record<string, unknown>) => normalizeMember(m))),
+}
+
+// Backend Form 16 docs use Mongo `_id`; normalize so the frontend `Form16`
+// type (and all call sites) stay unchanged.
+export function normalizeForm16(raw: Record<string, unknown>): Form16 {
+  const id = String(raw._id ?? raw.id)
+  const { _id, __v, ...rest } = raw
+  return {
+    ...(rest as unknown as Omit<Form16, 'id'>),
+    id,
+  }
 }
 
 export const form16Service = {
-  list: (): Promise<Form16[]> => {
-    if (!USE_MOCK) return api.get('/form16').then((r) => r.data)
-    // Exclude in-progress drafts from the saved list.
-    const list = form16Store.filter((f) => f.status !== 'Draft')
-    return delay(list)
+  list: (): Promise<Form16[]> =>
+    apiClient
+      .get('/form16')
+      .then((r) => (r.data ?? []).map((f: Record<string, unknown>) => normalizeForm16(f))),
+
+  get: (id: string): Promise<Form16 | undefined> =>
+    apiClient
+      .get(`/form16/${id}`)
+      .then((r) => (r.data ? normalizeForm16(r.data) : undefined)),
+
+  // POST /api/form16/upload — multipart PDF; backend extracts via Gemini and
+  // returns { _id, sourceType } (the full record is fetched by the review screen).
+  upload: (file: File): Promise<Form16> => {
+    const fd = new FormData()
+    fd.append('pdf', file)
+    return apiClient.post('/form16/upload', fd).then((r) => normalizeForm16(r.data))
   },
 
-  get: (id: string): Promise<Form16 | undefined> => {
-    if (!USE_MOCK) return api.get(`/form16/${id}`).then((r) => r.data)
-    return delay(form16Store.find((f) => f.id === id))
-  },
-
-  // Simulates POST /api/form16/upload — returns the extracted (draft) record.
-  upload: (): Promise<Form16> => {
-    if (!USE_MOCK) {
-      // POST multipart to /api/form16/upload; returns created id.
-      return api.post('/form16/upload').then((r) => r.data)
-    }
-    const draft = form16Store.find((f) => f.id === draftForm16.id)
-    return delay(draft ? { ...draft } : { ...draftForm16 })
-  },
-
-  // Simulates POST /api/form16/manual — blank record to fill in.
-  createManual: (financialYear = '2025-26'): Promise<Form16> => {
-    if (!USE_MOCK) return api.post('/form16/manual').then((r) => r.data)
-    const id = `F16-${++form16Seq}`
-    const now = '2026-07-16'
-    const record: Form16 = {
-      id,
-      userId: 'm1',
-      financialYear,
-      employeeName: '',
-      employeePAN: '',
-      employeeDesignation: '',
-      employeeCode: '',
-      employeeAddress: '',
-      employerName: '',
-      employerTAN: '',
-      employerPAN: '',
-      employerAddress: '',
-      basicSalary: 0,
-      hra: 0,
-      specialAllowance: 0,
-      lta: 0,
-      otherAllowances: 0,
-      grossSalary: 0,
-      standardDeduction: 50000,
-      professionalTax: 0,
-      section80C: 0,
-      section80D: 0,
-      section80E: 0,
-      section80G: 0,
-      section80CCD: 0,
-      totalDeductions: 50000,
-      taxableIncome: 0,
-      taxOnIncome: 0,
-      rebate87A: 0,
-      educationCess: 0,
-      totalTaxPayable: 0,
-      tdsDeducted: 0,
-      taxRegimeUsed: 'New',
-      sourceType: 'Manual',
-      originalForm16Id: null,
-      pdfReference: null,
-      isEdited: false,
-      status: 'Draft',
-      createdAt: now,
-      updatedAt: now,
-    }
-    form16Store.push(record)
-    return delay(record)
-  },
+  // POST /api/form16/manual — backend fills defaults; returns the created doc.
+  createManual: (): Promise<Form16> =>
+    apiClient.post('/form16/manual', {}).then((r) => normalizeForm16(r.data)),
 
   update: (id: string, patch: Partial<Form16>): Promise<Form16 | undefined> => {
-    if (!USE_MOCK) return api.put(`/form16/${id}`, patch).then((r) => r.data)
-    const idx = form16Store.findIndex((f) => f.id === id)
-    if (idx === -1) return delay(undefined)
-    form16Store[idx] = {
-      ...form16Store[idx],
-      ...patch,
-      isEdited: true,
-      status: 'Processed',
-      updatedAt: '2026-07-16',
-    }
-    // Mark any linked recommendation stale (mock: regenerate lazily).
-    if (recommendationStore[id]) recommendationStore[id].isStale = true
-    return delay(form16Store[idx])
+    const { id: _omit, ...body } = patch
+    return apiClient
+      .put(`/form16/${id}`, body)
+      .then((r) => (r.data ? normalizeForm16(r.data) : undefined))
   },
 
-  // Simulates POST /api/form16/:id/duplicate.
-  duplicate: (id: string, newName?: string): Promise<Form16> => {
-    if (!USE_MOCK) return api.post(`/form16/${id}/duplicate`).then((r) => r.data)
-    const src = form16Store.find((f) => f.id === id)
-    const newId = `F16-${++form16Seq}`
-    const now = '2026-07-16'
-    const copy: Form16 = {
-      ...(src ?? draftForm16),
-      id: newId,
-      financialYear: newName?.replace(/^FY\s*/, '') || src?.financialYear || '2025-26',
-      sourceType: 'Duplicate',
-      originalForm16Id: id,
-      isEdited: false,
-      status: 'Processed',
-      createdAt: now,
-      updatedAt: now,
-    }
-    form16Store.push(copy)
-    return delay(copy)
-  },
+  // POST /api/form16/:id/duplicate
+  duplicate: (id: string, financialYear?: string): Promise<Form16> =>
+    apiClient
+      .post(`/form16/${id}/duplicate`, financialYear ? { financialYear } : {})
+      .then((r) => normalizeForm16(r.data)),
 
-  remove: (id: string): Promise<void> => {
-    if (!USE_MOCK) return api.delete(`/form16/${id}`).then(() => undefined)
-    const idx = form16Store.findIndex((f) => f.id === id)
-    if (idx !== -1) form16Store.splice(idx, 1)
-    delete recommendationStore[id]
-    return delay(undefined)
-  },
+  remove: (id: string): Promise<void> =>
+    apiClient.delete(`/form16/${id}`).then(() => undefined),
 
-  // Simulates GET /api/form16/:id/recommendation (cached or regenerated).
-  getRecommendation: (id: string): Promise<TaxRecommendation> => {
-    if (!USE_MOCK) return api.get(`/form16/${id}/recommendation`).then((r) => r.data)
-    if (!recommendationStore[id]) {
-      // Regenerate from the base mock for any requested id.
-      recommendationStore[id] = {
-        ...taxRecommendation,
-        id: `TAXREC-${id}`,
-        form16Id: id,
-        isStale: false,
-      }
-    } else if (recommendationStore[id].isStale) {
-      recommendationStore[id] = { ...recommendationStore[id], isStale: false }
+  // GET /api/form16/:id/recommendation — assemble the display shape from the
+  // saved recommendation. The regime breakdowns are rebuilt from the SNAPSHOT
+  // fields the backend stored (grossSalaryUsed / totalDeductions / per-regime
+  // taxable income) so what the user sees matches exactly what was computed and
+  // saved, even when revisited days later.
+  getRecommendation: async (id: string): Promise<TaxRecommendation> => {
+    const [recRes, f16Res] = await Promise.all([
+      apiClient.get(`/form16/${id}/recommendation`),
+      apiClient.get(`/form16/${id}`),
+    ])
+    const rec = recRes.data ?? {}
+    const f16 = f16Res.data ? normalizeForm16(f16Res.data) : undefined
+
+    // Prefer the saved snapshot; fall back to the raw Form 16 if missing.
+    const gross = Number(rec.grossSalaryUsed ?? f16?.grossSalary ?? 0)
+    const totalDed = Number(rec.totalDeductions ?? f16?.totalDeductions ?? 0)
+    const oldTaxable = Number(rec.oldTaxableIncome ?? 0)
+    const newTaxable = Number(rec.newTaxableIncome ?? 0)
+
+    const suggestions: TaxSavingSuggestion[] = (
+      (rec.taxSavingSuggestions as Array<{ suggestion?: string; potentialSaving?: number }>) ?? []
+    ).map((s, i) => ({
+      id: `sug-${i}`,
+      title: s.suggestion ?? '',
+      detail: s.suggestion ?? '',
+      icon: 'savings',
+      potentialSaving: Number(s.potentialSaving ?? 0),
+    }))
+
+    const breakdown: DeductionBreakdown[] = (
+      (rec.deductionBreakdown as Array<{ section?: string; label?: string; amount?: number; note?: string }>) ?? []
+    ).map((d) => ({
+      section: d.section ?? '',
+      label: d.label ?? '',
+      amount: Number(d.amount ?? 0),
+      note: d.note ?? '',
+    }))
+
+    // Prefer the full backend trace (authoritative, matches what was saved).
+    // Fall back to a computed minimal trace only for recommendations that predate
+    // the rich regimes trace.
+    const oldTrace =
+      (rec.regimes?.old as RegimeTrace | undefined) ??
+      buildRegimeTrace('Old', gross, totalDed, oldTaxable)
+    const newTrace =
+      (rec.regimes?.new as RegimeTrace | undefined) ??
+      buildRegimeTrace('New', gross, totalDed, newTaxable)
+
+    return {
+      id: `TAXREC-${id}`,
+      form16Id: id,
+      userId: f16?.userId ?? '',
+      grossIncome: gross,
+      recommendedRegime: (rec.recommendedRegime ?? 'New') as Form16Regime,
+      savingsAmount: Number(rec.savingsAmount ?? 0),
+      explanation: rec.explanation ?? '',
+      regimes: { old: oldTrace, new: newTrace },
+      taxSavingSuggestions: suggestions,
+      grossSalaryUsed: gross,
+      totalDeductions: totalDed,
+      deductionBreakdown: breakdown,
+      grossSalaryMismatch: Boolean(rec.grossSalaryMismatch),
+      mismatchDetail: (rec.mismatchDetail as string | null) ?? null,
+      debug: (rec.debug as Record<string, unknown> | null) ?? null,
+      deductionLineItems: (rec.deductionLineItems as DeductionLineItem[]) ?? [],
+      calculationTrace: (rec.calculationTrace as CalculationTraceStep[]) ?? [],
+      generatedAt: f16?.updatedAt ?? '',
+      isStale: Boolean(rec.isStale),
     }
-    return delay(recommendationStore[id])
   },
 }

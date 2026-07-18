@@ -7,3 +7,6 @@ node_modules/
 # Project-specific excludes
 stitch_screens/
 .claude/
+.claudeignore/
+.commandcode/
+    

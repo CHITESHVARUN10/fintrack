@@ -8,15 +8,20 @@ export function Form16Upload() {
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const handleFile = (file?: File) => {
-    if (file) setFileName(file.name)
+  const handleFile = (f?: File) => {
+    if (f) {
+      setFile(f)
+      setFileName(f.name)
+    }
   }
 
   const startUpload = () => {
+    if (!file) return
     setBusy(true)
-    navigate('/form16/processing')
+    navigate('/form16/processing', { state: { file } })
   }
 
   const startManual = async () => {

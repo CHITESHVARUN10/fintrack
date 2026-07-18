@@ -2,7 +2,22 @@ const express = require('express');
 const Joi = require('joi');
 const Income = require('../../models/income.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
-const { calculateTax, aggregateDeductions, generateTips } = require('../../services/tax.service');
+const { computeLiability, computeRegimeTaxes, aggregateDeductions, generateTips } = require('../../services/tax.service');
+
+// Map a full computeLiability trace to the lightweight shape the Tax page uses.
+function toRegimeResult(trace) {
+  const gross = trace.grossIncome || 1;
+  return {
+    regime: trace.regime,
+    grossIncome: trace.grossIncome,
+    deductions: trace.totalDeductions,
+    taxableIncome: trace.taxableIncome,
+    taxBeforeCess: trace.incomeTaxAfterRebate,
+    cess: trace.cess,
+    totalTax: trace.finalTax,
+    effectiveRate: Math.round((trace.finalTax / gross) * 1000) / 10,
+  };
+}
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -24,15 +39,14 @@ router.get('/estimate', async (req, res, next) => {
   try {
     const grossIncome = await getAnnualGross(req.user._id);
     const deductions = await aggregateDeductions(req.user._id);
-    const oldRegime = calculateTax(grossIncome, deductions.totalDeductions, 'Old');
-    const newRegime = calculateTax(grossIncome, deductions.totalDeductions, 'New');
-    const recommended = oldRegime.totalTax <= newRegime.totalTax ? 'Old' : 'New';
-    const savings = Math.abs(oldRegime.totalTax - newRegime.totalTax);
+    const { old, new: newR } = computeRegimeTaxes(grossIncome, deductions);
+    const recommended = old.finalTax <= newR.finalTax ? 'Old' : 'New';
+    const savings = Math.abs(old.finalTax - newR.finalTax);
     res.json({
       grossIncome,
       deductions,
-      old: oldRegime,
-      new: newRegime,
+      old: toRegimeResult(old),
+      new: toRegimeResult(newR),
       recommended,
       savings,
     });
@@ -48,8 +62,12 @@ router.post('/calculate', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: 'Validation failed', details: error.details.map((d) => d.message) });
     }
-    const result = calculateTax(value.grossIncome, value.deductions, value.regime);
-    res.json({ ...result, regime: value.regime });
+    const trace = computeLiability({
+      grossSalary: value.grossIncome,
+      regime: value.regime,
+      deductions: { section80C: value.deductions },
+    });
+    res.json({ ...toRegimeResult(trace), regime: value.regime });
   } catch (err) {
     next(err);
   }
@@ -70,11 +88,10 @@ router.get('/compare', async (req, res, next) => {
   try {
     const grossIncome = await getAnnualGross(req.user._id);
     const deductions = await aggregateDeductions(req.user._id);
-    const oldRegime = calculateTax(grossIncome, deductions.totalDeductions, 'Old');
-    const newRegime = calculateTax(grossIncome, deductions.totalDeductions, 'New');
-    const recommended = oldRegime.totalTax <= newRegime.totalTax ? 'Old' : 'New';
-    const savings = Math.abs(oldRegime.totalTax - newRegime.totalTax);
-    res.json({ old: oldRegime, new: newRegime, recommended, savings });
+    const { old, new: newR } = computeRegimeTaxes(grossIncome, deductions);
+    const recommended = old.finalTax <= newR.finalTax ? 'Old' : 'New';
+    const savings = Math.abs(old.finalTax - newR.finalTax);
+    res.json({ old: toRegimeResult(old), new: toRegimeResult(newR), recommended, savings });
   } catch (err) {
     next(err);
   }

@@ -256,40 +256,49 @@ export interface TaxRegimeResult {
   effectiveRate: number
 }
 
+export interface TaxDeductions {
+  section80C: number
+  section80CCD: number
+  section80D: number
+  section80E: number
+  section24: number
+  totalDeductions: number
+}
+
+// Shape returned by GET /api/tax/estimate (real backend aggregation).
 export interface TaxEstimate {
+  grossIncome: number
+  deductions: TaxDeductions
   oldRegime: TaxRegimeResult
   newRegime: TaxRegimeResult
   recommended: 'Old' | 'New'
   savings: number
-  tips: TaxTip[]
+  tips: string[]
 }
 
-export interface TaxTip {
-  id: string
-  title: string
-  detail: string
-  potentialSaving: number
-}
-
+// Shape returned by GET /api/dashboard (real aggregate from the backend).
 export interface DashboardSummary {
   monthlyIncome: number
-  monthlyOutflow: number
-  investmentsWorth: number
-  netSavings: number
-  deltas: { income: number; outflow: number; investments: number; savings: number }
-  incomeVsExpense: { month: string; income: number; expense: number }[]
-  breakdown: { label: string; value: number; color: string }[]
+  monthlyObligations: number
+  netMonthlyFlow: number
+  investmentPortfolioValue: { totalInvested: number; totalCurrentValue: number }
+  adHocSpendThisMonth: number
+  monthlyBurnBreakdown: Record<string, number>
   upcomingPayments: UpcomingPayment[]
+  taxEstimate: {
+    taxableIncome: number
+    taxBeforeCess: number
+    cess: number
+    totalTax: number
+  }
 }
 
 export interface UpcomingPayment {
   id: string
+  type: string
   name: string
   amount: number
-  dueInDays: number
-  icon: string
-  color: 'yellow' | 'cyan' | 'white' | 'error'
-  action: 'Pay Now' | 'Schedule'
+  dueDate: string
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +324,7 @@ export interface Form16 {
   employerAddress: string
   basicSalary: number
   hra: number
+  rentPaid: number
   specialAllowance: number
   lta: number
   otherAllowances: number
@@ -351,22 +361,158 @@ export interface TaxSavingSuggestion {
   potentialSaving: number
 }
 
-export interface RegimeSlab {
+// One band of the slab-wise tax computation. `incomeInBand` is the portion of
+// taxable income that falls in this band; `tax` is rate * incomeInBand.
+export interface SlabRow {
   label: string
+  lower: number
+  upper: number
+  rate: number
+  incomeInBand: number
   tax: number
 }
 
-export interface RegimeBreakdown {
+// One line of the per-regime deduction plan. `claimed` is what actually reduces
+// taxable income (0 when disallowed in the regime). `remaining` is headroom left
+// in the section cap (null when the section has no cap or is disallowed).
+export interface DeductionPlanItem {
+  key: string
+  label: string
+  allowed: boolean
+  disallowed: boolean
+  maxLimit: number | null
+  userAmount: number
+  claimed: number
+  remaining: number | null
+  qualifying: number | null
+  source?: string | null
+  note: string
+}
+
+export interface SalaryExemptions {
+  hra: number
+  lta: number
+}
+
+// Full per-regime tax waterfall trace returned by the backend. Mirrors
+// server/services/tax.service.js computeLiability output exactly, so the
+// frontend renders identical numbers to what was stored in the recommendation
+// (and what the user can revisit days later).
+export interface RegimeTrace {
   regime: Form16Regime
   grossIncome: number
-  deductionLabel: string
-  deductions: number
+  salaryExemptions: SalaryExemptions
+  incomeFromSalary: number
+  incomeFromOtherSources: number
+  grossTotalIncome: number
+  deductions: DeductionPlanItem[]
+  totalDeductions: number
   taxableIncome: number
-  taxBeforeCess: number
+  slabs: SlabRow[]
+  incomeTaxBeforeRebate: number
+  rebate: number
+  incomeTaxAfterRebate: number
+  surcharge: number
   cess: number
-  totalTax: number
-  slabs: RegimeSlab[]
+  finalTax: number
+  tdsDeducted: number
+  advanceTax: number
+  selfAssessmentTax: number
+  totalPaid: number
+  refund: number
+  taxPayable: number
+}
+
+// Plain-English description of a claimed deduction section (authored in code,
+// not by AI). `section` matches the backend deduction keys (section80C, etc.).
+export interface DeductionBreakdown {
+  section: string
+  label: string
+  amount: number
   note: string
+}
+
+// --- Canonical tax-engine types (Part 1 / 2 / 4 / 9) ---------------------
+
+export type DeductionSource =
+  | 'FORM16_OCR'
+  | 'INVESTMENT_RECORD'
+  | 'USER_MANUAL'
+  | 'SYSTEM_DEFAULT'
+
+export type DeductionStatus =
+  | 'Applied'
+  | 'Excluded – Unconfirmed'
+  | 'Excluded – Exceeds Limit'
+  | 'Excluded – Not Allowed in Regime'
+
+// A single, source-tracked deduction (Part 2). Every deduction in the
+// system — extracted, from financial records, or manual — is exactly one of
+// these; nothing is ever stored as a bare `section80C = 150000`.
+export interface DeductionLineItem {
+  section: string // '80C' | '80CCD' | 'HRA' | 'StandardDeduction' | ...
+  subtype: string | null
+  subtypeConfirmed: boolean
+  amount: number
+  originalAmount?: number | null // pre-cap raw amount; null when amount == raw
+  source: DeductionSource | null
+  confidence: number // 0–100
+  needsConfirmation: boolean
+  notes: string | null
+  duplicateRisk: boolean
+}
+
+export type GrossSalarySource = 'FORM16_EXPLICIT' | 'COMPONENT_SUM' | 'USER_EDITED'
+
+// The ONE source of truth for tax data across every screen (Part 1).
+export interface TaxpayerContext {
+  salary: {
+    grossSalary: number | null
+    basicSalary: number
+    hra: number
+    specialAllowance: number
+    lta: number
+    otherAllowances: number
+    grossSalarySource: GrossSalarySource
+    componentSum: number
+    tdsDeducted: number
+    employeePAN: string | null
+  }
+  deductions: DeductionLineItem[]
+  computedIncome: {
+    totalDeductions: number
+    taxableIncomeOldRegime: number
+    taxableIncomeNewRegime: number
+  }
+  taxResult: { oldRegime: TaxRegimeResult | null; newRegime: TaxRegimeResult | null }
+  metadata: {
+    extractionTimestamp: string | null
+    lastEditedTimestamp: string | null
+    lastCalculationTimestamp: string | null
+    validationStatus: string
+    validationErrors: string[]
+  }
+  financialYear: string
+  intendedRegime: Form16Regime | null
+  // Part 1: once the user clicks "Save and Continue" on the Review page this
+  // flag is set to true. Any attempt to mutate `deductions` after finalization
+  // throws in development and silently no-ops in production.
+  isFinalized?: boolean
+}
+
+export interface CalculationTraceStep {
+  step: string
+  input: unknown
+  formula: string
+  output: unknown
+  // Part 5: provenance of the value in `output`.
+  // FORM16_OCR | INVESTMENT_RECORD | USER_INPUT | SYSTEM_DEFAULT | COMPUTED
+  source?: string
+}
+
+export interface UnverifiedDeduction extends DeductionLineItem {
+  status: DeductionStatus
+  reason: string
 }
 
 export interface TaxRecommendation {
@@ -374,14 +520,27 @@ export interface TaxRecommendation {
   form16Id: string
   userId: string
   grossIncome: number
-  oldRegimeTax: number
-  newRegimeTax: number
   recommendedRegime: Form16Regime
   savingsAmount: number
   explanation: string
-  oldBreakdown: RegimeBreakdown
-  newBreakdown: RegimeBreakdown
+  // Full per-regime waterfall traces (Old + New), computed from the same
+  // gross salary and aggregated deductions so the user can compare and choose.
+  regimes: { old: RegimeTrace; new: RegimeTrace }
   taxSavingSuggestions: TaxSavingSuggestion[]
+  // Snapshot of the inputs the recommendation was computed from, so the saved
+  // view stays consistent when revisited later.
+  grossSalaryUsed: number
+  totalDeductions: number
+  deductionBreakdown: DeductionBreakdown[]
+  // Audit fields (backend FY 2025-26 pipeline): a Gross-Salary vs component-sum
+  // mismatch flag and the full machine-readable calculation trace.
+  grossSalaryMismatch?: boolean
+  mismatchDetail?: string | null
+  debug?: Record<string, unknown> | null
+  // Per-deduction provenance (Part 2) and the full step-by-step audit
+  // trace (Part 9) for the saved recommendation.
+  deductionLineItems?: DeductionLineItem[]
+  calculationTrace?: CalculationTraceStep[]
   generatedAt: string
   isStale: boolean
 }

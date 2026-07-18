@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { form16Service } from '../services/api'
 import { useAsync } from '../hooks/useAsync'
@@ -8,27 +8,10 @@ import { Icon } from '../components/ui/Icon'
 import { Input } from '../components/ui/Field'
 import { UnsavedModal } from '../components/form16/UnsavedModal'
 import { formatCurrency } from '../lib/format'
-import type { Form16, Form16Regime } from '../types'
+import { useTaxpayerContext } from '../context/TaxpayerContext'
+import { computeTax, computeTaxPreview, previewDeductionSplit } from '../lib/tax'
+import type { Form16, Form16Regime, GrossSalarySource } from '../types'
 
-const num = (v: unknown) => Number(v) || 0
-
-// Simplified slab calc (FY 2025-26) for the live regime preview.
-function computeTax(taxable: number, regime: Form16Regime): { before: number; total: number } {
-  const slabs: [number, number][] =
-    regime === 'Old'
-      ? [[250000, 0], [250000, 0.05], [500000, 0.2], [Infinity, 0.3]]
-      : [[300000, 0], [300000, 0.05], [300000, 0.1], [300000, 0.15], [300000, 0.2], [Infinity, 0.3]]
-  let remaining = Math.max(0, taxable)
-  let before = 0
-  for (const [span, rate] of slabs) {
-    if (remaining <= 0) break
-    const portion = Math.min(remaining, span)
-    before += portion * rate
-    remaining -= span
-  }
-  const total = before + before * 0.04
-  return { before: Math.round(before), total: Math.round(total) }
-}
 
 type TagKind = 'ai' | 'modified' | 'none'
 
@@ -101,35 +84,64 @@ function ReviewForm({ record }: { record: Form16 }) {
   const [regime, setRegime] = useState<Form16Regime>(record.taxRegimeUsed)
   const [unsavedOpen, setUnsavedOpen] = useState(false)
 
+  // The TaxpayerContext is the SINGLE source of truth (Part 1 / Part 6).
+  // We load it from the record and keep it in sync on every edit; the
+  // computed boxes below read from it (never an independent re-sum).
+  const { ctx, load, setFromForm, finalize } = useTaxpayerContext()
+  useEffect(() => {
+    if (record) load(record)
+  }, [record, load])
+
   const aiExtracted = record.sourceType !== 'Manual'
 
   const setField = (k: keyof Form16, v: string | number) => {
-    setForm((f) => ({ ...f, [k]: v }))
+    setForm((f) => {
+      const next = { ...f, [k]: v }
+      setFromForm(next) // keep the canonical context in sync
+      return next
+    })
     setModified((m) => new Set(m).add(k as string))
   }
 
   const dirty = modified.size > 0 || regime !== record.taxRegimeUsed
 
-  const gross =
-    num(form.basicSalary) +
-    num(form.hra) +
-    num(form.specialAllowance) +
-    num(form.lta) +
-    num(form.otherAllowances)
-  const totalDed =
-    num(form.standardDeduction) +
-    num(form.professionalTax) +
-    num(form.section80C) +
-    num(form.section80D) +
-    num(form.section80E) +
-    num(form.section80G) +
-    num(form.section80CCD)
-  const taxable = gross - totalDed
+  const preview = ctx ? computeTaxPreview(ctx) : null
+  const gross = ctx?.salary.grossSalary ?? 0
+  const grossSource: GrossSalarySource | undefined = ctx?.salary.grossSalarySource
+  const unverified = preview?.unverifiedDeductions ?? 0
+  const oldTaxable = preview?.oldTaxable ?? 0
+  const newTaxable = preview?.newTaxable ?? 0
 
-  const oldT = computeTax(taxable, 'Old')
-  const newT = computeTax(taxable, 'New')
+  // Itemized deduction split — mirrors the exact three-condition filter in computeRegimeResult.
+  const split = ctx ? previewDeductionSplit(ctx.deductions) : null
+  const verified = split ? split.verifiedTotal : 0
+  const duplicateFlagged = preview?.duplicateFlaggedDeductions ?? 0
+
+  const oldT = computeTax(oldTaxable, 'Old')
+  const newT = computeTax(newTaxable, 'New')
   const recommended: Form16Regime = oldT.total <= newT.total ? 'Old' : 'New'
   const savings = Math.abs(oldT.total - newT.total)
+
+  // Part 6 — Runtime consistency guard (dev-only). Verifies that the values
+  // computed by computeTaxPreview match the canonical context's computedIncome
+  // snapshot (when available after the backend returns a recommendation).
+  useEffect(() => {
+    if (!ctx || import.meta.env.PROD) return
+    const ci = ctx.computedIncome
+    if (!ci || ci.totalDeductions === 0) return // not yet computed by backend
+    if (Math.abs(verified - ci.totalDeductions) > 1) {
+      console.error(
+        `[REVIEW GUARD] verifiedDeductions mismatch: ` +
+        `preview=${verified} vs ctx.computedIncome=${ci.totalDeductions}`
+      )
+    }
+    if (Math.abs(oldTaxable - ci.taxableIncomeOldRegime) > 1) {
+      console.error(
+        `[REVIEW GUARD] Old regime taxable mismatch: ` +
+        `preview=${oldTaxable} vs ctx.computedIncome=${ci.taxableIncomeOldRegime}`
+      )
+    }
+  }, [ctx, verified, oldTaxable])
 
   const goBack = () => {
     if (dirty) setUnsavedOpen(true)
@@ -137,6 +149,7 @@ function ReviewForm({ record }: { record: Form16 }) {
   }
 
   const save = async (then: 'list' | 'recommend') => {
+    finalize() // freeze the canonical context as the values sent to the engine
     const updated = await form16Service.update(record.id, { ...form, taxRegimeUsed: regime })
     if (then === 'list' || !updated) navigate('/form16')
     else navigate(`/form16/recommendation/loading?form=${record.id}`)
@@ -203,7 +216,14 @@ function ReviewForm({ record }: { record: Form16 }) {
             <EditableField formKey="otherAllowances" label="Other Allowances" form={form} setField={setField} modified={modified.has('otherAllowances')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
           </div>
           <div className="mt-lg p-4 bg-brand-yellow border-[3px] border-on-surface flex justify-between items-center">
-            <span className="font-bold uppercase">Total Gross Salary (computed)</span>
+            <span className="font-bold uppercase flex items-center gap-2">
+              Gross Salary
+              {grossSource && (
+                <span className="text-[10px] bg-on-surface text-white px-2 py-0.5 border-2 border-on-surface uppercase">
+                  {grossSource.replace(/_/g, ' ')}
+                </span>
+              )}
+            </span>
             <span className="font-bold text-2xl">{formatCurrency(gross)}</span>
           </div>
         </Section>
@@ -219,13 +239,67 @@ function ReviewForm({ record }: { record: Form16 }) {
             <EditableField formKey="section80G" label="Section 80G" form={form} setField={setField} modified={modified.has('section80G')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="section80CCD" label="Section 80CCD" form={form} setField={setField} modified={modified.has('section80CCD')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
           </div>
-          <div className="mt-lg p-4 bg-surface-container-high border-[3px] border-on-surface flex justify-between items-center">
-            <span className="font-bold uppercase">Total Deductions (computed)</span>
-            <span className="font-bold text-2xl">{formatCurrency(totalDed)}</span>
-          </div>
-          <div className="mt-sm p-4 bg-white border-[3px] border-on-surface flex justify-between items-center">
-            <span className="font-bold uppercase">Taxable Income (computed)</span>
-            <span className="font-bold text-2xl">{formatCurrency(taxable)}</span>
+          {/* Itemized Deduction Split — shows exactly what the engine will apply
+              vs exclude. Produced by previewDeductionSplit() which mirrors the
+              three-condition filter in computeRegimeResult identically. */}
+          <div className="mt-lg space-y-4">
+            {/* Applied deductions list */}
+            <div>
+              <p className="font-bold text-xs uppercase text-on-surface-variant mb-2">Deductions That Will Be Applied</p>
+              <div className="bg-surface-container-low border-[3px] border-on-surface">
+                {split?.appliedDeductions.length === 0 && (
+                  <p className="p-3 text-sm text-on-surface-variant">No verified deductions found.</p>
+                )}
+                {split?.appliedDeductions.map((d, i) => (
+                  <div key={i} className="flex justify-between items-center px-4 py-2 border-b border-on-surface/20 last:border-0">
+                    <span className="text-sm font-medium">{d.section}</span>
+                    <span className="font-bold">{formatCurrency(d.amount)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center px-4 py-3 bg-surface-container-high border-t-[3px] border-on-surface">
+                  <span className="font-bold uppercase text-sm">Total (excl. Standard Deduction)</span>
+                  <span className="font-bold text-xl">{formatCurrency(verified)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Excluded deductions list */}
+            {split && split.excludedDeductions.length > 0 && (
+              <div>
+                <p className="font-bold text-xs uppercase text-on-surface-variant mb-2 flex items-center gap-2">
+                  <Icon name="warning" className="text-base" />
+                  Deductions That Will Be Excluded
+                </p>
+                <div className="bg-error-container border-[3px] border-on-surface">
+                  {split.excludedDeductions.map((d, i) => (
+                    <div key={i} className="flex justify-between items-start px-4 py-2 border-b border-on-surface/20 last:border-0">
+                      <div>
+                        <p className="text-sm font-medium">{d.section}</p>
+                        <p className="text-[11px] text-on-surface-variant">{d.reason}</p>
+                      </div>
+                      <span className="font-bold ml-4">{formatCurrency(d.amount)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center px-4 py-3 border-t-[3px] border-on-surface">
+                    <span className="font-bold uppercase text-sm">Total Excluded</span>
+                    <span className="font-bold text-xl">{formatCurrency(unverified + duplicateFlagged)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Taxable income previews */}
+            <p className="font-bold text-xs uppercase text-on-surface-variant">Taxable Income Preview</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-4 bg-white border-[3px] border-on-surface flex justify-between items-center">
+                <span className="font-bold uppercase">Old Regime Taxable Income</span>
+                <span className="font-bold text-xl">{formatCurrency(oldTaxable)}</span>
+              </div>
+              <div className="p-4 bg-white border-[3px] border-on-surface flex justify-between items-center">
+                <span className="font-bold uppercase">New Regime Taxable Income</span>
+                <span className="font-bold text-xl">{formatCurrency(newTaxable)}</span>
+              </div>
+            </div>
           </div>
         </Section>
 
@@ -265,7 +339,7 @@ function ReviewForm({ record }: { record: Form16 }) {
                     <div className="space-y-2 mb-4 border-t-[3px] border-on-surface pt-4">
                       <div className="flex justify-between font-mono-data">
                         <span>Taxable Income</span>
-                        <span>{formatCurrency(taxable)}</span>
+                        <span>{formatCurrency(r === 'Old' ? oldTaxable : newTaxable)}</span>
                       </div>
                       <div className="flex justify-between font-mono-data font-bold">
                         <span>Estimated Tax</span>

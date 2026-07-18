@@ -23,18 +23,25 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === '/dashboard'}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
+                'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
                 isActive
-                  ? 'bg-brand-yellow text-on-surface border-on-surface'
+                  ? 'text-on-surface border-on-surface'
                   : 'text-on-surface-variant border-transparent hover:bg-surface-container-high hover:border-on-surface',
               )
             }
           >
-            <Icon name={item.icon} className="text-[20px]" />
-            {item.label}
+            {({ isActive }) => (
+              <>
+                {isActive && <span className="nb-sidebar-fill is-active" />}
+                <span className="relative z-10 flex items-center gap-sm">
+                  <Icon name={item.icon} className="text-[20px]" />
+                  {item.label}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -43,12 +50,12 @@ export function Sidebar() {
       <div className="border-t-[3px] border-on-surface p-sm bg-surface-container-low shrink-0 flex flex-col gap-sm">
         <div className="flex items-center gap-xs">
           <div className="w-10 h-10 bg-brand-yellow border-2 border-on-surface flex items-center justify-center font-bold shrink-0">
-            {initials(user.name)}
+            {initials(user?.name ?? '')}
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="font-bold truncate">{user.name}</span>
+            <span className="font-bold truncate">{user?.name}</span>
             <span className="font-bold text-[11px] text-on-surface-variant bg-white border border-on-surface px-1 w-fit uppercase">
-              {user.role}
+              {user?.role}
             </span>
           </div>
         </div>

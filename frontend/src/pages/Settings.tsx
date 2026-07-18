@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Field, Input } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
+import { PasswordInput } from '../components/ui/PasswordInput'
 import { initials } from '../lib/format'
 
 function Toggle({ label, desc, defaultOn = false }: { label: string; desc: string; defaultOn?: boolean }) {
@@ -33,6 +34,15 @@ function Toggle({ label, desc, defaultOn = false }: { label: string; desc: strin
 
 export function Settings() {
   const { user } = useAuth()
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwFlash, setPwFlash] = useState(false)
+  if (!user) return null
+
+  const savePassword = () => {
+    setPwFlash(true)
+    window.setTimeout(() => setPwFlash(false), 220)
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-xl">
@@ -83,6 +93,39 @@ export function Settings() {
             desc="Alerts 3 days before a due date"
             defaultOn
           />
+        </div>
+      </section>
+
+      {/* Security */}
+      <section className="border-b-[3px] border-on-surface pb-lg">
+        <h2 className="text-2xl font-bold uppercase mb-lg">Security</h2>
+        <div className="space-y-sm max-w-2xl">
+          <Field label="New Password">
+            <PasswordInput
+              placeholder="••••••••"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+          <Field label="Confirm New Password">
+            <PasswordInput
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </Field>
+          <div className="pt-sm">
+            <Button
+              variant="primary"
+              className={pwFlash ? 'nb-yellow-flash' : undefined}
+              style={pwFlash ? ({ ['--nb-flash-from' as string]: '#1e1c10' } as CSSProperties) : undefined}
+              onClick={savePassword}
+            >
+              Change Password
+            </Button>
+          </div>
         </div>
       </section>
 

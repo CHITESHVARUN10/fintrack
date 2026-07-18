@@ -44,6 +44,15 @@ export function Notifications() {
   const unreadCount = data.filter((n) => !n.isRead && !read.has(n.id)).length
   const filtered = tab === 'all' ? data : data.filter((n) => n.type === tab)
 
+  const markAllRead = async () => {
+    setRead(new Set(data.map((n) => n.id)))
+    try {
+      await notificationService.markAllRead()
+    } catch {
+      // Optimistic: keep the local visual state even if the request fails.
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       <PageHeader
@@ -51,7 +60,7 @@ export function Notifications() {
         subtitle={`You have ${unreadCount} unread alerts.`}
         action={
           <button
-            onClick={() => setRead(new Set(data.map((n) => n.id)))}
+            onClick={markAllRead}
             className="bg-white border-[3px] border-on-surface py-2 px-sm font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center gap-2"
           >
             <Icon name="done_all" className="text-lg" /> All read

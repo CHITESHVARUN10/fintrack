@@ -7,7 +7,7 @@ const Insurance = require('../models/insurance.model');
 const EducationPayment = require('../models/education.model');
 const AdHocExpense = require('../models/expense.model');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
-const { calculateTax, aggregateDeductions } = require('../services/tax.service');
+const { computeLiability, aggregateDeductions } = require('../services/tax.service');
 
 const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
 
@@ -133,7 +133,10 @@ async function buildDashboard(userId) {
     monthlyBurnBreakdown,
     investmentPortfolioValue: { totalInvested, totalCurrentValue },
     adHocSpendThisMonth,
-    taxEstimate: calculateTax(monthlyIncome * 12, deductions.totalDeductions, 'New'),
+    taxEstimate: (() => {
+      const t = computeLiability({ grossSalary: monthlyIncome * 12, regime: 'New', deductions: { section80C: deductions.totalDeductions } });
+      return { taxableIncome: t.taxableIncome, taxBeforeCess: t.incomeTaxAfterRebate, cess: t.cess, totalTax: t.finalTax };
+    })(),
   };
 }
 

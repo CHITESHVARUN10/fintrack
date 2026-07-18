@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Field, Input } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
+import { AuthBackground } from '../components/layout/AuthBackground'
+import { PasswordInput } from '../components/ui/PasswordInput'
 
 export function Register() {
   const { register } = useAuth()
@@ -12,16 +14,30 @@ export function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState(false)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setLoading(true)
-    await register(name, email, password)
-    navigate('/')
+    try {
+      await register(name, email, password)
+      setFlash(true)
+      window.setTimeout(() => navigate('/dashboard'), 220)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error ?? 'Registration failed. Please try again.'
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white font-sans overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-white font-sans overflow-x-hidden relative">
+      <AuthBackground />
       <div className="flex min-h-screen">
         {/* Left brand panel */}
         <div className="hidden md:flex w-1/2 border-r-4 border-on-surface flex-col justify-center p-xl bg-surface-container-low">
@@ -55,10 +71,15 @@ export function Register() {
 
         {/* Right form panel */}
         <div className="w-full md:w-1/2 flex items-center justify-center p-md">
-          <div className="w-full max-w-md border-[3px] border-on-surface bg-white p-lg shadow-brutal flex flex-col gap-md">
+          <div className="w-full max-w-md border-[3px] border-on-surface bg-white p-lg shadow-brutal flex flex-col gap-md relative z-10">
             <h2 className="text-2xl font-bold uppercase tracking-tighter border-b-[3px] border-on-surface pb-xs">
               Register
             </h2>
+            {error && (
+              <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
+                {error}
+              </div>
+            )}
             <form className="flex flex-col gap-md" onSubmit={onSubmit}>
               <Field label="Full Name">
                 <Input
@@ -79,9 +100,8 @@ export function Register() {
                 />
               </Field>
               <Field label="Password">
-                <Input
+                <PasswordInput
                   placeholder="••••••••"
-                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -97,7 +117,15 @@ export function Register() {
                 </p>
               </div>
 
-              <Button type="submit" variant="primary" size="lg" block disabled={loading}>
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                block
+                disabled={loading}
+                className={flash ? 'nb-yellow-flash' : undefined}
+                style={flash ? ({ ['--nb-flash-from' as string]: '#1e1c10' } as CSSProperties) : undefined}
+              >
                 {loading ? 'Creating…' : 'Create Account'}
                 {!loading && <Icon name="person_add" className="text-xl" />}
               </Button>

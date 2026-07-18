@@ -76,7 +76,7 @@ export function Form16List() {
       ) : (
         <div className="flex flex-col gap-lg">
           {data.map((rec) => (
-            <div key={rec.id} className="bg-white brutal flex flex-col">
+            <div key={rec.id} className="bg-white brutal flex flex-col nb-card-enter nb-card-hover">
               {/* Card header */}
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-md border-b-[3px] border-on-surface gap-3 bg-surface-container-low">
                 <div className="flex items-center gap-2 flex-wrap">

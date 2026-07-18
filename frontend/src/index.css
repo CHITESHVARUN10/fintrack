@@ -100,3 +100,130 @@
   background: #1e1c10;
   border: 2px solid #f4eeda;
 }
+
+/* ---------------------------------------------------------------------------
+   Neubrutalism motion system — bold, chunky, snappy. No soft easing.
+   --------------------------------------------------------------------------- */
+:root {
+  --text-primary: #1e1c10;
+  --text-secondary: #6b6a5e;
+  --nb-yellow: #ffe500;
+  --nb-flash-from: #1e1c10;
+}
+
+/* Cards slide up + slight scale with an overshoot bounce on mount. */
+.nb-card-enter {
+  animation: nb-card-enter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes nb-card-enter {
+  from { transform: translateY(24px) scale(0.97); opacity: 0.6; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Cards lift + grow their hard shadow on hover (instant, not smooth). */
+.nb-card-hover {
+  transition: box-shadow 0.1s linear, transform 0.1s linear;
+}
+.nb-card-hover:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 7px 7px 0 0 #1e1c10;
+}
+
+/* Progress / repayment fills grow in 20 chunky steps, then flash yellow. */
+.nb-progress-fill {
+  transform-origin: left center;
+  animation:
+    nb-progress-grow 0.6s steps(20) forwards,
+    nb-yellow-flash 0.15s steps(2) 0.6s;
+}
+@keyframes nb-progress-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Status / category / regime badges stamp in. */
+.nb-badge-pop {
+  animation: nb-badge-pop 0.2s steps(2) both;
+}
+@keyframes nb-badge-pop {
+  0% { transform: scale(0.5); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* Sidebar active fill slides in from the left edge. */
+.nb-sidebar-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--nb-yellow);
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
+}
+.nb-sidebar-fill.is-active {
+  animation: nb-sidebar-fill 0.15s steps(6) forwards;
+}
+@keyframes nb-sidebar-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Notification count badge — mechanical blink while unread. */
+.nb-notification-badge {
+  animation: nb-notification-pulse 2s steps(2) infinite;
+}
+@keyframes nb-notification-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+/* Hard mechanical rattle for invalid fields / wrong credentials. */
+.nb-shake {
+  animation: nb-shake 0.4s steps(1) both;
+}
+@keyframes nb-shake {
+  0% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+
+/* Yellow flash for Save / Login buttons on success. */
+.nb-yellow-flash {
+  animation: nb-yellow-flash 0.15s steps(2) 1;
+}
+@keyframes nb-yellow-flash {
+  0% { background: var(--nb-flash-from, #1e1c10); }
+  50% { background: var(--nb-yellow); }
+  100% { background: var(--nb-flash-from, #1e1c10); }
+}
+
+/* Construction-zone hazard stripes for AI processing bars / in-progress steps. */
+.nb-hazard {
+  background-image: repeating-linear-gradient(
+    45deg,
+    #1e1c10 0,
+    #1e1c10 12px,
+    #ffe500 12px,
+    #ffe500 24px
+  );
+  background-size: 48px 48px;
+  animation: nb-hazard-move 1s linear infinite;
+}
+@keyframes nb-hazard-move {
+  from { background-position: 0 0; }
+  to { background-position: -48px 0; }
+}
+
+/* Pending step box: slow border-color flash between black and grey. */
+.nb-step-pending {
+  animation: nb-step-pending 1s steps(2) infinite;
+}
+@keyframes nb-step-pending {
+  0%, 100% { border-color: #1e1c10; }
+  50% { border-color: #9b9a8e; }
+}

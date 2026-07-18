@@ -73,7 +73,7 @@ export function Header({ title }: { title: string }) {
           title="Notifications"
         >
           <Icon name="notifications" className="text-2xl" />
-          <span className="absolute top-0 right-0 w-3 h-3 bg-brand-yellow border-2 border-on-surface rounded-full" />
+          <span className="absolute top-0 right-0 w-3 h-3 bg-brand-yellow border-2 border-on-surface rounded-full nb-notification-badge" />
         </Link>
         <Link
           to="/settings"

@@ -16,6 +16,7 @@ const form16Schema = new mongoose.Schema(
     employerAddress: { type: String },
     basicSalary: { type: Number },
     hra: { type: Number },
+    rentPaid: { type: Number },
     specialAllowance: { type: Number },
     lta: { type: Number },
     otherAllowances: { type: Number },
@@ -39,6 +40,10 @@ const form16Schema = new mongoose.Schema(
     originalForm16Id: { type: mongoose.Schema.Types.ObjectId, ref: 'Form16', default: null },
     pdfReference: { type: String, default: null },
     isEdited: { type: Boolean, default: false },
+    // Canonical TaxpayerContext (Part 1) — the single source of truth for all
+    // tax data. Any PUT to this doc updates these fields and the stale hook
+    // marks the linked TaxRecommendation isStale.
+    taxpayerContext: { type: mongoose.Schema.Types.Mixed },
   },
   { timestamps: true },
 );

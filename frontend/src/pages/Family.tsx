@@ -1,29 +1,18 @@
-import { memberService } from '../services/api'
-import { useAsync } from '../hooks/useAsync'
+import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Icon } from '../components/ui/Icon'
 import { initials } from '../lib/format'
-import { formatCurrency } from '../lib/format'
 import type { FamilyMember } from '../types'
+import { InviteMemberModal } from '../components/family/InviteMemberModal'
 
-const spendByMember: Record<string, number> = {
-  m1: 68400,
-  m2: 41200,
-  m3: 18900,
-}
-
-const avatarColor: Record<string, string> = {
-  m1: 'bg-brand-yellow',
-  m2: 'bg-tertiary-container',
-  m3: 'bg-error-container',
-}
+const AVATAR_COLORS = ['bg-brand-yellow', 'bg-tertiary-container', 'bg-error-container', 'bg-surface-variant']
 
 export function Family() {
-  const { data, loading } = useAsync(() => memberService.list(), [])
-  const { setActiveMemberId, isAdmin } = useAuth()
+  const { members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
+  const [inviteOpen, setInviteOpen] = useState(false)
 
-  if (loading || !data) return <LoadingBlock label="Loading members…" />
+  if (loading) return <LoadingBlock label="Loading members…" />
 
   return (
     <div>
@@ -31,20 +20,25 @@ export function Family() {
         title="Family Members"
         subtitle="Manage access, roles, and view spending for your household."
         action={
-          <button className="bg-brand-yellow border-[3px] border-on-surface px-4 py-2 font-bold uppercase shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center gap-2">
-            <Icon name="person_add" className="text-xl" />
-            Invite Member
-          </button>
+          isAdmin ? (
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="bg-brand-yellow border-[3px] border-on-surface px-4 py-2 font-bold uppercase shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center gap-2"
+            >
+              <Icon name="person_add" className="text-xl" />
+              Invite Member
+            </button>
+          ) : undefined
         }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-        {data.map((m: FamilyMember) => (
-          <article key={m.id} className="bg-white brutal p-md flex flex-col gap-md">
+        {members.map((m: FamilyMember, i: number) => (
+          <article key={m.id} className="bg-white brutal p-md flex flex-col gap-md nb-card-enter nb-card-hover">
             <div className="flex justify-between items-start border-b-[3px] border-on-surface pb-md">
               <div className="flex items-center gap-sm">
                 <div
-                  className={`w-16 h-16 border-[3px] border-on-surface flex items-center justify-center font-bold text-2xl ${avatarColor[m.id] ?? 'bg-white'}`}
+                  className={`w-16 h-16 border-[3px] border-on-surface flex items-center justify-center font-bold text-2xl ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}
                 >
                   {initials(m.name)}
                 </div>
@@ -65,9 +59,7 @@ export function Family() {
                 <p className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
                   Monthly Spend
                 </p>
-                <p className="text-2xl font-bold mt-1">
-                  {formatCurrency(spendByMember[m.id] ?? 0)}
-                </p>
+                <p className="text-2xl font-bold mt-1">—</p>
               </div>
               <div className="flex gap-sm">
                 {isAdmin && m.role !== 'admin' && (
@@ -78,9 +70,18 @@ export function Family() {
                     Dashboard
                   </button>
                 )}
-                {m.role !== 'admin' && (
+                {isAdmin && m.role !== 'admin' && m.id !== user?.id && (
                   <button
                     aria-label="Remove member"
+                    title="Remove member"
+                    onClick={async () => {
+                      if (!window.confirm(`Remove ${m.name}?`)) return
+                      try {
+                        await removeMember(m.id)
+                      } catch {
+                        window.alert('Could not remove member.')
+                      }
+                    }}
                     className="bg-error-container text-on-error-container border-[3px] border-on-surface px-xs py-xs flex items-center justify-center shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
                   >
                     <Icon name="delete" />
@@ -91,13 +92,20 @@ export function Family() {
           </article>
         ))}
 
-        <button className="w-full h-full min-h-[200px] border-[3px] border-dashed border-on-surface bg-white flex flex-col items-center justify-center gap-sm hover:bg-surface-container-high transition-colors group cursor-pointer shadow-brutal">
-          <div className="w-16 h-16 bg-brand-yellow border-[3px] border-on-surface flex items-center justify-center group-hover:-translate-y-1 transition-transform">
-            <Icon name="add" className="text-4xl" />
-          </div>
-          <span className="text-xl font-bold">Invite Member</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="w-full h-full min-h-[200px] border-[3px] border-dashed border-on-surface bg-white flex flex-col items-center justify-center gap-sm hover:bg-surface-container-high transition-colors group cursor-pointer shadow-brutal"
+          >
+            <div className="w-16 h-16 bg-brand-yellow border-[3px] border-on-surface flex items-center justify-center group-hover:-translate-y-1 transition-transform">
+              <Icon name="add" className="text-4xl" />
+            </div>
+            <span className="text-xl font-bold">Invite Member</span>
+          </button>
+        )}
       </div>
+
+      <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </div>
   )
 }

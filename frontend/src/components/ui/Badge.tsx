@@ -30,7 +30,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-on-surface',
+        'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-on-surface nb-badge-pop',
         colorClasses[color],
         className,
       )}

@@ -1,9 +1,12 @@
 import { cn } from '../../lib/cn'
 import { Icon } from './Icon'
+import { CountUp } from './CountUp'
+import { formatCurrency } from '../../lib/format'
 
 interface StatCardProps {
   label: string
   value: string
+  valueNumber?: number
   delta?: number
   icon?: string
   color?: 'yellow' | 'white' | 'cyan'
@@ -18,6 +21,7 @@ const colorClasses = {
 export function StatCard({
   label,
   value,
+  valueNumber,
   delta,
   icon,
   color = 'yellow',
@@ -26,7 +30,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'brutal p-md flex flex-col gap-sm hover:-translate-y-1 transition-transform',
+        'brutal p-md flex flex-col gap-sm nb-card-enter nb-card-hover',
         colorClasses[color],
       )}
     >
@@ -36,7 +40,11 @@ export function StatCard({
         </h3>
         {icon && <Icon name={icon} className="text-2xl" />}
       </div>
-      <div className="text-3xl font-bold text-on-surface">{value}</div>
+      {valueNumber !== undefined ? (
+        <CountUp value={valueNumber} format={formatCurrency} className="text-3xl font-bold text-on-surface" />
+      ) : (
+        <div className="text-3xl font-bold text-on-surface">{value}</div>
+      )}
       {delta !== undefined && (
         <div
           className={cn(
