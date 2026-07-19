@@ -10,5 +10,5 @@ stitch_screens/
 .claudeignore/
 .commandcode/
 logs/
-
-    
+pdfs/
+/pdfs/
