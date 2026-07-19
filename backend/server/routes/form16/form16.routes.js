@@ -10,7 +10,7 @@ const EMILoan = require('../../models/loan.model');
 const EducationPayment = require('../../models/education.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { extractForm16, generateRecommendation, normalizeForm16 } = require('../../services/gemini.service');
-const { annualize, aggregateDeductions, buildDeductionBreakdown } = require('../../services/tax.service');
+const { annualize, aggregateDeductions } = require('../../services/tax.service');
 const { fromForm16 } = require('../../services/taxEngine.service');
 
 const router = express.Router();
@@ -86,14 +86,29 @@ router.post('/upload', upload.single('pdf'), async (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: 'A PDF file is required' });
     const b64 = req.file.buffer.toString('base64');
     const data = normalizeForm16(await extractForm16(b64));
-    const doc = new Form16({
+
+    // Keep the same Form 16 identity for this user/FY so the stale hook marks
+    // any cached recommendation stale. Uploading a replacement never deletes a
+    // document before its linked recommendation can be invalidated.
+    const updatePayload = {
       ...data,
       userId: req.user._id,
       sourceType: 'PDF',
       pdfReference: req.file.originalname,
-    });
-    await doc.save();
-    res.status(201).json({ _id: doc._id, sourceType: doc.sourceType });
+      financialYear: '2025-26'
+    };
+    
+    const doc = await Form16.findOneAndUpdate(
+      { userId: req.user._id, financialYear: '2025-26' },
+      {
+        $set: { ...updatePayload, isFinalized: false, isEdited: false },
+        $unset: { finalizedDeductions: 1 },
+      },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
+    );
+    
+    const respBody = { _id: doc._id, sourceType: doc.sourceType };
+    res.status(201).json(respBody);
   } catch (err) {
     next(err);
   }
@@ -190,8 +205,12 @@ router.get('/:id/recommendation', async (req, res, next) => {
 
     const rec = await generateRecommendation(form16, financials, agg, eduTuition, overrideDeductions);
 
-    // Static, plain-English breakdown of what was claimed (no AI involved).
-    const deductionBreakdown = buildDeductionBreakdown(agg);
+    // The breakdown is derived from the saved canonical Old-regime trace, not
+    // from a separate aggregate. Therefore every displayed amount is present
+    // in the calculation trace that produced the recommendation.
+    const deductionBreakdown = (rec.regimes?.old?.deductions || [])
+      .filter((d) => d.claimed > 0)
+      .map((d) => ({ section: d.key, label: d.label, amount: d.claimed, note: d.note }));
 
     // totalDeductions must come from the canonical engine result (which includes
     // standard deduction + all verified Chapter VI-A deductions), NOT from agg
@@ -304,6 +323,126 @@ router.delete('/:id', async (req, res, next) => {
     await doc.deleteOne();
     res.json({ message: 'deleted' });
   } catch (err) {
+    next(err);
+  }
+});
+
+
+
+const PDFDocument = require('pdfkit');
+
+// POST /api/form16/recommendation/pdf
+router.post('/recommendation/pdf', (req, res, next) => {
+  try {
+    const data = req.body;
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="finstack-tax-summary.pdf"');
+    doc.pipe(res);
+
+    // Background
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#F5F0E8');
+
+    // Header
+    doc.rect(0, 0, doc.page.width, 80).fill('#FFD700');
+    doc.moveTo(0, 80).lineTo(doc.page.width, 80).lineWidth(3).stroke('#111111');
+    
+    doc.fillColor('#111111');
+    doc.font('Helvetica-Bold').fontSize(24).text('FINSTACK', 40, 25);
+    doc.fontSize(14).text('TAX RECOMMENDATION SUMMARY', 40, 28, { align: 'right' });
+    doc.fontSize(10).font('Helvetica').text(`Generated: ${new Date().toLocaleDateString()}`, 40, 48, { align: 'right' });
+
+    let y = 110;
+
+    // Helper for section headers
+    const sectionHeader = (title, yPos) => {
+      doc.rect(40, yPos, doc.page.width - 80, 24).fill('#FFD700').stroke('#111111');
+      doc.fillColor('#111111').font('Helvetica-Bold').fontSize(12).text(title.toUpperCase(), 48, yPos + 6);
+      return yPos + 36;
+    };
+
+    y = sectionHeader('Income & Tax Summary', y);
+    
+    const trace = data.recommendedRegime === 'Old' ? data.regimes.old : data.regimes.new;
+    if (trace) {
+      doc.font('Helvetica-Bold').fontSize(10).text('Gross Income', 40, y);
+      doc.font('Helvetica').text(`Rs. ${trace.grossIncome?.toLocaleString() || 0}`, 40, y + 14);
+
+      doc.font('Helvetica-Bold').text('Total Deductions', 200, y);
+      doc.font('Helvetica').text(`Rs. ${trace.totalDeductions?.toLocaleString() || 0}`, 200, y + 14);
+
+      doc.font('Helvetica-Bold').text('Taxable Income', 360, y);
+      doc.font('Helvetica').text(`Rs. ${trace.taxableIncome?.toLocaleString() || 0}`, 360, y + 14);
+
+      y += 40;
+
+      doc.font('Helvetica-Bold').text('Tax Liability', 40, y);
+      doc.font('Helvetica').text(`Rs. ${trace.finalTax?.toLocaleString() || 0}`, 40, y + 14);
+
+      doc.font('Helvetica-Bold').text('TDS Deducted', 200, y);
+      doc.font('Helvetica').text(`Rs. ${trace.tdsDeducted?.toLocaleString() || 0}`, 200, y + 14);
+
+      const balance = (trace.finalTax || 0) - (trace.tdsDeducted || 0) - (trace.advanceTax || 0) - (trace.selfAssessmentTax || 0);
+      doc.font('Helvetica-Bold').text('Balance / Refund', 360, y);
+      doc.font('Helvetica').text(`Rs. ${balance.toLocaleString()}`, 360, y + 14);
+      
+      y += 40;
+    }
+
+    if (data.deductionBreakdown && data.deductionBreakdown.length > 0) {
+      y = sectionHeader('Deductions Breakdown', y);
+      doc.font('Helvetica-Bold').fontSize(10);
+      doc.text('Section', 40, y);
+      doc.text('Deduction Type', 120, y);
+      doc.text('Amount', 450, y, { align: 'right' });
+      y += 16;
+      doc.moveTo(40, y).lineTo(doc.page.width - 40, y).lineWidth(1).stroke('#111111');
+      y += 8;
+
+      doc.font('Helvetica');
+      data.deductionBreakdown.forEach((d, i) => {
+        if (i % 2 === 0) {
+          doc.rect(40, y - 4, doc.page.width - 80, 20).fill('#E8E2D6');
+          doc.fillColor('#111111');
+        }
+        doc.text(d.section || '', 45, y);
+        doc.text(d.label || '', 125, y);
+        if (d.amount) {
+          doc.text(`Rs. ${d.amount.toLocaleString()}`, 445, y, { align: 'right' });
+        }
+        y += 20;
+      });
+      y += 20;
+    }
+
+    if (data.taxSavingSuggestions && data.taxSavingSuggestions.length > 0) {
+      if (y > doc.page.height - 200) { doc.addPage(); doc.rect(0, 0, doc.page.width, doc.page.height).fill('#F5F0E8'); y = 40; }
+      y = sectionHeader('Recommendations & Suggestions', y);
+      
+      data.taxSavingSuggestions.forEach((s, idx) => {
+        if (y > doc.page.height - 80) { doc.addPage(); doc.rect(0, 0, doc.page.width, doc.page.height).fill('#F5F0E8'); y = 40; }
+        doc.font('Helvetica-Bold').fontSize(11).text(`${idx + 1}. ${s.title}`, 40, y);
+        if (s.potentialSaving) {
+          doc.rect(doc.page.width - 140, y - 2, 100, 16).fill('#FFD700');
+          doc.fillColor('#111111').font('Helvetica-Bold').fontSize(9).text(`Save: Rs. ${s.potentialSaving.toLocaleString()}`, doc.page.width - 135, y + 2);
+        }
+        doc.fillColor('#111111');
+        y += 16;
+        doc.font('Helvetica').fontSize(10).text(s.detail, 55, y, { width: 400 });
+        y += Math.ceil(doc.heightOfString(s.detail, { width: 400 })) + 12;
+      });
+    }
+
+    // Footer
+    const footerY = doc.page.height - 50;
+    doc.moveTo(40, footerY).lineTo(doc.page.width - 40, footerY).lineWidth(1).stroke('#111111');
+    doc.font('Helvetica').fontSize(9).text('This is an AI-generated summary for reference only.', 40, footerY + 10);
+    doc.text(`FinStack © ${new Date().getFullYear()}`, 40, footerY + 10, { align: 'right' });
+
+    doc.end();
+  } catch (err) {
+    console.error('PDF Gen Error:', err);
     next(err);
   }
 });

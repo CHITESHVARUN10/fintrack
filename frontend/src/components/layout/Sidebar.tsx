@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { initials } from '../../lib/format'
 import { Icon } from '../ui/Icon'
 import { cn } from '../../lib/cn'
+import { motion } from 'framer-motion'
 
 export function Sidebar() {
   const { user, logout } = useAuth()
@@ -35,7 +36,7 @@ export function Sidebar() {
           >
             {({ isActive }) => (
               <>
-                {isActive && <span className="nb-sidebar-fill is-active" />}
+                {isActive && <motion.span layoutId="sidebar-active-indicator" className="nb-sidebar-fill is-active" transition={{ duration: 0.18, ease: 'easeOut' }} />}
                 <span className="relative z-10 flex items-center gap-sm">
                   <Icon name={item.icon} className="text-[20px]" />
                   {item.label}
@@ -61,7 +62,7 @@ export function Sidebar() {
         </div>
         <button
           onClick={logout}
-          className="w-full py-1 bg-white border-2 border-on-surface font-bold text-xs uppercase hover:bg-brand-yellow hover:translate-x-[1px] hover:translate-y-[1px] shadow-brutal-sm hover:shadow-none transition-all flex items-center justify-center gap-1"
+          className="w-full py-1 bg-white border-2 border-on-surface font-bold text-xs uppercase hover:bg-brand-yellow hover:translate-x-[1px] hover:translate-y-[1px] shadow-brutal-sm hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-1"
         >
           <Icon name="logout" className="text-base" />
           Logout

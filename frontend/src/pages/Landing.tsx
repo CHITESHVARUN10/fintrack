@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { useInView } from 'react-intersection-observer'
 import { Icon } from '../components/ui/Icon'
 import { Button } from '../components/ui/Button'
 
@@ -12,6 +14,8 @@ const features = [
 ]
 
 export function Landing() {
+  const { ref: featuresRef, inView: featuresVisible } = useInView({ threshold: 0.15, triggerOnce: true })
+  const { ref: footerRef, inView: footerVisible } = useInView({ threshold: 0.15, triggerOnce: true })
   return (
     <div className="min-h-screen flex flex-col bg-white text-on-surface font-sans overflow-x-hidden">
       {/* Navbar */}
@@ -29,7 +33,7 @@ export function Landing() {
           </a>
         </div>
         <Link to="/login">
-          <button className="bg-brand-yellow border-4 border-on-surface px-md py-1 font-bold shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all">
+          <button className="bg-brand-yellow border-4 border-on-surface px-md py-1 font-bold shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all">
             Log In
           </button>
         </Link>
@@ -38,7 +42,7 @@ export function Landing() {
       {/* Hero */}
       <section className="relative w-full flex flex-col md:flex-row items-stretch border-b-4 border-on-surface">
         <div className="w-full md:w-1/2 p-md md:p-xl flex flex-col justify-center border-b-4 md:border-b-0 md:border-r-4 border-on-surface">
-          <h1 className="text-5xl md:text-7xl font-bold uppercase leading-[0.95] tracking-tight mb-md">
+          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="text-5xl md:text-7xl font-bold uppercase leading-[0.95] tracking-tight mb-md">
             Know where
             <br />
             every{' '}
@@ -47,13 +51,13 @@ export function Landing() {
             </span>
             <br />
             is going.
-          </h1>
-          <p className="text-lg font-medium mb-xl max-w-lg border-l-4 border-on-surface pl-sm">
+          </motion.h1>
+          <motion.p initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15, ease: 'easeOut' }} className="text-lg font-medium mb-xl max-w-lg border-l-4 border-on-surface pl-sm">
             Stop wondering where your money went. Track income, investments,
             subscriptions, and family expenses in one ruthlessly organized
             dashboard.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-sm">
+          </motion.p>
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.3, ease: 'easeOut' }} className="flex flex-col sm:flex-row gap-sm">
             <Link to="/register" className="flex-1">
               <Button variant="yellow" size="lg" block>
                 Get Started Free
@@ -64,10 +68,10 @@ export function Landing() {
                 See How It Works
               </Button>
             </Link>
-          </div>
+          </motion.div>
         </div>
 
-        <div className="w-full md:w-1/2 p-md flex items-center justify-center bg-surface-container-low relative">
+        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="w-full md:w-1/2 p-md flex items-center justify-center bg-surface-container-low relative">
           <div className="w-full max-w-lg bg-white border-4 border-on-surface p-md shadow-brutal relative z-10">
             <div className="border-b-4 border-on-surface pb-sm mb-sm flex justify-between items-center">
               <div className="font-bold text-lg">Dashboard Overview</div>
@@ -92,19 +96,22 @@ export function Landing() {
             </div>
           </div>
           <div className="absolute w-64 h-64 border-4 border-on-surface bg-brand-yellow translate-x-12 translate-y-12 -z-0" />
-        </div>
+        </motion.div>
       </section>
 
       {/* Features */}
-      <section id="features" className="w-full p-md md:p-xl border-b-4 border-on-surface">
+      <section ref={featuresRef} id="features" className="w-full p-md md:p-xl border-b-4 border-on-surface">
         <h2 className="text-3xl md:text-4xl font-bold mb-xl uppercase border-b-4 border-on-surface pb-sm inline-block">
           Everything in one place.
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
-          {features.map((f) => (
-            <div
+          {features.map((f, index) => (
+            <motion.div
               key={f.title}
-              className={`border-4 border-on-surface p-md shadow-brutal hover:-translate-y-1 transition-transform ${f.color}`}
+              initial={{ opacity: 0, y: 40 }}
+              animate={featuresVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+              transition={{ duration: 0.4, delay: index * 0.1, ease: 'easeOut' }}
+              className={`border-4 border-on-surface p-md shadow-brutal nb-card-hover ${f.color}`}
             >
               <div
                 className={`w-12 h-12 border-4 border-on-surface flex items-center justify-center mb-sm ${
@@ -115,13 +122,13 @@ export function Landing() {
               </div>
               <h3 className="text-lg font-bold mb-1">{f.title}</h3>
               <p className="font-medium">{f.desc}</p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="w-full p-md md:p-xl bg-white flex flex-col md:flex-row justify-between gap-xl border-t-8 border-on-surface">
+      <motion.footer ref={footerRef} initial={{ opacity: 0, y: 20 }} animate={footerVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }} transition={{ duration: 0.35, ease: 'easeOut' }} className="w-full p-md md:p-xl bg-white flex flex-col md:flex-row justify-between gap-xl border-t-8 border-on-surface">
         <div className="flex-1">
           <div className="font-bold text-2xl uppercase tracking-tighter mb-sm">FinStack</div>
           <p className="font-medium max-w-xs border-l-4 border-brand-yellow pl-xs">
@@ -140,7 +147,7 @@ export function Landing() {
           <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Terms of Service</a>
           <p className="text-xs mt-sm text-on-surface-variant">© 2026 FinStack Inc.</p>
         </div>
-      </footer>
+      </motion.footer>
     </div>
   )
 }

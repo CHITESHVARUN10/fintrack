@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { AuthProvider } from './context/AuthContext'
 import { TaxpayerProvider } from './context/TaxpayerContext'
 import { AuthGuard } from './components/layout/AuthGuard'
@@ -29,12 +30,18 @@ import { TaxRecommendation } from './pages/TaxRecommendation'
 import { RecommendationLoading } from './pages/RecommendationLoading'
 import { AcceptInvite } from './pages/AcceptInvite'
 
-export default function App() {
+function AnimatedRoutes() {
+  const location = useLocation()
   return (
-    <AuthProvider>
-      <TaxpayerProvider>
-        <BrowserRouter>
-          <Routes>
+    <AnimatePresence mode="wait">
+      <motion.main
+        key={location.pathname}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 6 }}
+        transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
+      >
+        <Routes location={location}>
           {/* Public / auth screens (no app chrome) */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -96,7 +103,18 @@ export default function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </motion.main>
+    </AnimatePresence>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <TaxpayerProvider>
+        <BrowserRouter>
+          <AnimatedRoutes />
+        </BrowserRouter>
       </TaxpayerProvider>
     </AuthProvider>
   )

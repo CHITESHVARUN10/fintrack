@@ -23,7 +23,7 @@ export function Family() {
           isAdmin ? (
             <button
               onClick={() => setInviteOpen(true)}
-              className="bg-brand-yellow border-[3px] border-on-surface px-4 py-2 font-bold uppercase shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center gap-2"
+              className="bg-brand-yellow border-[3px] border-on-surface px-4 py-2 font-bold uppercase shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center gap-2"
             >
               <Icon name="person_add" className="text-xl" />
               Invite Member
@@ -65,7 +65,7 @@ export function Family() {
                 {isAdmin && m.role !== 'admin' && (
                   <button
                     onClick={() => setActiveMemberId(m.id)}
-                    className="bg-white border-[3px] border-on-surface px-sm py-xs font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
+                    className="bg-white border-[3px] border-on-surface px-sm py-xs font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
                   >
                     Dashboard
                   </button>
@@ -82,7 +82,7 @@ export function Family() {
                         window.alert('Could not remove member.')
                       }
                     }}
-                    className="bg-error-container text-on-error-container border-[3px] border-on-surface px-xs py-xs flex items-center justify-center shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
+                    className="bg-error-container text-on-error-container border-[3px] border-on-surface px-xs py-xs flex items-center justify-center shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
                   >
                     <Icon name="delete" />
                   </button>

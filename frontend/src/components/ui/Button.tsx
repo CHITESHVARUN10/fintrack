@@ -41,7 +41,7 @@ export function Button({
   return (
     <button
       className={cn(
-        'brutal-sm inline-flex items-center justify-center gap-2 font-bold uppercase tracking-wide transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none disabled:opacity-50 disabled:cursor-not-allowed',
+        'brutal-sm inline-flex items-center justify-center gap-2 rounded-none font-bold uppercase tracking-[0.05em] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_#1e1c10] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm disabled:active:translate-x-0 disabled:active:translate-y-0 disabled:active:shadow-brutal-sm disabled:opacity-50 disabled:cursor-not-allowed',
         variantClasses[variant],
         sizeClasses[size],
         block && 'w-full',

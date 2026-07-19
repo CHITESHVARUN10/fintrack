@@ -61,7 +61,7 @@ export function Notifications() {
         action={
           <button
             onClick={markAllRead}
-            className="bg-white border-[3px] border-on-surface py-2 px-sm font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center gap-2"
+            className="bg-white border-[3px] border-on-surface py-2 px-sm font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center gap-2"
           >
             <Icon name="done_all" className="text-lg" /> All read
           </button>
@@ -73,7 +73,7 @@ export function Notifications() {
           <button
             key={t.value}
             onClick={() => setTab(t.value)}
-            className={`border-[3px] border-on-surface py-2 px-sm font-bold uppercase shadow-brutal-sm transition-all ${
+            className={`border-[3px] border-on-surface py-2 px-sm font-bold uppercase shadow-brutal-sm transition-all active:translate-x-[3px] active:translate-y-[3px] active:shadow-none ${
               tab === t.value
                 ? 'bg-brand-yellow translate-x-[1px] translate-y-[1px] shadow-none'
                 : 'bg-white hover:bg-surface-container-high'
@@ -96,9 +96,10 @@ export function Notifications() {
             <Link
               key={n.id}
               to={`/${n.relatedModule}`}
-              className={`flex items-start p-md border-b-[3px] border-on-surface relative group hover:bg-surface-container-low transition-colors ${
+              className={`flex items-start p-md border-b-[3px] border-on-surface relative group hover:bg-surface-container-low transition-none nb-card-enter ${
                 i === filtered.length - 1 ? 'border-b-0' : ''
               } ${isUnread ? '' : 'bg-surface-container-lowest'}`}
+              style={{ '--nb-stagger': `${i * 40}ms` } as React.CSSProperties}
             >
               {isUnread && (
                 <div className="absolute left-0 top-0 bottom-0 w-2 bg-brand-yellow" />

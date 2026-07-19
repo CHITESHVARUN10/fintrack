@@ -32,18 +32,52 @@ const round = (n) => Math.round(Number(n) || 0);
 
 // Source of a deduction value.
 const SOURCE = {
+  SYSTEM_DEFAULT: 'SYSTEM_DEFAULT',
   FORM16_OCR: 'FORM16_OCR',
   INVESTMENT_RECORD: 'INVESTMENT_RECORD',
   USER_MANUAL: 'USER_MANUAL',
-  SYSTEM_DEFAULT: 'SYSTEM_DEFAULT',
 };
 
-// Applied / excluded status of a DeductionLineItem in a regime.
-const STATUS = {
-  APPLIED: 'Applied',
-  EXCLUDED_UNCONFIRMED: 'Excluded – Unconfirmed',
-  EXCLUDED_EXCEEDS_LIMIT: 'Excluded – Exceeds Limit',
-  EXCLUDED_REGIME: 'Excluded – Not Allowed in Regime',
+// -----------------------------------------------------------------------------
+// logDeductionStage (Part 6):
+// Structured logging for deduction pipeline stages.
+// -----------------------------------------------------------------------------
+function logDeductionStage(stage, stageLabel, items) {
+  if (process.env.DEBUG_DEDUCTIONS !== 'true') return;
+  const fs = require('fs');
+  const path = require('path');
+  const logFile = path.join(__dirname, '../../../logs/deduction-pipeline.log');
+  
+  const payload = {
+    timestamp: new Date().toISOString(),
+    stage,
+    stageLabel,
+    itemCount: items.length,
+    items: items,
+  };
+  
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, JSON.stringify(payload) + '\n');
+  } catch (err) {
+    console.error('[logDeductionStage] Failed to write log:', err.message);
+  }
+}
+
+// Exclusion Categories
+const EXCLUSION_CATEGORY = {
+  CATEGORY_DATA_VALIDATION: 'CATEGORY_DATA_VALIDATION',
+  CATEGORY_REGIME_RULE: 'CATEGORY_REGIME_RULE',
+};
+
+// Exclusion Reasons and their associated labels
+const EXCLUSION_REASON = {
+  DUPLICATE_LOWER_AMOUNT: 'DUPLICATE_LOWER_AMOUNT',
+  EXCEEDS_STATUTORY_LIMIT: 'EXCEEDS_STATUTORY_LIMIT',
+  UNCONFIRMED_SUBTYPE: 'UNCONFIRMED_SUBTYPE',
+  LOW_CONFIDENCE: 'LOW_CONFIDENCE',
+  NOT_ALLOWED_IN_REGIME: 'NOT_ALLOWED_IN_REGIME',
+  NOT_APPLICABLE_TO_PROPERTY_TYPE: 'NOT_APPLICABLE_TO_PROPERTY_TYPE',
 };
 
 // Per-section metadata: which regimes allow it, its statutory cap (per regime),
@@ -71,6 +105,13 @@ const DED_SECTIONS = {
     cap: () => Infinity,
     kind: 'salaryExemption',
     note: 'Exemption for actual travel on leave (twice in a block of 4 years). Old regime only.',
+  },
+  ProfessionalTax: {
+    label: 'Professional Tax',
+    allowed: { Old: true, New: false },
+    cap: () => Infinity,
+    kind: 'deduction',
+    note: 'Professional tax paid is deductible from salary only under the Old regime.',
   },
   '80C': {
     label: 'Section 80C',
@@ -115,7 +156,7 @@ const DED_SECTIONS = {
     allowed: { Old: true, New: false },
     cap: () => TAX_CONFIG[DEFAULT_FY].DEDUCTION_CAPS.SECTION_80D_SELF,
     kind: 'deduction',
-    note: 'Health-insurance premium for self/family. Up to ₹25,000 (₹50,000 for senior citizens).',
+    note: `Health-insurance premium for self/family. Up to ₹${TAX_CONFIG[DEFAULT_FY].DEDUCTION_CAPS.SECTION_80D_SELF.toLocaleString('en-IN')} (₹${TAX_CONFIG[DEFAULT_FY].DEDUCTION_CAPS.SECTION_80D_PARENTS.toLocaleString('en-IN')} for senior citizens).`,
   },
   '80E': {
     label: 'Section 80E — Education Loan Interest',
@@ -148,9 +189,19 @@ const DED_SECTIONS_CAP = {
 // -----------------------------------------------------------------------------
 // Pure math helpers (cfg-driven, reused for both regimes).
 // -----------------------------------------------------------------------------
+function formatIndianCurrency(n) {
+  if (n == null || !isFinite(n)) return '';
+  let numStr = Math.round(n).toString();
+  const lastThree = numStr.substring(numStr.length - 3);
+  const otherNumbers = numStr.substring(0, numStr.length - 3);
+  if (otherNumbers !== '') {
+    return otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," + lastThree;
+  }
+  return numStr;
+}
+
 function fmtINR(n) {
-  if (!isFinite(n)) return '';
-  return Math.round(n).toLocaleString('en-IN');
+  return formatIndianCurrency(n);
 }
 
 function buildSlabLabelsFromConfig(slabs) {
@@ -430,8 +481,21 @@ function makeLineItem(opts = {}) {
     source: rawSource,
     confidence,
     needsConfirmation,
+    status:
+      opts.status ||
+      (opts.duplicateRisk
+        ? 'EXCLUDED_DUPLICATE'
+        : needsConfirmation
+          ? 'NEEDS_CONFIRMATION'
+          : 'CANDIDATE'),
+    reason: opts.reason || null,
+    originFile: opts.originFile || null,
+    verificationMethod: opts.verificationMethod || null,
     notes: opts.notes || null,
     duplicateRisk: !!opts.duplicateRisk,
+    exclusionCategory: opts.exclusionCategory || null,
+    exclusionReason: opts.exclusionReason || null,
+    exclusionNote: opts.exclusionNote || null,
   };
 }
 
@@ -458,6 +522,29 @@ function enforceGroupCaps(applied) {
 }
 
 // -----------------------------------------------------------------------------
+// filterValidDeductions (Part 2):
+// Pure function that removes deductions with null, undefined, NaN, zero, or negative amounts.
+// -----------------------------------------------------------------------------
+function filterValidDeductions(items) {
+  const validSources = [SOURCE.FORM16_OCR, SOURCE.INVESTMENT_RECORD, SOURCE.USER_MANUAL, SOURCE.SYSTEM_DEFAULT];
+  
+  return items.filter((item) => {
+    if (item.amount == null) return false;
+    if (typeof item.amount !== 'number' || !Number.isFinite(item.amount)) return false;
+    if (item.amount <= 0) {
+      if (process.env.NODE_ENV === 'development' || process.env.DEBUG_DEDUCTIONS === 'true') {
+        console.warn(`[filterValidDeductions] Discarded ${item.section}: amount is zero or negative (${item.amount})`);
+      }
+      return false;
+    }
+    if (!item.section || typeof item.section !== 'string' || item.section.trim() === '') return false;
+    if (!validSources.includes(item.source)) return false;
+    
+    return true;
+  });
+}
+
+// -----------------------------------------------------------------------------
 // TaxpayerContext builder. Converts a Form 16 doc + aggregated financial records
 // into the canonical context with per-deduction provenance.
 // -----------------------------------------------------------------------------
@@ -465,10 +552,13 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
   const f = form16 || {};
   const cfg = TAX_CONFIG[DEFAULT_FY];
   const records = {
+    // `aggregateDeductions` deliberately excludes education payments. Tuition
+    // is supplied separately here so it has exactly one path into 80C.
     section80C: round((recordsAgg.section80C || 0) + (eduTuition || 0)),
     section80CCD: round(recordsAgg.section80CCD || 0),
     section80D: round(recordsAgg.section80D || 0),
     section80E: round(recordsAgg.section80E || 0),
+    section80G: round(recordsAgg.section80G || 0),
     section24: round(recordsAgg.section24 || 0),
   };
 
@@ -502,6 +592,8 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
       source: sdFromForm != null ? SOURCE.FORM16_OCR : SOURCE.SYSTEM_DEFAULT,
       confidence: sdFromForm != null ? 95 : 100,
       needsConfirmation: false,
+      originFile: sdFromForm != null ? f.pdfReference : null,
+      verificationMethod: sdFromForm != null ? 'FORM16_OCR_EXPLICIT' : 'STATUTORY_DEFAULT',
     }),
   );
 
@@ -519,6 +611,8 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
         rentPaid == null
           ? 'HRA exemption cannot be computed without rent-paid data; excluded.'
           : null,
+      originFile: rentPaid != null ? f.pdfReference : null,
+      verificationMethod: rentPaid != null ? 'FORM16_OCR_EXPLICIT' : null,
     }),
   );
 
@@ -534,9 +628,33 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
         source: SOURCE.FORM16_OCR,
         confidence: 90,
         needsConfirmation: false,
+        originFile: f.pdfReference || null,
+        verificationMethod: 'FORM16_OCR_EXPLICIT',
       }),
     );
   }
+
+  const professionalTax = Number(f.professionalTax) || 0;
+  if (professionalTax > 0) {
+    items.push(
+      makeLineItem({
+        section: 'ProfessionalTax',
+        subtype: '16(iii)',
+        subtypeConfirmed: true,
+        amount: professionalTax,
+        source: SOURCE.FORM16_OCR,
+        confidence: 95,
+        needsConfirmation: false,
+        originFile: f.pdfReference || null,
+        verificationMethod: 'FORM16_OCR_EXPLICIT',
+      }),
+    );
+  }
+
+  // FIRST PIPELINE STAGE: Filter after OCR extraction
+  logDeductionStage(1, 'AFTER_OCR_CONSTRUCTION', items);
+  let filteredItems = filterValidDeductions(items);
+  logDeductionStage(3, 'AFTER_ZERO_FILTER', filteredItems);
 
   // Chapter VI-A sections: ONE item per section, the larger of Form 16 / records,
   // with provenance. Never invent a section absent from both sources (Rule 3),
@@ -558,6 +676,7 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
     { sec: '80CCD', form: f.section80CCD, record: records.section80CCD },
     { sec: '80D',  form: f.section80D,  record: records.section80D  },
     { sec: '80E',  form: f.section80E,  record: records.section80E  },
+    { sec: '80G',  form: f.section80G,  record: records.section80G  },
     { sec: '24b',  form: f.section24,   record: records.section24   },
   ];
   for (const { sec, form, record } of viatSections) {
@@ -582,6 +701,8 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
       originalAmount: primaryRaw !== primaryAmount ? primaryRaw : null,
       source: primarySource,
       confidence: 95,
+      originFile: primarySource === SOURCE.FORM16_OCR ? (f.pdfReference || null) : null,
+      verificationMethod: primarySource === SOURCE.FORM16_OCR ? 'FORM16_OCR_EXPLICIT' : 'FINANCIAL_RECORD',
     };
     if (sec === '80CCD') {
       // Rule 2: ambiguous subsection -> single item, unconfirmed, never split.
@@ -590,30 +711,95 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
       base.needsConfirmation = true;
       base.notes =
         'Subsection unknown — could be employee contribution 80CCD(1), additional NPS 80CCD(1B), or employer contribution 80CCD(2).';
+      if (primaryRaw === 0) {
+        base.notes = (base.notes ? base.notes + ' ' : '') + 'Value explicitly stated as 0.';
+      }
+    } else if (sec === '80G') {
+      // 80G can be 50% or 100%, may have a qualifying limit, and needs the
+      // donee/category details. A bare Form 16 total is not enough to choose a
+      // statutory treatment, so retain it for review but never guess.
+      base.subtype = null;
+      base.subtypeConfirmed = false;
+      base.needsConfirmation = true;
+      base.status = 'NEEDS_CONFIRMATION';
+      base.reason = '80G eligibility percentage and donee category are required';
+      base.notes = 'Confirm the eligible donation category and deduction percentage before claiming Section 80G.';
     } else {
       base.subtype = sec;
       base.subtypeConfirmed = true;
       base.needsConfirmation = false;
     }
-    items.push(makeLineItem(base));
+    
+    // We create separate arrays for filtering before merge
+    const ocrItems = [];
+    const invItems = [];
+    
+    if (useForm && fv != null) {
+      ocrItems.push(makeLineItem(base));
+    } else if (!useForm && rv != null) {
+      invItems.push(makeLineItem(base));
+    }
 
     // If BOTH form and records have a value for this section, add the secondary
     // as a separate line item flagged with duplicateRisk = true (Part 2).
+    // The secondary gets EXCLUSION_REASON.DUPLICATE_LOWER_AMOUNT and CATEGORY_DATA_VALIDATION.
     if (fv > 0 && rv > 0 && useForm) {
       const secondaryRaw = rv;
       const secondaryAmount = itemCap != null ? Math.min(secondaryRaw, itemCap) : secondaryRaw;
-      items.push(makeLineItem({
+      
+      const equalNote = (fv === rv) ? ' Equal amounts found — Form 16 value takes precedence.' : '';
+      
+      invItems.push(makeLineItem({
         ...base,
         amount: secondaryAmount,
         originalAmount: secondaryRaw !== secondaryAmount ? secondaryRaw : null,
         source: SOURCE.INVESTMENT_RECORD,
         confidence: 85,
         duplicateRisk: true,
-        notes: `Investment records also show ₹${secondaryRaw.toLocaleString('en-IN')} for ${sec}. ` +
-          `Since Form 16 has a higher or equal value (₹${fv.toLocaleString('en-IN')}), only the Form 16 amount is applied.`,
+        exclusionCategory: EXCLUSION_CATEGORY.CATEGORY_DATA_VALIDATION,
+        exclusionReason: EXCLUSION_REASON.DUPLICATE_LOWER_AMOUNT,
+        exclusionNote: 'Assigned during deduction merge — pre-regime.',
+        status: 'EXCLUDED_DUPLICATE',
+        reason: 'Duplicate lower amount',
+        verificationMethod: 'FINANCIAL_RECORD',
+        notes: `Investment records also show ₹${formatIndianCurrency(secondaryRaw)} for ${sec}. ` +
+          `Since Form 16 has a higher or equal value (₹${formatIndianCurrency(fv)}), only the Form 16 amount is applied.` + equalNote,
+      }));
+    } else if (fv > 0 && rv > 0 && !useForm) {
+      // Very rare case where records value > Form16 value, so the form value becomes secondary
+      const secondaryRaw = fv;
+      const secondaryAmount = itemCap != null ? Math.min(secondaryRaw, itemCap) : secondaryRaw;
+      ocrItems.push(makeLineItem({
+        ...base,
+        amount: secondaryAmount,
+        originalAmount: secondaryRaw !== secondaryAmount ? secondaryRaw : null,
+        source: SOURCE.FORM16_OCR,
+        confidence: 85,
+        duplicateRisk: true,
+        exclusionCategory: EXCLUSION_CATEGORY.CATEGORY_DATA_VALIDATION,
+        exclusionReason: EXCLUSION_REASON.DUPLICATE_LOWER_AMOUNT,
+        exclusionNote: 'Assigned during deduction merge — pre-regime.',
+        status: 'EXCLUDED_DUPLICATE',
+        reason: 'Duplicate lower amount',
+        originFile: f.pdfReference || null,
+        verificationMethod: 'FORM16_OCR_EXPLICIT',
+        notes: `Form 16 shows ₹${formatIndianCurrency(secondaryRaw)} for ${sec}. ` +
+          `Since investment records have a higher value (₹${formatIndianCurrency(rv)}), only the record amount is applied.`,
       }));
     }
+
+    // Pipeline Stage 2 & 3: Filter INVESTMENT_RECORD and USER_MANUAL 
+    logDeductionStage(2, 'AFTER_INVESTMENT_RECORD_FETCH', invItems);
+    
+    const validOcr = filterValidDeductions(ocrItems);
+    const validInv = filterValidDeductions(invItems);
+    
+    filteredItems = filteredItems.concat(validOcr, validInv);
   }
+  
+  // Pipeline Stage 4: Filter after merge
+  logDeductionStage(4, 'AFTER_MERGE', filteredItems);
+  filteredItems = filterValidDeductions(filteredItems);
 
   return {
     salary: {
@@ -628,7 +814,7 @@ function fromForm16(form16 = {}, { recordsAgg = {}, eduTuition = 0 } = {}) {
       tdsDeducted: Number(f.tdsDeducted) || 0,
       employeePAN: f.employeePAN || null,
     },
-    deductions: items,
+    deductions: filteredItems,
     computedIncome: { totalDeductions: 0, taxableIncomeOldRegime: 0, taxableIncomeNewRegime: 0 },
     taxResult: { oldRegime: null, newRegime: null },
     metadata: {
@@ -745,7 +931,8 @@ function validateTaxpayerContext(ctx) {
   }
 
   // Check 7 — HRA validity.
-  for (const item of ctx.deductions || []) {
+  const validDeductions = filterValidDeductions(ctx.deductions || []);
+  for (const item of validDeductions) {
     if (item.section === 'HRA' && (item.amount || 0) === 0 && item.needsConfirmation) {
       warnings.push('HRA exemption could not be computed — rent data is missing; HRA excluded.');
     }
@@ -782,7 +969,8 @@ function computeRegimeResult(ctx, regime, trace) {
   // Salary exemptions (HRA / LTA) — Old regime only.
   let hraExempt = 0;
   let ltaExempt = 0;
-  for (const item of ctx.deductions) {
+  const validDeductions2 = filterValidDeductions(ctx.deductions || []);
+  for (const item of validDeductions2) {
     if (item.section === 'HRA' && regime === 'Old') hraExempt = item.amount || 0;
     else if (item.section === 'LTA' && regime === 'Old') ltaExempt = item.amount || 0;
   }
@@ -806,7 +994,7 @@ function computeRegimeResult(ctx, regime, trace) {
   // Verified Chapter VI-A / other deductions (New regime applies NONE of these).
   const applied = [];
   const unverified = [];
-  for (const item of ctx.deductions) {
+  for (const item of validDeductions2) {
     const meta = DED_SECTIONS[item.section];
     if (meta && meta.kind === 'salaryExemption') continue; // HRA/LTA handled above
     if (item.section === 'StandardDeduction') continue;    // applied as `sd` below
@@ -815,17 +1003,27 @@ function computeRegimeResult(ctx, regime, trace) {
       // silently dropped; surface it as unverified so the audit can show it.
       unverified.push({
         ...item,
-        status: STATUS.EXCLUDED_UNCONFIRMED,
+        exclusionCategory: EXCLUSION_CATEGORY.CATEGORY_DATA_VALIDATION,
+        exclusionReason: EXCLUSION_REASON.UNCONFIRMED_SUBTYPE,
         reason: 'Section not recognized — confirm the subsection to claim it',
       });
       continue;
     }
     if (!meta.allowed[regime]) {
-      unverified.push({
-        ...item,
-        status: STATUS.EXCLUDED_REGIME,
-        reason: `Section ${item.section} is not allowed under the ${regime} regime`,
-      });
+      // Rule 4: Data validation happens BEFORE regime evaluation. If this item was
+      // already excluded during data validation (e.g. duplicate), preserve its original reason.
+      if (item.exclusionReason) {
+        unverified.push(item);
+      } else {
+        // If it passed data validation but is not allowed in this regime, it's a regime exclusion.
+        unverified.push({
+          ...item,
+          exclusionCategory: EXCLUSION_CATEGORY.CATEGORY_REGIME_RULE,
+          exclusionReason: (item.section === '24b' && regime === 'New') ? EXCLUSION_REASON.NOT_APPLICABLE_TO_PROPERTY_TYPE : EXCLUSION_REASON.NOT_ALLOWED_IN_REGIME,
+          exclusionNote: 'Assigned during regime rule evaluation.',
+          reason: `Section ${item.section} is not allowed under the ${regime} regime`,
+        });
+      }
       continue;
     }
     // THREE-CONDITION INCLUSION FILTER (Part 2 — Final 5%):
@@ -835,11 +1033,16 @@ function computeRegimeResult(ctx, regime, trace) {
     // Any item failing ANY condition goes to unverified — never to applied.
     const verified = item.needsConfirmation === false && !!item.source && !item.duplicateRisk;
     if (!verified) {
-      unverified.push({
-        ...item,
-        status: STATUS.EXCLUDED_UNCONFIRMED,
-        reason: 'Amount or subsection could not be confirmed',
-      });
+      if (item.exclusionReason) {
+        unverified.push(item);
+      } else {
+        unverified.push({
+          ...item,
+          exclusionCategory: EXCLUSION_CATEGORY.CATEGORY_DATA_VALIDATION,
+          exclusionReason: item.duplicateRisk ? EXCLUSION_REASON.DUPLICATE_LOWER_AMOUNT : (item.needsConfirmation ? EXCLUSION_REASON.UNCONFIRMED_SUBTYPE : EXCLUSION_REASON.LOW_CONFIDENCE),
+          reason: 'Amount or subsection could not be confirmed',
+        });
+      }
       continue;
     }
     const cap = meta.cap(regime);
@@ -1033,15 +1236,6 @@ function computeTax(ctx) {
     source: 'COMPUTED',
   });
 
-  // Populate computedIncome on the context (Part 6 runtime guard).
-  ctx.computedIncome = {
-    totalDeductions: oldRegime.totalDeductions,
-    taxableIncomeOldRegime: oldRegime.taxableIncome,
-    taxableIncomeNewRegime: newRegime.taxableIncome,
-  };
-
-  // Runtime consistency assertion — dev + test mode only.
-  // Throws if any of the four invariants are violated (see assertTaxResultConsistency).
   const result = {
     error: false,
     errors: validation.errors,
@@ -1051,8 +1245,17 @@ function computeTax(ctx) {
     unverifiedDeductions,
     recommendedRegime,
     savingsAmount,
+    computedIncome: {
+      totalDeductions: oldRegime.totalDeductions,
+      taxableIncomeOldRegime: oldRegime.taxableIncome,
+      taxableIncomeNewRegime: newRegime.taxableIncome,
+    },
     calculationTrace: trace,
   };
+  
+  // Runtime consistency assertion — dev + test mode only.
+  assertNoZeroDeductions(result);
+  
   if (process.env.NODE_ENV !== 'production') {
     try { assertTaxResultConsistency(result, ctx); } catch (e) { console.error(e.message); }
   }
@@ -1070,7 +1273,7 @@ function assertTaxResultConsistency(result, ctx) {
   const neu = result.newRegime;
   if (!old || !neu) return;
 
-  const fmt = (n) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
+  const fmt = (n) => `₹${formatIndianCurrency(n)}`;
   const errs = [];
 
   // 1. verifiedDeductionsTotal must equal sum of passing deductions.
@@ -1095,7 +1298,7 @@ function assertTaxResultConsistency(result, ctx) {
   }
 
   // 2. old.taxableIncome must equal ctx.computedIncome.taxableIncomeOldRegime.
-  if (ctx.computedIncome && ctx.computedIncome.taxableIncomeOldRegime != null) {
+  if (ctx.computedIncome && ctx.computedIncome.isCalculated === true) {
     if (Math.abs(old.taxableIncome - ctx.computedIncome.taxableIncomeOldRegime) > 1) {
       errs.push(
         `[2] old.taxableIncome=${fmt(old.taxableIncome)} ≠ ` +
@@ -1105,7 +1308,7 @@ function assertTaxResultConsistency(result, ctx) {
   }
 
   // 3. new.taxableIncome must equal ctx.computedIncome.taxableIncomeNewRegime.
-  if (ctx.computedIncome && ctx.computedIncome.taxableIncomeNewRegime != null) {
+  if (ctx.computedIncome && ctx.computedIncome.isCalculated === true) {
     if (Math.abs(neu.taxableIncome - ctx.computedIncome.taxableIncomeNewRegime) > 1) {
       errs.push(
         `[3] new.taxableIncome=${fmt(neu.taxableIncome)} ≠ ` +
@@ -1139,29 +1342,38 @@ function assertTaxResultConsistency(result, ctx) {
 // uses words like ELSS/LIC/insurance/tuition/NPS unless present in a source note.
 // -----------------------------------------------------------------------------
 function explainResult(result, ctx) {
-  const fmt = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
+  // ZERO-VALUE GUARD — filterValidDeductions discards any item with amount null, undefined, NaN, zero, or negative.
+  const validDeductions = filterValidDeductions(ctx && ctx.deductions ? ctx.deductions : []);
+  
+  const fmt = (n) => '₹' + formatIndianCurrency(n);
   const fy = (ctx && ctx.financialYear) || DEFAULT_FY;
   const gross = (ctx && ctx.salary && ctx.salary.grossSalary) || 0;
   const old = result.oldRegime;
   const neu = result.newRegime;
 
-  // Verified sections actually applied — described by section code only.
-  // We never leak marketing names (ELSS/NPS/LIC) from this code path.
-  const verifiedSections = (ctx && ctx.deductions ? ctx.deductions : [])
-    .filter((d) => d.needsConfirmation === false && d.source && DED_SECTIONS[d.section])
-    .map((d) => d.section);
+  const mentionedSections = new Set();
+  const verifiedSections = [];
+  
+  for (const d of validDeductions) {
+    if (d.needsConfirmation === false && d.source && DED_SECTIONS[d.section]) {
+      if (!mentionedSections.has(d.section)) {
+        mentionedSections.add(d.section);
+        verifiedSections.push(d.section);
+      }
+    }
+  }
 
+  const recommendationSentence = result.savingsAmount === 0
+    ? 'Both regimes have the same final tax; no tax saving is available from choosing one over the other.'
+    : `${result.recommendedRegime} regime has the lower final tax and saves ${fmt(result.savingsAmount)}.`;
   const explanation =
-    `For FY ${fy}, with a gross salary of ${fmt(gross)}, the ${result.recommendedRegime} regime gives the lower final tax. ` +
+    `For FY ${fy}, with a gross salary of ${fmt(gross)}, ${recommendationSentence} ` +
     `Under the New Regime your taxable income is ${fmt(neu.taxableIncome)} and total tax is ${fmt(neu.totalTax)}` +
     `${neu.refundAmount > 0 ? `, with a refund of ${fmt(neu.refundAmount)}` : ''}. ` +
     `Under the Old Regime, after verified deductions of ${fmt(old.totalDeductions)} your taxable income is ${fmt(
       old.taxableIncome,
-    )} and total tax is ${fmt(old.totalTax)}` +
+    )} and total tax is ${fmt(old.taxableIncome > 0 ? old.totalTax : 0)}` +
     `${old.refundAmount > 0 ? `, with a refund of ${fmt(old.refundAmount)}` : ''}. ` +
-    `Choosing the ${result.recommendedRegime} Regime ${result.recommendedRegime === 'New' ? 'saves' : 'costs'} you about ${fmt(
-      result.savingsAmount,
-    )} this year.` +
     (verifiedSections.length
       ? ` The deduction${verifiedSections.length > 1 ? 's' : ''} applied (${verifiedSections.join(
           ', ',
@@ -1188,30 +1400,55 @@ function explainResult(result, ctx) {
 // it appears exactly once in the output.
 // -----------------------------------------------------------------------------
 function generateSuggestions(result) {
-  const fmt = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
+  const suggestions = [];
+  const applied = filterValidDeductions((result.oldRegime && result.oldRegime.applied) ? result.oldRegime.applied : []);
+  const unverified = filterValidDeductions((result.oldRegime && result.oldRegime.unverified) ? result.oldRegime.unverified : []);
+  const fmt = (n) => '₹' + formatIndianCurrency(n);
+  const generatedSectionKeys = new Set();
   const map = new Map();
 
-  for (const u of (result.unverifiedDeductions || [])) {
-    let actionType;
-    let text;
-    if (u.status === STATUS.EXCLUDED_REGIME) {
-      actionType = 'notallowedregime';
-      text = `Section ${u.section} deduction (${fmt(u.amount)}) is not allowed under the selected regime. ` +
-        `Consider switching regimes or verifying applicability.`;
-    } else if (u.status === STATUS.EXCLUDED_UNCONFIRMED) {
-      actionType = 'confirmsubsection';
-      text = `Section ${u.section} deduction was excluded because the subsection could not be confirmed. ` +
-        `Confirming the correct subsection (e.g., 80CCD(1B)) could unlock savings of up to ${fmt(u.amount)}.`;
-    } else {
-      actionType = 'excluded';
-      text = `Section ${u.section} deduction of ${fmt(u.amount)} was excluded. ` +
-        `${u.reason || 'Confirm the details to claim it.'}`;
-    }
-    const key = `${u.section}${actionType}`.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!map.has(key)) map.set(key, text);
-  }
+  const processList = (list) => {
+    for (const u of list) {
+      let actionType;
+      let text;
+      
+      // We assign specific actionTypes which become suggestionTypes
+      if (!u.duplicateRisk && unverified.some(x => x.section === u.section && x.duplicateRisk)) {
+        continue;
+      }
+      
+      if (u.exclusionReason === EXCLUSION_REASON.NOT_ALLOWED_IN_REGIME || u.exclusionReason === EXCLUSION_REASON.NOT_APPLICABLE_TO_PROPERTY_TYPE || (!u.allowedInRegime && u.needsConfirmation === false)) {
+        actionType = 'REGIME_INAPPLICABLE';
+        text = `Section ${u.section} deduction (${fmt(u.amount)}) is not allowed under the selected regime. ` +
+          `Consider switching regimes or verifying applicability.`;
+      } else if (u.exclusionReason === EXCLUSION_REASON.DUPLICATE_LOWER_AMOUNT || u.duplicateRisk) {
+        actionType = 'RESOLVE_DUPLICATE';
+        text = `A Section ${u.section} deduction of ${fmt(u.amount)} was excluded and only the Form 16 amount was considered.`;
+      } else if (u.exclusionReason === EXCLUSION_REASON.UNCONFIRMED_SUBTYPE || u.needsConfirmation) {
+        actionType = 'CONFIRM_SUBTYPE';
+        text = `Section ${u.section} deduction was excluded because the subsection could not be confirmed. ` +
+          `Confirming the correct subsection (e.g., 80CCD(1B)) could unlock savings of up to ${fmt(u.amount)}.`;
+      } else if (u.amount > 0 && u.amount < (DED_SECTIONS[u.section]?.cap('Old') || Infinity)) {
+        actionType = 'CLAIM_AVAILABLE';
+        text = `You can claim up to ${fmt((DED_SECTIONS[u.section]?.cap('Old') || Infinity) - u.amount)} more under Section ${u.section}.`;
+      } else {
+        actionType = 'INFORMATIONAL';
+        text = `Section ${u.section} deduction of ${fmt(u.amount)} was applied.`;
+      }
 
-  return [...map.values()];
+      const key = `${u.section.toLowerCase()}-${actionType.toLowerCase()}`;
+      if (generatedSectionKeys.has(key)) continue;
+      generatedSectionKeys.add(key);
+
+      map.set(key, { section: u.section, actionType, suggestionType: actionType, text });
+    }
+  };
+
+  processList(applied);
+  processList(unverified);
+
+  const rawOutput = [...map.values()];
+  return rawOutput;
 }
 
 // -----------------------------------------------------------------------------
@@ -1229,25 +1466,63 @@ function buildFinalSuggestions(...rawArrays) {
   const map = new Map();
   for (const arr of rawArrays.flat()) {
     if (!arr) continue;
+    
+    // If the suggestion is an object with section/suggestionType, preserve it
+    if (typeof arr === 'object' && arr.section) {
+      const type = arr.suggestionType || arr.actionType || 'INFORMATIONAL';
+      const key = `${arr.section}${type}`.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const text = arr.text || arr.suggestion || String(arr);
+      if (!map.has(key)) map.set(key, { ...arr, suggestion: text, suggestionType: type });
+      continue;
+    }
+
     const text = typeof arr === 'string' ? arr : (arr.suggestion || arr.text || String(arr));
     if (!text) continue;
-    // Normalize: lowercase, strip all punctuation + whitespace, take first 60 chars.
-    const key = text.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
-    if (!map.has(key)) map.set(key, text);
+    
+    // Fallback: extract section name from text if possible
+    const sectionMatch = text.match(/Section\s*([0-9a-zA-Z]{2,6})/i);
+    let key;
+    let section = 'Unknown';
+    let suggestionType = 'INFORMATIONAL';
+    
+    if (sectionMatch) {
+      section = sectionMatch[1].toUpperCase();
+      if (text.toLowerCase().includes('not allowed')) suggestionType = 'REGIME_INAPPLICABLE';
+      else if (text.toLowerCase().includes('excluded') || text.toLowerCase().includes('confirm')) suggestionType = 'CONFIRM_SUBTYPE';
+      key = `${section}${suggestionType}`.toLowerCase().replace(/[^a-z0-9]/g, '');
+    } else {
+      key = text.toLowerCase().replace(/[\s\W]+/g, '').slice(0, 60);
+    }
+    
+    if (!map.has(key)) map.set(key, { section, suggestionType, suggestion: text });
   }
-  return [...map.values()];
+  const outputArray = [...map.values()];
+  return outputArray;
 }
 
 // -----------------------------------------------------------------------------
 // toRegimeTrace — map the canonical result to the frontend RegimeTrace shape.
 // -----------------------------------------------------------------------------
 function toRegimeTrace(ctx, r) {
+  const validDeductions = filterValidDeductions(ctx.deductions || []);
   const cfg = TAX_CONFIG[ctx.financialYear] || TAX_CONFIG[DEFAULT_FY];
-  const deductions = (ctx.deductions || []).map((item) => {
+  const deductions = validDeductions.map((item) => {
     const meta = DED_SECTIONS[item.section];
     const allowed = meta ? meta.allowed[r.regime] : false;
     const cap = meta && meta.cap ? meta.cap(r.regime) : null;
-    const claimed = allowed ? Math.min(item.amount || 0, cap == null ? Infinity : cap) : 0;
+    const appliedItem = (r.applied || []).find(
+      (a) => a.section === item.section && a.subtype === item.subtype && a.source === item.source,
+    );
+    const exemptionAmount = item.section === 'HRA'
+      ? r.salaryExemptions.hra
+      : item.section === 'LTA'
+        ? r.salaryExemptions.lta
+        : null;
+    const claimed = item.section === 'StandardDeduction'
+      ? (allowed ? r.standardDeduction : 0)
+      : exemptionAmount != null
+        ? exemptionAmount
+        : (appliedItem ? appliedItem.amount : 0);
     return {
       key: item.section,
       label: meta ? meta.label : item.section,
@@ -1296,12 +1571,149 @@ function toRegimeTrace(ctx, r) {
   };
 }
 
+
+// -----------------------------------------------------------------------------
+// assertNoZeroDeductions (Part 5):
+// -----------------------------------------------------------------------------
+function assertNoZeroDeductions(taxResult) {
+  if (process.env.NODE_ENV !== 'development') return;
+  const toCheck = [];
+  if (taxResult.oldRegime) {
+    toCheck.push(...(taxResult.oldRegime.applied || []));
+    toCheck.push(...(taxResult.oldRegime.unverified || []));
+  }
+  if (taxResult.newRegime) {
+    toCheck.push(...(taxResult.newRegime.applied || []));
+    toCheck.push(...(taxResult.newRegime.unverified || []));
+  }
+  
+  for (const item of toCheck) {
+    if (item.amount == null || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0) {
+      throw new Error(`assertNoZeroDeductions: Found zero/invalid value for section ${item.section}: amount is ${item.amount}`);
+    }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Part 2: Context-Aware Messages
+// -----------------------------------------------------------------------------
+function computeSuggestionSavings(suggestion, taxResult, taxConfig) {
+  if (suggestion.suggestionType === 'RESOLVE_DUPLICATE') {
+    const appliedItem = taxResult.oldRegime?.applied?.find((d) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk);
+    const excludedItem = taxResult.oldRegime?.unverified?.find((d) => d.section.toUpperCase() === suggestion.section.toUpperCase() && d.duplicateRisk);
+    
+    const appliedAmount = appliedItem ? appliedItem.amount : 0;
+    const excludedAmount = excludedItem ? excludedItem.amount : 0;
+    
+    let limit = 0;
+    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig.DEDUCTION_CAPS.SECTION_80D_SELF;
+    if (suggestion.section.toUpperCase() === '80C') limit = taxConfig.DEDUCTION_CAPS.SECTION_80C_GROUP;
+    
+    if (appliedAmount >= limit) {
+      return {
+        savingsType: 'NONE_LIMIT_REACHED',
+        savingsAmount: null,
+        displayMessage: `No additional tax benefit available. Your Form 16 already claims ₹${appliedAmount.toLocaleString('en-IN')} under Section ${suggestion.section} which is the full statutory limit. The additional ₹${excludedAmount.toLocaleString('en-IN')} from your investment records was excluded to prevent a duplicate claim.`,
+      };
+    }
+  }
+
+  if (suggestion.suggestionType === 'REGIME_INAPPLICABLE' && taxResult.recommendedRegime === 'New') {
+    const appliedItem = taxResult.oldRegime?.applied?.find((d) => d.section.toUpperCase() === suggestion.section.toUpperCase());
+    const amount = appliedItem ? appliedItem.amount : suggestion.amount || 0;
+    
+    const oldTax = taxResult.oldRegime?.totalTax || 0;
+    const newTax = taxResult.newRegime?.totalTax || 0;
+    const diff = oldTax - newTax;
+    let switchNote = '';
+    if (diff < 0) switchNote = ' (Switching to the Old Regime is recommended).';
+    else switchNote = ` (However, the New Regime still saves you ₹${Math.abs(diff).toLocaleString('en-IN')} overall).`;
+    
+    return {
+      savingsType: 'NONE_WRONG_REGIME',
+      savingsAmount: null,
+      displayMessage: `This deduction is not available under the New Regime. If you switch to the Old Regime and it produces a lower overall liability this deduction would reduce your taxable income by ₹${amount.toLocaleString('en-IN')}.${switchNote}`,
+    };
+  }
+
+  let savingsAmount = 0;
+  if (suggestion.suggestionType === 'CLAIM_AVAILABLE' || suggestion.suggestionType === 'CONFIRM_SUBTYPE') {
+    const appliedItem = taxResult.oldRegime?.applied?.find((d) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk);
+    const appliedAmount = appliedItem ? appliedItem.amount : 0;
+    
+    let limit = Infinity;
+    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig.DEDUCTION_CAPS.SECTION_80D_SELF;
+    else if (suggestion.section.toUpperCase() === '80C') limit = taxConfig.DEDUCTION_CAPS.SECTION_80C_GROUP;
+    else if (suggestion.section.toUpperCase() === '80CCD1B') limit = taxConfig.DEDUCTION_CAPS.SECTION_80CCD1B;
+    
+    const unclaimed = limit === Infinity ? suggestion.amount || 0 : Math.max(0, limit - appliedAmount);
+    
+    let marginalRate = 0;
+    if (taxResult.oldRegime?.slabBreakdown) {
+      const breakdown = taxResult.oldRegime.slabBreakdown;
+      for (let i = breakdown.length - 1; i >= 0; i--) {
+        if (breakdown[i].tax > 0) {
+          marginalRate = breakdown[i].rate;
+          break;
+        }
+      }
+    }
+    savingsAmount = Math.round(unclaimed * marginalRate);
+  }
+
+  return {
+    savingsType: 'ACTIONABLE',
+    savingsAmount,
+    displayMessage: '', 
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Part 3: Wording
+// -----------------------------------------------------------------------------
+function buildDuplicateRiskSuggestionText(appliedItem, excludedItem, statutoryLimit) {
+  if (!appliedItem || !excludedItem || statutoryLimit == null) {
+    throw new Error('buildDuplicateRiskSuggestionText requires appliedItem, excludedItem, and statutoryLimit');
+  }
+  return `Your Form 16 contains a verified Section ${appliedItem.section} deduction of ₹${formatIndianCurrency(appliedItem.amount)} which is the full statutory limit for self and family health insurance. Your investment records also show a Section ${appliedItem.section} amount of ₹${formatIndianCurrency(excludedItem.amount)}. This additional amount was excluded because applying both would exceed the statutory limit of ₹${formatIndianCurrency(statutoryLimit)}. No further action is needed for this deduction.`;
+}
+
+// -----------------------------------------------------------------------------
+// Part 4: Priority Ordering
+// -----------------------------------------------------------------------------
+function sortSuggestions(suggestions) {
+  return suggestions.slice().sort((a, b) => {
+    const getTier = (s) => {
+      const type = s.suggestionType;
+      if (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(type)) return 1;
+      if (['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(type)) return 2;
+      return 3; // REGIME_INAPPLICABLE, INFORMATIONAL, or NONE types fall here naturally when mapped later, but by pure suggestionType this works.
+    };
+    const tA = getTier(a);
+    const tB = getTier(b);
+    if (tA !== tB) return tA - tB;
+    
+    if (tA === 1 || tA === 3) {
+      return (a.section || '').localeCompare(b.section || '');
+    }
+    if (tA === 2) {
+      // For tier 2 we need savingsAmount, but sorting relies on computed savings. 
+      // If savings isn't provided directly, this will just rely on available properties, or fallback to 0.
+      const sA = a.savingsAmount || 0;
+      const sB = b.savingsAmount || 0;
+      return sB - sA;
+    }
+    return 0;
+  });
+}
+
 module.exports = {
   TAX_CONFIG,
   FY_CONFIG,      // backwards-compat alias
   DEFAULT_FY,
   SOURCE,
-  STATUS,
+  EXCLUSION_CATEGORY,
+  EXCLUSION_REASON,
   DED_SECTIONS,
   DED_SECTIONS_CAP,
   ALLOWED_SOURCES,
@@ -1320,4 +1732,10 @@ module.exports = {
   buildFinalSuggestions,
   assertTaxResultConsistency,
   toRegimeTrace,
+  filterValidDeductions,
+  assertNoZeroDeductions,
+  makeLineItem,
+  computeSuggestionSavings,
+  buildDuplicateRiskSuggestionText,
+  sortSuggestions,
 };

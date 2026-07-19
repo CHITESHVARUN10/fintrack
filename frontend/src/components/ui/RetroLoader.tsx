@@ -91,12 +91,18 @@ export function RetroLoader({
         </div>
       </div>
 
-      {/* Hazard progress bar */}
+      {/* Indeterminate smooth progress bar */}
+      <style>{`
+        @keyframes shimmerSweep {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+      `}</style>
       <div className="px-8 py-6">
-        <div className="h-6 w-full bg-white brutal-thin relative overflow-hidden">
+        <div className="h-1.5 w-full bg-surface-variant relative overflow-hidden rounded-full">
           <div
-            className="absolute inset-y-0 left-0 nb-hazard border-r-[3px] border-on-surface"
-            style={{ width: `${pct}%` }}
+            className="absolute inset-y-0 left-0 bg-brand-yellow w-1/2"
+            style={{ animation: 'shimmerSweep 1.5s infinite linear' }}
           />
         </div>
       </div>
@@ -109,32 +115,26 @@ export function RetroLoader({
           return (
             <div
               key={label}
-              className={`flex items-center gap-4 p-3 border-[3px] ${
+              className={`flex items-center gap-4 p-3 transition-all duration-200 border-l-[4px] ${
                 done
-                  ? 'bg-white border-on-surface opacity-60'
+                  ? 'bg-white border-transparent'
                   : active
-                    ? 'bg-brand-yellow border-on-surface shadow-brutal-sm -translate-x-[2px] -translate-y-[2px]'
-                    : 'bg-white border-on-surface-variant border-dashed'
+                    ? 'bg-surface-container border-brand-yellow'
+                    : 'bg-white border-transparent'
               }`}
             >
               <div
-                className={`w-8 h-8 border-[3px] border-on-surface flex items-center justify-center shrink-0 ${
-                  done
-                    ? 'bg-on-surface'
-                    : active
-                      ? 'nb-hazard'
-                      : 'bg-surface-container-high nb-step-pending'
-                }`}
+                className={`w-8 h-8 flex items-center justify-center shrink-0`}
               >
-                <Icon
-                  name={done ? 'check' : active ? 'sync' : 'hourglass_empty'}
-                  className={active && !done ? 'text-on-surface animate-spin' : 'text-white'}
-                  filled={done}
-                />
+                {done ? (
+                  <Icon name="check" className="text-on-surface-variant text-xl" />
+                ) : active ? (
+                  <div className="w-3 h-3 rounded-full bg-brand-yellow animate-pulse" />
+                ) : null}
               </div>
               <span
-                className={`font-bold uppercase ${
-                  active ? 'text-on-surface' : done ? 'text-on-surface' : 'text-on-surface-variant'
+                className={`font-bold uppercase tracking-wide ${
+                  active ? 'text-on-surface' : done ? 'text-on-surface-variant' : 'text-on-surface-variant opacity-40'
                 }`}
               >
                 {label}

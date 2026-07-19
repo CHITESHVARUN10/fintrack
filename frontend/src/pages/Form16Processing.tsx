@@ -4,6 +4,7 @@ import { form16Service } from '../services/api'
 import { Icon } from '../components/ui/Icon'
 import { Button } from '../components/ui/Button'
 import { RetroLoader } from '../components/ui/RetroLoader'
+import { AuthBackground } from '../components/layout/AuthBackground'
 
 const STEPS = [
   { label: 'Uploading PDF', icon: 'check' },
@@ -68,8 +69,11 @@ export function Form16Processing() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 bg-grid-pattern">
-      <RetroLoader steps={STEPS.map((s) => s.label)} step={step} title="Processing Form 16" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative bg-white">
+      <AuthBackground />
+      <div className="relative z-10 w-full flex justify-center">
+        <RetroLoader steps={STEPS.map((s) => s.label)} step={step} title="Processing Form 16" />
+      </div>
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { PageHeader } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { Card } from '../components/ui/Card'
+import { DownloadButton } from '../components/ui/DownloadButton'
 import { reportService, type ReportKind, type ReportFormat } from '../services/api'
 
 const reportTypes: { icon: string; title: string; desc: string; kind: ReportKind }[] = [
@@ -123,7 +123,7 @@ export function Reports() {
               <button
                 onClick={() => setFormat('PDF')}
                 disabled={kind === 'tax'}
-                className={`flex-1 border-[3px] border-on-surface p-2 font-bold transition-all ${
+                className={`flex-1 border-[3px] border-on-surface p-2 font-bold transition-all active:translate-x-[3px] active:translate-y-[3px] active:shadow-none ${
                   format === 'PDF'
                     ? 'bg-brand-yellow shadow-brutal-sm -translate-x-[1px] -translate-y-[1px]'
                     : 'bg-white hover:bg-surface-container-high'
@@ -134,7 +134,7 @@ export function Reports() {
               <button
                 onClick={() => setFormat('EXCEL')}
                 disabled={kind === 'tax'}
-                className={`flex-1 border-[3px] border-on-surface p-2 font-bold transition-all ${
+                className={`flex-1 border-[3px] border-on-surface p-2 font-bold transition-all active:translate-x-[3px] active:translate-y-[3px] active:shadow-none ${
                   format === 'EXCEL'
                     ? 'bg-brand-yellow shadow-brutal-sm -translate-x-[1px] -translate-y-[1px]'
                     : 'bg-white hover:bg-surface-container-high'
@@ -150,10 +150,14 @@ export function Reports() {
             )}
           </Card>
 
-          <Button variant="yellow" size="lg" className="mt-2" onClick={handleGenerate} disabled={loading}>
-            <Icon name={loading ? 'sync' : 'description'} className={`text-xl ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Generating…' : 'Generate Report'}
-          </Button>
+          <DownloadButton
+            variant={format === 'PDF' || kind === 'tax' ? 'pdf' : 'excel'}
+            size="large"
+            className="w-full mt-2"
+            onClick={handleGenerate}
+            loading={loading}
+            label="GENERATE REPORT"
+          />
         </div>
 
         {/* Report type grid */}
@@ -166,7 +170,7 @@ export function Reports() {
               <button
                 key={t.title}
                 onClick={() => setSelected(i)}
-                className={`border-[3px] border-on-surface p-xl h-full flex flex-col justify-center items-center gap-md text-center transition-all ${
+                className={`border-[3px] border-on-surface p-xl h-full flex flex-col justify-center items-center gap-md text-center transition-all active:translate-x-[3px] active:translate-y-[3px] active:shadow-none ${
                   selected === i
                     ? 'bg-brand-yellow shadow-brutal-sm -translate-x-[2px] -translate-y-[2px]'
                     : 'bg-white hover:bg-surface-container-high'

@@ -10,6 +10,7 @@ interface StatCardProps {
   delta?: number
   icon?: string
   color?: 'yellow' | 'white' | 'cyan'
+  stagger?: number
 }
 
 const colorClasses = {
@@ -25,6 +26,7 @@ export function StatCard({
   delta,
   icon,
   color = 'yellow',
+  stagger = 0,
 }: StatCardProps) {
   const positive = (delta ?? 0) >= 0
   return (
@@ -33,6 +35,7 @@ export function StatCard({
         'brutal p-md flex flex-col gap-sm nb-card-enter nb-card-hover',
         colorClasses[color],
       )}
+      style={{ '--nb-stagger': `${stagger}ms` } as React.CSSProperties}
     >
       <div className="flex justify-between items-start">
         <h3 className="font-bold text-xs uppercase tracking-wider text-on-surface">

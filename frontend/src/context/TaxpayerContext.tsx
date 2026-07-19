@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, type ReactNode } from 'react'
+import { createContext, useContext, useReducer, useCallback, type ReactNode } from 'react'
 import type { Form16, TaxpayerContext as TaxpayerContextType, DeductionLineItem, GrossSalarySource } from '../types'
 
 // -----------------------------------------------------------------------------
@@ -145,16 +145,22 @@ interface State {
 
 type Action =
   | { type: 'LOAD'; record: Form16 }
+  | { type: 'SET_TAXPAYER_CONTEXT'; payload: TaxpayerContextType; record: Form16 }
   | { type: 'SET_FROM_FORM'; form: Partial<Form16> }
   | { type: 'LOAD_DEDUCTIONS'; items: DeductionLineItem[] }
   | { type: 'FINALIZE' }
-  | { type: 'RESET' }
+  | { type: 'RESET_TAXPAYER_CONTEXT' }
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case 'LOAD':
-      return { base: action.record, ctx: fromForm16(action.record) }
-    case 'RESET':
+    case 'SET_TAXPAYER_CONTEXT': {
+      // FULL REPLACEMENT — DO NOT MERGE WITH PREVIOUS STATE
+      return { base: action.record, ctx: action.payload };
+    }
+    case 'LOAD': {
+      return { base: action.record, ctx: fromForm16(action.record) };
+    }
+    case 'RESET_TAXPAYER_CONTEXT':
       return { base: null, ctx: null }
     case 'SET_FROM_FORM': {
       if (!state.base) return state
@@ -224,11 +230,13 @@ export function TaxpayerProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { base: null, ctx: null })
   const value: TaxpayerContextValue = {
     ctx: state.ctx,
-    load: (record) => dispatch({ type: 'LOAD', record }),
-    setFromForm: (form) => dispatch({ type: 'SET_FROM_FORM', form }),
-    loadDeductions: (items) => dispatch({ type: 'LOAD_DEDUCTIONS', items }),
-    finalize: () => dispatch({ type: 'FINALIZE' }),
-    reset: () => dispatch({ type: 'RESET' }),
+    load: useCallback((record: Form16) => {
+      dispatch({ type: 'SET_TAXPAYER_CONTEXT', payload: fromForm16(record), record })
+    }, []),
+    setFromForm: useCallback((form: Partial<Form16>) => dispatch({ type: 'SET_FROM_FORM', form }), []),
+    loadDeductions: useCallback((items: DeductionLineItem[]) => dispatch({ type: 'LOAD_DEDUCTIONS', items }), []),
+    finalize: useCallback(() => dispatch({ type: 'FINALIZE' }), []),
+    reset: useCallback(() => dispatch({ type: 'RESET_TAXPAYER_CONTEXT' }), []),
   }
   return <TaxpayerContext.Provider value={value}>{children}</TaxpayerContext.Provider>
 }

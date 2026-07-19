@@ -328,7 +328,7 @@ export function Subscriptions() {
           <button
             key={f}
             onClick={() => setFreq(f)}
-            className={`brutal-sm px-4 py-2 font-bold uppercase ${
+            className={`brutal-sm px-4 py-2 font-bold uppercase active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${
               freq === f
                 ? 'bg-brand-yellow text-on-surface'
                 : 'bg-white text-on-surface hover:bg-surface-container-high'
@@ -367,14 +367,14 @@ export function Subscriptions() {
             <div className="flex gap-2 mt-2">
               <button
                 onClick={() => setEditing(sub)}
-                className="bg-white p-2 brutal-thin hover:bg-surface-container-high"
+                className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
                 title="Edit"
               >
                 <Icon name="edit" className="text-sm" />
               </button>
               <button
                 onClick={() => handleDelete(sub)}
-                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error"
+                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
                 title="Delete"
               >
                 <Icon name="delete" className="text-sm" />

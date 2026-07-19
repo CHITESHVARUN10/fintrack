@@ -10,7 +10,7 @@ import { initials } from '../lib/format'
 function Toggle({ label, desc, defaultOn = false }: { label: string; desc: string; defaultOn?: boolean }) {
   const [on, setOn] = useState(defaultOn)
   return (
-    <div className="flex items-center justify-between p-4 bg-white border-[3px] border-on-surface shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all">
+    <div className="flex items-center justify-between p-4 bg-white border-[3px] border-on-surface shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all">
       <div>
         <p className="font-bold">{label}</p>
         <p className="font-medium text-on-surface-variant text-sm mt-1">{desc}</p>

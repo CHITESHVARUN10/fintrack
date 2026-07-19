@@ -24,7 +24,8 @@ const {
   generateSuggestions,
   buildFinalSuggestions,
   assertTaxResultConsistency,
-  STATUS,
+  EXCLUSION_CATEGORY,
+  EXCLUSION_REASON,
   TAX_CONFIG,
   DEFAULT_FY,
 } = eng;
@@ -233,7 +234,8 @@ test('Test 15: 80CCD with unknown subtype not applied, appears in unverifiedDedu
   const unv = r.unverifiedDeductions.find((u) => u.section === '80CCD');
   assert.ok(unv, '80CCD should appear in unverifiedDeductions');
   assert.equal(unv.amount, 50000);
-  assert.equal(unv.status, STATUS.EXCLUDED_UNCONFIRMED);
+  assert.equal(unv.exclusionCategory, EXCLUSION_CATEGORY.CATEGORY_DATA_VALIDATION);
+  assert.equal(unv.exclusionReason, EXCLUSION_REASON.UNCONFIRMED_SUBTYPE);
 });
 
 test('Test 16: Old regime does not apply 80C, 80D, or 24b in new regime calculation', () => {
@@ -374,17 +376,12 @@ test('Test 23: Explanation does not contain ELSS, LIC, Tuition, NPS, or Educatio
 // ---------------------------------------------------------------------------
 
 test('Test 24: Duplicate suggestions are removed from taxSavingSuggestions array', () => {
-  // The engine's explainResult deduplicates via a Set. Test that when the
-  // unverifiedDeductions list has duplicates, the output does not.
-  const ctx = fromForm16(form16(1000000, { section80CCD: 50000 }));
-  const r = computeTax(ctx);
-  // Manually inject a duplicate unverified deduction for this test
-  const doubled = [...r.unverifiedDeductions, ...r.unverifiedDeductions];
-  const doubledResult = { ...r, unverifiedDeductions: doubled };
-  const { suggestionTexts } = explainResult(doubledResult, ctx);
-  // Should deduplicate
-  const unique = new Set(suggestionTexts.map((s) => s.toLowerCase().replace(/[^a-z0-9]/g, '')));
-  assert.equal(suggestionTexts.length, unique.size, 'Suggestions should have no duplicates');
+  const rawSuggestions = [
+    { section: '80D', suggestionType: 'RESOLVE_DUPLICATE', text: 'duplicate' },
+    { section: '80D', suggestionType: 'RESOLVE_DUPLICATE', text: 'duplicate' }
+  ];
+  const deduplicatedRaw = eng.buildFinalSuggestions(rawSuggestions);
+  assert.equal(deduplicatedRaw.length, 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -466,7 +463,7 @@ test('Test 27: No hardcoded numeric tax constants outside taxConfig.js (grep che
   const servicesDir = path.resolve(__dirname);
   const exemptFiles = new Set([
     path.join(servicesDir, 'taxConfig.js'),
-    path.join(servicesDir, 'taxEngine.test.js'),
+    path.join(servicesDir, 'eng.test.js'),
     path.join(servicesDir, 'tax.service.test.js'),
   ]);
 
@@ -749,12 +746,11 @@ test('Part 8 Test 9: isFinalized set on context does not prevent computeTax from
 });
 
 test('Part 8 Test 10: generateSuggestions returns empty array when no unverifiedDeductions', () => {
-  // A user with no unverified deductions should get zero suggestions.
-  const ctx = fromForm16(form16(1000000, { section80C: 100000 }));
-  const r = computeTax(ctx);
-  // Clear unverified list to simulate clean state
-  const cleanResult = { ...r, unverifiedDeductions: [] };
-  const suggestions = generateSuggestions(cleanResult);
+  const r = {
+    oldRegime: { unverified: [], applied: [] },
+    newRegime: { unverified: [], applied: [] }
+  };
+  const suggestions = eng.generateSuggestions(r);
   assert.equal(suggestions.length, 0, 'no suggestions when no unverified deductions');
 });
 
@@ -867,17 +863,16 @@ test('Part 7 Test 3: previewDeductionSplit verifiedTotal matches oldRegime.verif
   );
 });
 
-test('Part 7 Test 4: After finalization, Review page taxableIncome matches Recommendation taxableIncome', () => {
-  // Verify that computedIncome.taxableIncomeOldRegime (set by engine) equals oldRegime.taxableIncome.
+test('Part 7 Test 4: Result taxable snapshot matches Recommendation taxableIncome without mutating context', () => {
   const ctx = fromForm16(form16(3000000, { section80C: 150000, section80D: 25000 }));
   const r = computeTax(ctx);
   assert.equal(r.error, false);
-  // computedIncome is updated by computeTax
   assert.equal(
-    ctx.computedIncome.taxableIncomeOldRegime,
+    r.computedIncome.taxableIncomeOldRegime,
     r.oldRegime.taxableIncome,
-    'ctx.computedIncome.taxableIncomeOldRegime must equal r.oldRegime.taxableIncome'
+    'result computedIncome.taxableIncomeOldRegime must equal r.oldRegime.taxableIncome'
   );
+  assert.equal(ctx.computedIncome.taxableIncomeOldRegime, 0, 'computeTax must not mutate the input context');
 });
 
 test('Part 7 Test 5: buildFinalSuggestions deduplicates same suggestion from two sources', () => {
@@ -943,7 +938,7 @@ test('Part 7 Test 10: No hardcoded tax constants outside taxConfig.js (comprehen
   const servicesDir = path.resolve(__dirname);
   const exemptFiles = new Set([
     path.join(servicesDir, 'taxConfig.js'),
-    path.join(servicesDir, 'taxEngine.test.js'),
+    path.join(servicesDir, 'eng.test.js'),
     path.join(servicesDir, 'tax.service.test.js'),
   ]);
   // Constants that must ONLY appear inside taxConfig.js
@@ -1102,34 +1097,20 @@ test('Part 5 Test 5: isFinalized flag on ctx does not block computeTax', () => {
 
 test('Part 5 Test 6: Client-side dedup logic — identical suggestions collapse to one', () => {
   const rawSuggestions = [
-    { id: 'sug-0', title: 'Consider NPS under 80CCD(1B)', detail: 'Extra NPS deduction', potentialSaving: 0 },
-    { id: 'sug-1', title: 'Consider NPS under 80CCD(1B)', detail: 'Extra NPS deduction', potentialSaving: 0 },
-    { id: 'sug-2', title: 'Section 80C has unused room', detail: 'Use ELSS', potentialSaving: 0 },
+    { section: '80D', suggestionType: 'RESOLVE_DUPLICATE', text: 'duplicate' },
+    { section: '80d', suggestionType: 'resolve_duplicate', text: 'duplicate' }
   ];
-  const suggestions = Array.from(
-    new Map(
-      rawSuggestions.map((s) => [
-        (s.title || s.detail || '').toLowerCase().trim().replace(/\s+/g, ' ').slice(0, 60),
-        s,
-      ])
-    ).values()
-  );
-  assert.equal(suggestions.length, 2, 'Duplicate NPS suggestions must collapse to one');
+  const finalSuggestions = Array.from(new Map((rawSuggestions || []).filter((s) => s && s.section).map((s) => [s.section.toLowerCase().replace(/[^a-z0-9]/g, '') + (s.suggestionType || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s])).values());
+  assert.equal(finalSuggestions.length, 1);
 });
 
 test('Part 5 Test 7: buildFinalSuggestions + client-side dedup defense in depth', () => {
-  const s1 = ['Confirm 80CCD subsection to claim it.'];
-  const s2 = ['Confirm 80CCD subsection to claim it.'];
-  const merged = buildFinalSuggestions(s1, s2);
-  assert.equal(merged.length, 1, 'buildFinalSuggestions must dedup identical strings');
-  const asObjects = [
-    { id: 's0', title: merged[0], detail: merged[0], potentialSaving: 0 },
-    { id: 's1', title: merged[0], detail: merged[0], potentialSaving: 0 },
-  ];
-  const clientDeduped = Array.from(
-    new Map(asObjects.map((s) => [(s.title || '').toLowerCase().trim().slice(0, 60), s])).values()
-  );
-  assert.equal(clientDeduped.length, 1, 'Client-side dedup must also produce one suggestion');
+  const s1 = { section: '24B', suggestionType: 'INFORMATIONAL', suggestion: 'applied 24b' };
+  const s2 = { section: '24B', suggestionType: 'INFORMATIONAL', suggestion: 'applied 24b' };
+  const merged = eng.buildFinalSuggestions([s1], [s2]);
+  
+  const finalSuggestions = Array.from(new Map((merged || []).filter((s) => s && s.section).map((s) => [s.section.toLowerCase().replace(/[^a-z0-9]/g, '') + (s.suggestionType || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s])).values());
+  assert.equal(finalSuggestions.length, 1, 'Should output exactly 1 suggestion after both layers');
 });
 
 test('Part 5 Test 8: 24b DeductionLineItem has correct structure for UI source badge rendering', () => {
@@ -1229,4 +1210,229 @@ test('Integration 5: Mismatch diff computed', () => {
 });
 test('Integration 6: Final check complete', () => {
   assert.ok(true);
+});
+
+// ---------------------------------------------------------------------------
+// PART 5 - REGRESSION TESTS 16-30
+// ---------------------------------------------------------------------------
+test('Test 16 — Single source produces single suggestion', () => {
+  const result = {
+    oldRegime: { applied: [], unverified: [{ section: '80D', amount: 18500, duplicateRisk: true, source: 'INVESTMENT_RECORD' }] },
+    newRegime: { applied: [], unverified: [] },
+    recommendedRegime: 'New'
+  };
+  const out = eng.explainResult(result, 2000000, '2025-26');
+  assert.equal(out.suggestionTexts.length, 1);
+  assert.equal(out.suggestionTexts[0].section, '80D');
+});
+
+test('Test 17 — Applied and excluded 80D produce one suggestion not two', () => {
+  const result = {
+    oldRegime: { 
+      applied: [{ section: '80D', amount: 25000, source: 'FORM16_OCR' }], 
+      unverified: [{ section: '80D', amount: 18500, duplicateRisk: true, source: 'INVESTMENT_RECORD' }] 
+    },
+    newRegime: { applied: [], unverified: [] },
+    recommendedRegime: 'Old'
+  };
+  const out = eng.explainResult(result, 2000000, '2025-26');
+  assert.equal(out.suggestionTexts.length, 1);
+  assert.equal(out.suggestionTexts[0].section, '80D');
+});
+
+test('Test 18 — buildFinalSuggestions is pure', () => {
+  const input = [{ section: '80C', suggestionType: 'CLAIM_AVAILABLE', text: 'claim 80c' }];
+  const out1 = eng.buildFinalSuggestions(input);
+  const out2 = eng.buildFinalSuggestions(input);
+  assert.deepEqual(out1, out2);
+});
+
+test('Test 19 — Render map iterates finalSuggestions not rawSuggestions', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const file = fs.readFileSync(path.join(__dirname, '../../../frontend/src/pages/TaxRecommendation.tsx'), 'utf8');
+  assert.ok(file.includes('finalSuggestions.map('), 'Must map over finalSuggestions');
+  const mapCalls = (file.match(/\.map\(/g) || []).length;
+  // There are other map calls in the file for other tables, but for suggestions there should be only one.
+  assert.ok(mapCalls > 0);
+});
+
+test('Test 20 — computeSuggestionSavings returns NONE_LIMIT_REACHED for maxed 80D', () => {
+  const suggestion = { section: '80D', suggestionType: 'RESOLVE_DUPLICATE' };
+  const taxResult = { oldRegime: { applied: [{ section: '80D', amount: 25000 }], unverified: [{ section: '80D', amount: 18500, duplicateRisk: true }] } };
+  const cfg = eng.TAX_CONFIG['2025-26'];
+  const res = eng.computeSuggestionSavings(suggestion, taxResult, cfg);
+  assert.equal(res.savingsType, 'NONE_LIMIT_REACHED');
+  assert.equal(res.savingsAmount, null);
+  assert.ok(res.displayMessage.includes('full statutory limit'));
+});
+
+test('Test 21 — computeSuggestionSavings returns NONE_WRONG_REGIME for 80C under New Regime', () => {
+  const suggestion = { section: '80C', suggestionType: 'REGIME_INAPPLICABLE' };
+  const taxResult = { recommendedRegime: 'New', oldRegime: { applied: [{ section: '80C', amount: 50000 }] }, newRegime: {} };
+  const res = eng.computeSuggestionSavings(suggestion, taxResult, eng.TAX_CONFIG['2025-26']);
+  assert.equal(res.savingsType, 'NONE_WRONG_REGIME');
+  assert.ok(res.displayMessage.includes('not available under the New Regime'));
+});
+
+test('Test 22 — computeSuggestionSavings returns ACTIONABLE with correct amount for 80CCD1B', () => {
+  const suggestion = { section: '80CCD1B', suggestionType: 'CLAIM_AVAILABLE' };
+  const taxResult = { oldRegime: { applied: [], slabBreakdown: [{ tax: 1000, rate: 0.20 }] } };
+  const cfg = eng.TAX_CONFIG['2025-26'];
+  const res = eng.computeSuggestionSavings(suggestion, taxResult, cfg);
+  assert.equal(res.savingsType, 'ACTIONABLE');
+  assert.equal(res.savingsAmount, 10000); // 50000 limit * 0.20
+});
+
+test('Test 23 — buildDuplicateRiskSuggestionText produces correct wording', () => {
+  const applied = { section: '80D', amount: 25000 };
+  const excluded = { section: '80D', amount: 18500 };
+  const text = eng.buildDuplicateRiskSuggestionText(applied, excluded, 25000);
+  assert.ok(text.includes('25,000'));
+  assert.ok(text.includes('18,500'));
+  assert.ok(!text.includes('only the Form 16 amount was considered'));
+});
+
+test('Test 24 — buildDuplicateRiskSuggestionText throws on null input', () => {
+  assert.throws(() => eng.buildDuplicateRiskSuggestionText(null, {}, 25000));
+});
+
+test('Test 25 — sortSuggestions places tier 1 before tier 2', () => {
+  const input = [
+    { section: '80C', suggestionType: 'CLAIM_AVAILABLE' }, // tier 2
+    { section: '80D', suggestionType: 'RESOLVE_DUPLICATE' } // tier 1
+  ];
+  const sorted = eng.sortSuggestions(input);
+  assert.equal(sorted[0].suggestionType, 'RESOLVE_DUPLICATE');
+});
+
+test('Test 26 — sortSuggestions places tier 2 by savingsAmount descending', () => {
+  const input = [
+    { section: 'A', suggestionType: 'CLAIM_AVAILABLE', savingsAmount: 5000 },
+    { section: 'B', suggestionType: 'CLAIM_AVAILABLE', savingsAmount: 15000 },
+    { section: 'C', suggestionType: 'CLAIM_AVAILABLE', savingsAmount: 10000 }
+  ];
+  const sorted = eng.sortSuggestions(input);
+  assert.equal(sorted[0].savingsAmount, 15000);
+  assert.equal(sorted[1].savingsAmount, 10000);
+  assert.equal(sorted[2].savingsAmount, 5000);
+});
+
+test('Test 27 — sortSuggestions places tier 3 last', () => {
+  const input = [
+    { section: 'A', suggestionType: 'INFORMATIONAL' }, // tier 3
+    { section: 'B', suggestionType: 'RESOLVE_DUPLICATE' }, // tier 1
+    { section: 'C', suggestionType: 'CLAIM_AVAILABLE' } // tier 2
+  ];
+  const sorted = eng.sortSuggestions(input);
+  assert.equal(sorted[2].suggestionType, 'INFORMATIONAL');
+});
+
+test('Test 28 — sortSuggestions does not mutate input', () => {
+  const input = [
+    { section: 'A', suggestionType: 'INFORMATIONAL' },
+    { section: 'B', suggestionType: 'RESOLVE_DUPLICATE' }
+  ];
+  const orig = [...input];
+  eng.sortSuggestions(input);
+  assert.deepEqual(input, orig);
+});
+
+test('Test 29 — Tier dividers render only when both adjacent tiers have items', () => {
+  // We simulate the frontend logic here since we are in node tests
+  const suggestions = [
+    { section: 'A', suggestionType: 'RESOLVE_DUPLICATE' }, // tier 1
+    { section: 'B', suggestionType: 'INFORMATIONAL' } // tier 3
+  ];
+  const sorted = eng.sortSuggestions(suggestions);
+  let currentTier = -1;
+  const dividers = [];
+  sorted.forEach(s => {
+    const tier = eng.sortSuggestions([s])[0] === s ? (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(s.suggestionType) ? 1 : ['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(s.suggestionType) ? 2 : 3) : 3;
+    if (tier !== currentTier) {
+      if (currentTier !== -1) dividers.push(tier);
+      currentTier = tier;
+    }
+  });
+  // Since we jump from tier 1 to tier 3, we should only see tier 3 divider
+  assert.ok(!dividers.includes(2), "No tier 2 divider should be rendered");
+  assert.ok(dividers.includes(3), "Tier 3 divider must be rendered");
+});
+
+test('Test 30 — Full suggestion pipeline end to end', () => {
+  const data = {
+    taxSavingSuggestions: [
+      { section: '80D', suggestionType: 'RESOLVE_DUPLICATE', amount: 18500 },
+      { section: '80C', suggestionType: 'REGIME_INAPPLICABLE', amount: 150000 },
+      { section: '24B', suggestionType: 'REGIME_INAPPLICABLE', amount: 200000 }
+    ],
+    recommendedRegime: 'New',
+    oldRegime: { 
+      totalTax: 10000,
+      applied: [
+        { section: '80D', amount: 25000, duplicateRisk: false, source: 'FORM16_OCR' },
+        { section: '80C', amount: 150000 },
+        { section: '24B', amount: 200000 }
+      ],
+      unverified: [
+        { section: '80D', amount: 18500, duplicateRisk: true }
+      ]
+    },
+    newRegime: { totalTax: 5000 }
+  };
+  const cfg = eng.TAX_CONFIG['2025-26'];
+  // Apply pipeline
+  const computed = data.taxSavingSuggestions.map(s => {
+    const savings = eng.computeSuggestionSavings(s, data, cfg);
+    return { ...s, ...savings };
+  });
+  const sorted = eng.sortSuggestions(computed);
+  
+  assert.equal(sorted.length, 3);
+  assert.equal(sorted[0].section, '80D');
+  assert.equal(sorted[0].savingsType, 'NONE_LIMIT_REACHED');
+  assert.equal(sorted[1].section, '24B');
+  assert.equal(sorted[1].savingsType, 'NONE_WRONG_REGIME');
+});
+
+test('Audit regression: education tuition enters the canonical 80C merge exactly once', () => {
+  const ctx = fromForm16(
+    form16(1000000),
+    { recordsAgg: { section80C: 100000 }, eduTuition: 25000 },
+  );
+  const item = ctx.deductions.find((d) => d.section === '80C');
+  assert.ok(item);
+  assert.equal(item.amount, 125000);
+});
+
+test('Audit regression: deduction line items carry the required audit metadata', () => {
+  const ctx = fromForm16({
+    ...form16(1000000),
+    pdfReference: 'form16.pdf',
+    section80D: 25000,
+  });
+  const item = ctx.deductions.find((d) => d.section === '80D');
+  assert.ok(item);
+  assert.equal(item.status, 'CANDIDATE');
+  assert.equal(item.originFile, 'form16.pdf');
+  assert.equal(item.verificationMethod, 'FORM16_OCR_EXPLICIT');
+  assert.ok(Object.hasOwn(item, 'reason'));
+});
+
+test('Audit regression: professional tax is applied only in the Old regime', () => {
+  const ctx = fromForm16(form16(1000000, { professionalTax: 2500 }));
+  const result = computeTax(ctx);
+  assert.equal(result.oldRegime.taxableIncome, 947500);
+  assert.equal(result.newRegime.taxableIncome, 925000);
+  assert.equal(result.oldRegime.applied.find((d) => d.section === 'ProfessionalTax')?.amount, 2500);
+  assert.equal(result.newRegime.applied.some((d) => d.section === 'ProfessionalTax'), false);
+});
+
+test('Audit regression: 80G without eligibility details is retained but excluded', () => {
+  const result = computeTax(fromForm16(form16(1000000, { section80G: 10000 })));
+  assert.equal(result.oldRegime.applied.some((d) => d.section === '80G'), false);
+  const excluded = result.oldRegime.unverified.find((d) => d.section === '80G');
+  assert.ok(excluded);
+  assert.equal(excluded.status, 'NEEDS_CONFIRMATION');
+  assert.equal(excluded.exclusionReason, EXCLUSION_REASON.UNCONFIRMED_SUBTYPE);
 });

@@ -60,8 +60,8 @@ export function Table<T>({
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-t-2 border-on-surface',
-                    i % 2 === 1 && 'bg-surface-container-low',
+                    'border-t-[2px] border-on-surface/30 transition-none hover:bg-brand-yellow/50',
+                    i % 2 === 1 && 'bg-surface-container-low/80',
                     onRowClick && 'cursor-pointer hover:bg-brand-yellow',
                   )}
                 >

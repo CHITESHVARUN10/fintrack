@@ -273,14 +273,14 @@ export function Recurring() {
             <div className="flex gap-2 mt-2">
               <button
                 onClick={() => setEditing(p)}
-                className="bg-white p-2 brutal-thin hover:bg-surface-container-high"
+                className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
                 title="Edit"
               >
                 <Icon name="edit" className="text-sm" />
               </button>
               <button
                 onClick={() => handleDelete(p)}
-                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error"
+                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
                 title="Delete"
               >
                 <Icon name="delete" className="text-sm" />

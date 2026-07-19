@@ -1,12 +1,111 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { motion } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
 import { form16Service } from '../services/api'
 import { useAsync } from '../hooks/useAsync'
-import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
+import { PageHeader } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
 import type { RegimeTrace, DeductionLineItem, CalculationTraceStep } from '../types'
+import { TAX_CONFIG } from '../lib/tax'
+
+// ----- logic utilities --------------------------------------------------------
+
+function computeSuggestionSavings(suggestion: any, data: any, taxConfig: any) {
+  if (suggestion.suggestionType === 'RESOLVE_DUPLICATE') {
+    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk && d.source === 'FORM16_OCR');
+    const excludedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && d.duplicateRisk);
+    
+    const appliedAmount = appliedItem ? appliedItem.amount : 0;
+    const excludedAmount = excludedItem ? excludedItem.amount : 0;
+    
+    let limit = 0;
+    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80D_SELF;
+    if (suggestion.section.toUpperCase() === '80C') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80C_GROUP;
+    
+    if (appliedAmount >= limit) {
+      return {
+        savingsType: 'NONE_LIMIT_REACHED',
+        savingsAmount: null,
+        displayMessage: `No additional tax benefit available. Your Form 16 already claims ${formatCurrency(appliedAmount)} under Section ${suggestion.section} which is the full statutory limit. The additional ${formatCurrency(excludedAmount)} from your investment records was excluded to prevent a duplicate claim.`,
+      };
+    }
+  }
+
+  if (suggestion.suggestionType === 'REGIME_INAPPLICABLE' && data.recommendedRegime === 'New') {
+    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase());
+    const amount = appliedItem ? appliedItem.amount : suggestion.amount || 0;
+    
+    const oldTax = data.regimes?.old?.totalTax || 0;
+    const newTax = data.regimes?.new?.totalTax || 0;
+    const diff = oldTax - newTax;
+    let switchNote = '';
+    if (diff < 0) switchNote = ' (Switching to the Old Regime is recommended).';
+    else switchNote = ` (However, the New Regime still saves you ${formatCurrency(Math.abs(diff))} overall).`;
+    
+    return {
+      savingsType: 'NONE_WRONG_REGIME',
+      savingsAmount: null,
+      displayMessage: `This deduction is not available under the New Regime. If you switch to the Old Regime and it produces a lower overall liability this deduction would reduce your taxable income by ${formatCurrency(amount)}.${switchNote}`,
+    };
+  }
+
+  let savingsAmount = 0;
+  if (suggestion.suggestionType === 'CLAIM_AVAILABLE' || suggestion.suggestionType === 'CONFIRM_SUBTYPE') {
+    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk);
+    const appliedAmount = appliedItem ? appliedItem.amount : 0;
+    
+    let limit = Infinity;
+    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80D_SELF;
+    else if (suggestion.section.toUpperCase() === '80C') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80C_GROUP;
+    else if (suggestion.section.toUpperCase() === '80CCD1B') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80CCD1B;
+    
+    const unclaimed = limit === Infinity ? suggestion.amount || 0 : Math.max(0, limit - appliedAmount);
+    
+    let marginalRate = 0;
+    if (data.regimes?.old?.slabBreakdown) {
+      const breakdown = data.regimes.old.slabBreakdown;
+      for (let i = breakdown.length - 1; i >= 0; i--) {
+        if (breakdown[i].tax > 0) {
+          marginalRate = breakdown[i].rate;
+          break;
+        }
+      }
+    }
+    savingsAmount = Math.round(unclaimed * marginalRate);
+  }
+
+  return {
+    savingsType: 'ACTIONABLE',
+    savingsAmount,
+    displayMessage: '', 
+  };
+}
+
+function sortSuggestions(suggestions: any[]) {
+  return suggestions.slice().sort((a, b) => {
+    const getTier = (s: any) => {
+      const type = s.suggestionType;
+      if (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(type)) return 1;
+      if (['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(type)) return 2;
+      return 3;
+    };
+    const tA = getTier(a);
+    const tB = getTier(b);
+    if (tA !== tB) return tA - tB;
+    
+    if (tA === 1 || tA === 3) {
+      return (a.section || '').localeCompare(b.section || '');
+    }
+    if (tA === 2) {
+      const sA = a.savingsAmount || 0;
+      const sB = b.savingsAmount || 0;
+      return sB - sA;
+    }
+    return 0;
+  });
+}
 
 // ----- small building blocks ------------------------------------------------
 
@@ -84,7 +183,7 @@ function SlabTable({ slabs }: { slabs: RegimeTrace['slabs'] }) {
   return (
     <table className="w-full text-sm font-mono-data">
       <thead>
-        <tr className="text-left border-b-2 border-on-surface text-on-surface-variant uppercase text-xs">
+        <tr className="text-left bg-on-surface text-white uppercase text-xs">
           <th className="py-1 pr-2 font-bold">Slab</th>
           <th className="py-1 px-2 font-bold text-right">Rate</th>
           <th className="py-1 px-2 font-bold text-right">Income in Band</th>
@@ -93,7 +192,7 @@ function SlabTable({ slabs }: { slabs: RegimeTrace['slabs'] }) {
       </thead>
       <tbody>
         {slabs.map((s, i) => (
-          <tr key={i} className="border-b border-on-surface/40">
+          <tr key={i} className={`border-t-[2px] border-on-surface/30 transition-none hover:bg-brand-yellow/50 ${i % 2 === 1 ? 'bg-surface-container-low/80' : ''}`}>
             <td className="py-1 pr-2">{s.label}</td>
             <td className="py-1 px-2 text-right">{s.rate > 0 ? `${Math.round(s.rate * 100)}%` : 'Nil'}</td>
             <td className="py-1 px-2 text-right">{formatCurrency(s.incomeInBand)}</td>
@@ -384,7 +483,7 @@ function CalculationTraceTable({ trace }: { trace?: CalculationTraceStep[] | nul
     <div className="bg-white brutal p-lg overflow-x-auto">
       <table className="w-full text-xs font-mono-data">
         <thead>
-          <tr className="text-left border-b-2 border-on-surface text-on-surface-variant uppercase">
+          <tr className="text-left bg-on-surface text-white uppercase text-xs">
             <th className="py-1 pr-3 font-bold">Step</th>
             <th className="py-1 px-3 font-bold">Input Value</th>
             <th className="py-1 px-3 font-bold">Formula</th>
@@ -394,10 +493,10 @@ function CalculationTraceTable({ trace }: { trace?: CalculationTraceStep[] | nul
         </thead>
         <tbody>
           {trace.map((s, i) => (
-            <tr key={i} className="border-b border-on-surface/40 align-top">
+            <tr key={i} className={`border-t-[2px] border-on-surface/30 align-top transition-none hover:bg-brand-yellow/50 ${i % 2 === 1 ? 'bg-surface-container-low/80' : ''}`}>
               <td className="py-2 pr-3 font-bold">{s.step}</td>
               <td className="py-2 px-3 whitespace-pre-wrap break-words">{traceCell(s.input)}</td>
-              <td className="py-2 px-3 text-on-surface-variant whitespace-pre-wrap break-words">
+              <td className="py-2 px-3 whitespace-pre-wrap break-words">
                 {s.formula}
               </td>
               <td className="py-2 px-3">
@@ -413,52 +512,137 @@ function CalculationTraceTable({ trace }: { trace?: CalculationTraceStep[] | nul
 }
 
 // Deduction Source Table — provenance for every deduction line item (Part 9).
-function deductionStatus(d: DeductionLineItem): string {
-  if (d.duplicateRisk) return 'Excluded – Exceeds Limit'
-  if (d.needsConfirmation) return 'Excluded – Unconfirmed'
-  return 'Applied'
+// ZERO-VALUE GUARD — filterValidDeductions discards any item with amount null, undefined, NaN, zero, or negative.
+function filterValidDeductions(items: DeductionLineItem[]): DeductionLineItem[] {
+  return items.filter((item) => {
+    if (item.amount == null) return false;
+    if (typeof item.amount !== 'number' || !Number.isFinite(item.amount)) return false;
+    if (item.amount <= 0) return false;
+    if (!item.section || typeof item.section !== 'string' || item.section.trim() === '') return false;
+    return true;
+  });
+}
+
+function getExclusionReasonLabel(reason?: string | null): string {
+  switch (reason) {
+    case 'DUPLICATE_LOWER_AMOUNT': return 'Excluded — Duplicate Source';
+    case 'EXCEEDS_STATUTORY_LIMIT': return 'Excluded — Exceeds Limit';
+    case 'UNCONFIRMED_SUBTYPE': return 'Excluded — Subtype Unconfirmed';
+    case 'LOW_CONFIDENCE': return 'Excluded — Low Confidence';
+    case 'NOT_ALLOWED_IN_REGIME': return 'Excluded — Not Available in Selected Regime';
+    case 'NOT_APPLICABLE_TO_PROPERTY_TYPE': return 'Excluded — Property Type Restriction';
+    default: return 'Excluded';
+  }
+}
+
+function DeductionTable({ items, type }: { items: DeductionLineItem[], type: 'applied' | 'data' | 'regime' }) {
+  return (
+    <table className="w-full text-xs font-mono-data">
+      <thead>
+        <tr className="text-left bg-on-surface text-white uppercase text-xs">
+          <th className="py-1 pr-3 font-bold">Section</th>
+          <th className="py-1 px-3 font-bold">Subtype</th>
+          <th className="py-1 px-3 font-bold text-right">Amount</th>
+          <th className="py-1 px-3 font-bold">Source</th>
+          <th className="py-1 px-3 font-bold text-right">Conf.</th>
+          <th className="py-1 pl-3 font-bold">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((d, i) => {
+          let statusText = 'Applied';
+          let badgeClass = 'text-on-surface';
+          let showWarning = false;
+
+          if (type === 'data') {
+            statusText = getExclusionReasonLabel(d.exclusionReason);
+            badgeClass = 'text-amber-600'; // Amber/orange for data validation
+            showWarning = true;
+          } else if (type === 'regime') {
+            statusText = getExclusionReasonLabel(d.exclusionReason);
+            badgeClass = 'text-blue-600'; // Blue/grey for regime exclusions
+            showWarning = true;
+          }
+
+          return (
+            <tr key={i} className={`border-t-[2px] border-on-surface/30 align-top transition-none hover:bg-brand-yellow/50 ${i % 2 === 1 ? 'bg-surface-container-low/80' : ''}`}>
+              <td className="py-2 pr-3 font-bold">{d.section}</td>
+              <td className="py-2 px-3">{d.subtype ?? '—'}</td>
+              <td className="py-2 px-3 text-right">{formatCurrency(d.amount)}</td>
+              <td className="py-2 px-3">{d.source ?? '—'}</td>
+              <td className="py-2 px-3 text-right">{d.confidence}</td>
+              <td className={`py-2 pl-3 font-bold ${badgeClass}`}>
+                {showWarning && <Icon name="warning" className="text-sm align-middle mr-1" />}
+                {statusText}
+              </td>
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  );
 }
 
 function DeductionSourceTable({ items }: { items?: DeductionLineItem[] | null }) {
   if (!items || items.length === 0) return null
+  const filteredItems = filterValidDeductions(items);
+  if (filteredItems.length === 0) return null;
+
+  const applied = filteredItems.filter(d => !d.exclusionCategory);
+  const dataVal = filteredItems.filter(d => d.exclusionCategory === 'CATEGORY_DATA_VALIDATION');
+  const regimeRules = filteredItems.filter(d => d.exclusionCategory === 'CATEGORY_REGIME_RULE');
+
   return (
-    <div className="bg-white brutal p-lg overflow-x-auto">
-      <table className="w-full text-xs font-mono-data">
-        <thead>
-          <tr className="text-left border-b-2 border-on-surface text-on-surface-variant uppercase">
-            <th className="py-1 pr-3 font-bold">Section</th>
-            <th className="py-1 px-3 font-bold">Subtype</th>
-            <th className="py-1 px-3 font-bold text-right">Amount</th>
-            <th className="py-1 px-3 font-bold">Source</th>
-            <th className="py-1 px-3 font-bold text-right">Conf.</th>
-            <th className="py-1 pl-3 font-bold">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((d, i) => {
-            const status = deductionStatus(d)
-            const excluded = status !== 'Applied'
-            return (
-              <tr key={i} className="border-b border-on-surface/40 align-top">
-                <td className="py-2 pr-3 font-bold">{d.section}</td>
-                <td className="py-2 px-3">{d.subtype ?? '—'}</td>
-                <td className="py-2 px-3 text-right">{formatCurrency(d.amount)}</td>
-                <td className="py-2 px-3">{d.source ?? '—'}</td>
-                <td className="py-2 px-3 text-right">{d.confidence}</td>
-                <td className={`py-2 pl-3 font-bold ${excluded ? 'text-error' : 'text-on-surface'}`}>
-                  {excluded && <Icon name="warning" className="text-sm align-middle mr-1" />}
-                  {status}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div className="flex flex-col gap-6">
+      {applied.length > 0 && (
+        <div className="bg-white brutal p-lg overflow-x-auto">
+          <DeductionTable items={applied} type="applied" />
+        </div>
+      )}
+
+      {dataVal.length > 0 && (
+        <div className="bg-white brutal p-lg overflow-x-auto">
+          <h4 className="font-bold text-lg mb-1">Data Validation Exclusions</h4>
+          <p className="text-sm text-on-surface-variant mb-4">These deductions were excluded due to data quality or duplication issues before regime rules were applied.</p>
+          <DeductionTable items={dataVal} type="data" />
+        </div>
+      )}
+
+      {regimeRules.length > 0 && (
+        <div className="bg-white brutal p-lg overflow-x-auto">
+          <h4 className="font-bold text-lg mb-1">Regime Exclusions</h4>
+          <p className="text-sm text-on-surface-variant mb-4">These deductions are valid but not permitted under the selected regime. They would apply under the other regime.</p>
+          <DeductionTable items={regimeRules} type="regime" />
+        </div>
+      )}
     </div>
   )
 }
 
 // ----- page ----------------------------------------------------------------
+
+function SkeletonLines() {
+  return <div className="space-y-2 mt-4">{['w-[90%]', 'w-[80%]', 'w-[60%]'].map((width) => <div key={width} className={`h-3 ${width} nb-skeleton`} />)}</div>
+}
+
+function RecommendationSkeleton() {
+  return (
+    <div className="space-y-8" aria-busy="true" aria-label="Preparing tax recommendation">
+      <div className="h-2 nb-indeterminate" />
+      <div className="flex flex-wrap gap-2 text-xs font-bold uppercase tracking-wide">
+        <span className="border-2 border-on-surface bg-on-surface text-white px-3 py-2">■ Loading Data</span>
+        <span className="border-2 border-on-surface bg-brand-yellow text-on-surface px-3 py-2">■ Processing</span>
+        <span className="border-2 border-on-surface-variant bg-surface-container-low text-on-surface-variant px-3 py-2">■ Preparing Results</span>
+      </div>
+      <section className="nb-skeleton-card min-h-[230px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><SkeletonLines /></section>
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {[0, 1].map((i) => <div key={i} className="nb-skeleton-card min-h-[640px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><div className="w-[60px] h-[60px] nb-skeleton mt-6" /><SkeletonLines /><div className="mt-8 space-y-3">{Array.from({ length: 7 }).map((_, row) => <div key={row} className="h-8 nb-skeleton" />)}</div></div>)}
+      </section>
+      <section className="nb-skeleton-card min-h-[220px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><SkeletonLines /></section>
+      <section className="nb-skeleton-card min-h-[300px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><div className="mt-6 space-y-3">{Array.from({ length: 6 }).map((_, row) => <div key={row} className="h-9 nb-skeleton" />)}</div></section>
+    </div>
+  )
+}
 
 export function TaxRecommendation() {
   const navigate = useNavigate()
@@ -467,13 +651,17 @@ export function TaxRecommendation() {
     () => form16Service.getRecommendation(id ?? ''),
     [id],
   )
+  const [minimumElapsed, setMinimumElapsed] = useState(false)
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMinimumElapsed(true), 500)
+    return () => window.clearTimeout(timer)
+  }, [])
 
-
-  if (loading || !data) return <LoadingBlock label="Loading recommendation…" />
+  if (loading || !data || !minimumElapsed) return <RecommendationSkeleton />
 
   return (
-    <div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, ease: 'easeIn' }}>
       <PageHeader
         title="Tax Recommendation"
         subtitle="Based on your Form 16 & declared investments for FY 2025-26."
@@ -520,14 +708,18 @@ export function TaxRecommendation() {
             <span className="font-bold uppercase">Optimal Choice</span>
           </div>
           <h2 className="font-bold text-2xl mb-2">
-            {data.recommendedRegime} Regime saves you more
+            {data.savingsAmount === 0
+              ? 'Both regimes have the same tax liability'
+              : `${data.recommendedRegime} Regime saves you more`}
           </h2>
           <p className="font-medium border-l-[3px] border-on-surface pl-4 ml-1 max-w-xl">
             {data.explanation}
           </p>
         </div>
         <div className="z-10 bg-white brutal p-lg text-center min-w-[220px]">
-          <p className="font-bold uppercase text-on-surface-variant mb-2">You Save</p>
+          <p className="font-bold uppercase text-on-surface-variant mb-2">
+            {data.savingsAmount === 0 ? 'Tax Difference' : 'You Save'}
+          </p>
           <p className="font-bold text-4xl text-on-surface">{formatCurrency(data.savingsAmount)}</p>
         </div>
       </div>
@@ -550,34 +742,70 @@ export function TaxRecommendation() {
           {(() => {
             // THIS IS THE ONLY PLACE SUGGESTIONS ARE RENDERED — DO NOT ADD ANOTHER MAP FOR SUGGESTIONS ANYWHERE IN THIS FILE.
             // Client-side last-resort dedup guard (Final 3% Part 2).
-            // rawSuggestions is the direct API response; suggestions is deduplicated.
-            // This catches any duplicates that survive the backend buildFinalSuggestions pass.
-            // Both the backend fix AND this guard must be in place.
-            const rawSuggestions = data.taxSavingSuggestions
-            const dedupedSuggestions = Array.from(
-              new Map(
-                rawSuggestions.map((s) => [
-                  (s.title || s.detail || '').toLowerCase().replace(/[\s\W]+/g, '').slice(0, 60),
-                  s,
-                ])
-              ).values()
-            )
-            return dedupedSuggestions.map((s) => (
-              <div
-                key={s.id}
-                className="min-w-[300px] md:min-w-[340px] bg-white brutal p-lg flex flex-col"
-              >
-                <div className="w-12 h-12 bg-brand-yellow brutal flex items-center justify-center mb-4">
-                  <Icon name={s.icon} />
+            const rawSuggestions = data.taxSavingSuggestions || [];
+            // PERMANENT DEDUP GUARD — do not remove. This catches any future regression.
+            let finalSuggestions = Array.from(new Map((rawSuggestions || []).filter((s: any) => s && s.section).map((s: any) => [s.section.toLowerCase().replace(/[^a-z0-9]/g, '') + (s.suggestionType || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s])).values());
+            
+            // Map computeSuggestionSavings to compute savingsAmount for sorting and display
+            finalSuggestions = finalSuggestions.map((s: any) => {
+              const savings = computeSuggestionSavings(s, data, TAX_CONFIG);
+              return { ...s, ...savings };
+            });
+
+            const sortedSuggestions = sortSuggestions(finalSuggestions);
+
+            let currentTier = -1;
+            const elements: ReactNode[] = [];
+
+            sortedSuggestions.forEach((s: any, idx) => {
+              const getTier = (type: string) => {
+                if (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(type)) return 1;
+                if (['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(type)) return 2;
+                return 3;
+              };
+              
+              const tier = getTier(s.suggestionType);
+              if (tier !== currentTier) {
+                currentTier = tier;
+                let dividerText = '';
+                if (tier === 1) dividerText = 'Action Required';
+                else if (tier === 2) dividerText = 'Potential Savings';
+                else if (tier === 3) dividerText = 'For Your Information';
+                
+                elements.push(
+                  <div key={`divider-${tier}`} className="w-full flex items-center gap-4 py-4 mt-2">
+                    <div className="h-px bg-on-surface/20 flex-1"></div>
+                    <span className="uppercase text-xs font-bold text-on-surface-variant tracking-wider">{dividerText}</span>
+                    <div className="h-px bg-on-surface/20 flex-1"></div>
+                  </div>
+                );
+              }
+
+              const displayDetail = s.displayMessage || s.detail || s.suggestion;
+
+              elements.push(
+                <div
+                  key={s.id || idx}
+                  className="w-full md:w-[340px] shrink-0 bg-white brutal p-lg flex flex-col"
+                >
+                  <div className="w-12 h-12 bg-brand-yellow brutal flex items-center justify-center mb-4">
+                    <Icon name={s.icon || 'lightbulb'} />
+                  </div>
+                  <h4 className="font-bold text-lg mb-2">{s.title || `Section ${s.section}`}</h4>
+                  <p className="font-medium text-on-surface-variant flex-1 mb-4">{displayDetail}</p>
+                  <div className="bg-surface-container-low brutal-thin flex justify-between items-center p-3">
+                    <span className="font-bold uppercase">Potential Savings:</span>
+                    <span className="font-mono-data font-bold">
+                      {s.savingsType === 'NONE_LIMIT_REACHED' || s.savingsType === 'NONE_WRONG_REGIME' 
+                        ? '₹0' 
+                        : formatCurrency(s.savingsAmount || 0)}
+                    </span>
+                  </div>
                 </div>
-                <h4 className="font-bold text-lg mb-2">{s.title}</h4>
-                <p className="font-medium text-on-surface-variant flex-1 mb-4">{s.detail}</p>
-                <div className="bg-surface-container-low brutal-thin flex justify-between items-center p-3">
-                  <span className="font-bold uppercase">Potential Savings:</span>
-                  <span className="font-mono-data font-bold">{formatCurrency(s.potentialSaving)}</span>
-                </div>
-              </div>
-            ))
+              );
+            });
+
+            return elements;
           })()}
         </div>
       </div>
@@ -605,9 +833,6 @@ export function TaxRecommendation() {
               <div key={d.section} className="bg-surface-container-low brutal-thin border-2 border-on-surface/40 p-lg flex flex-col gap-3">
                 <div className="flex justify-between items-baseline border-b-2 border-on-surface/40 pb-2">
                   <h4 className="font-bold text-base uppercase text-on-surface-variant">{d.label}</h4>
-                  {d.amount > 0 && (
-                    <span className="font-mono-data font-bold text-on-surface-variant">{formatCurrency(d.amount)}</span>
-                  )}
                 </div>
                 <p className="font-medium text-on-surface-variant text-sm">{d.note}</p>
               </div>
@@ -677,6 +902,6 @@ export function TaxRecommendation() {
           Download Tax Summary PDF
         </Button>
       </div>
-    </div>
+    </motion.div>
   )
 }

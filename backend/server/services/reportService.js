@@ -253,8 +253,16 @@ async function buildTaxData(userId, year) {
 // PDF helpers (pdfkit)
 // ---------------------------------------------------------------------------
 
+const COLORS = {
+  bg: '#FFFFFF',
+  text: '#000000',
+  yellow: '#FFC107',
+  cyan: '#00E5FF',
+  border: '#000000',
+};
+
 function startPdf(title) {
-  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
   const stream = new PassThrough();
   const chunks = [];
   stream.on('data', (c) => chunks.push(c));
@@ -263,21 +271,54 @@ function startPdf(title) {
     stream.on('error', reject);
   });
   doc.pipe(stream);
-  doc.fontSize(20).text(title, { align: 'center' });
-  doc.moveDown();
+
+  // Global settings
+  doc.lineWidth(2);
+  
+  // Title box with hard shadow
+  const w = doc.page.width - 80;
+  doc.rect(44, 44, w, 50).fill(COLORS.border); // shadow
+  doc.rect(40, 40, w, 50).fillAndStroke(COLORS.yellow, COLORS.border); // box
+  
+  doc.font('Helvetica-Bold').fontSize(20).fillColor(COLORS.text);
+  doc.text(title.toUpperCase(), 40, 56, { align: 'center', width: w });
+  
+  doc.y = 120;
   return { doc, done };
 }
 
 function section(doc, heading) {
-  doc.moveDown();
-  doc.fontSize(14).text(heading, { underline: true });
-  doc.fontSize(10);
+  if (doc.y > doc.page.height - 100) doc.addPage();
+  doc.moveDown(1);
+  const w = doc.page.width - 80;
+  
+  // Section banner
+  doc.rect(40, doc.y, w, 22).fillAndStroke(COLORS.border, COLORS.border);
+  doc.font('Helvetica-Bold').fontSize(12).fillColor('#FFFFFF');
+  doc.text(heading.toUpperCase(), 50, doc.y + 6);
+  
+  doc.y += 24; // space after banner
+  doc.font('Helvetica').fontSize(10).fillColor(COLORS.text);
 }
+
 function kv(doc, key, value) {
-  doc.text(`${key}: ${value}`);
+  if (doc.y > doc.page.height - 40) doc.addPage();
+  const y = doc.y;
+  
+  // Draw subtle row separator
+  doc.moveTo(40, y + 16).lineTo(doc.page.width - 40, y + 16).lineWidth(1).strokeColor('#E0E0E0').stroke();
+  doc.lineWidth(2).strokeColor(COLORS.border);
+
+  doc.font('Helvetica-Bold').fillColor(COLORS.text).text(key, 50, y);
+  doc.font('Helvetica').text(value, 50, y, { align: 'right', width: doc.page.width - 100 });
+  doc.moveDown(0.75);
 }
+
 function bullet(doc, text) {
-  doc.text(`  • ${text}`);
+  if (doc.y > doc.page.height - 40) doc.addPage();
+  doc.font('Helvetica-Bold').fillColor(COLORS.text).text('•', 50, doc.y, { continued: true });
+  doc.font('Helvetica').text(`  ${text}`);
+  doc.moveDown(0.25);
 }
 
 async function renderMonthlyPdf(data) {

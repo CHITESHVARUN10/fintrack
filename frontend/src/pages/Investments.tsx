@@ -416,14 +416,14 @@ function InvestmentCard({
         <div className="flex items-center gap-2">
           <button
             onClick={onEdit}
-            className="bg-white p-2 brutal-thin hover:bg-surface-container-high"
+            className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
             title="Edit"
           >
             <Icon name="edit" className="text-sm" />
           </button>
           <button
             onClick={onDelete}
-            className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error"
+            className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
             title="Delete"
           >
             <Icon name="delete" className="text-sm" />

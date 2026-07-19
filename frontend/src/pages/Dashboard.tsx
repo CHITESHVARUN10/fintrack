@@ -63,6 +63,7 @@ export function Dashboard() {
           valueNumber={data.monthlyIncome}
           icon="account_balance_wallet"
           color="yellow"
+          stagger={0}
         />
         <StatCard
           label="Monthly Outflow"
@@ -70,6 +71,7 @@ export function Dashboard() {
           valueNumber={data.monthlyObligations}
           icon="shopping_cart"
           color="white"
+          stagger={60}
         />
         <StatCard
           label="Investments Worth"
@@ -77,6 +79,7 @@ export function Dashboard() {
           valueNumber={data.investmentPortfolioValue.totalCurrentValue}
           icon="show_chart"
           color="cyan"
+          stagger={120}
         />
         <StatCard
           label="Net Monthly Savings"
@@ -84,6 +87,7 @@ export function Dashboard() {
           valueNumber={data.netMonthlyFlow}
           icon="savings"
           color="white"
+          stagger={180}
         />
       </section>
 
@@ -125,8 +129,8 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card color="surface" className="h-[400px]">
-          <h3 className="font-bold text-lg uppercase">Breakdown</h3>
+        <Card color="surface" className="min-h-[400px] flex flex-col overflow-hidden">
+          <h3 className="font-bold text-lg uppercase mb-2">Breakdown</h3>
           {donut.length === 0 ? (
             <p className="font-bold text-on-surface-variant mt-md">No data.</p>
           ) : (

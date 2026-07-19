@@ -1,7 +1,7 @@
 import { taxService } from '../services/api'
 import { useAsync } from '../hooks/useAsync'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
+import { DownloadButton } from '../components/ui/DownloadButton'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
 import type { TaxRegimeResult } from '../types'
@@ -61,10 +61,12 @@ export function Tax() {
         title="Tax Calculator"
         subtitle="Compare Old vs New regimes for FY 2025-26."
         action={
-          <Button variant="yellow">
-            <Icon name="download" className="text-xl" />
-            Export
-          </Button>
+          <DownloadButton
+            variant="excel"
+            size="large"
+            label="EXPORT XLSX"
+            onClick={() => {}}
+          />
         }
       />
 

@@ -27,6 +27,7 @@ const form16Schema = new mongoose.Schema(
     section80D: { type: Number },
     section80E: { type: Number },
     section80G: { type: Number },
+    section24: { type: Number },
     section80CCD: { type: Number },
     totalDeductions: { type: Number },
     taxableIncome: { type: Number },

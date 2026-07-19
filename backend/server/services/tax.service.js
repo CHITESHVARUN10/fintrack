@@ -1,7 +1,6 @@
 const Investment = require('../models/investment.model');
 const Insurance = require('../models/insurance.model');
 const EMILoan = require('../models/loan.model');
-const EducationPayment = require('../models/education.model');
 const { investedValue } = require('../utils/investmentCalc');
 const { TAX_CONFIG, DEFAULT_FY } = require('./taxConfig');
 
@@ -382,11 +381,10 @@ function annualize(amount, frequency) {
  * Values are estimates suitable for a quick comparison/recommendation.
  */
 async function aggregateDeductions(userId) {
-  const [investments, insurances, loans, edus] = await Promise.all([
+  const [investments, insurances, loans] = await Promise.all([
     Investment.find({ memberId: userId }),
     Insurance.find({ memberId: userId }),
     EMILoan.find({ memberId: userId }),
-    EducationPayment.find({ memberId: userId }),
   ]);
 
   let section80C = 0;
@@ -414,12 +412,6 @@ async function aggregateDeductions(userId) {
       const principalRepaid = Math.max(0, (loan.emiAmount || 0) * 12 - annualInterest);
       section80C += principalRepaid;
     }
-  }
-
-  for (const edu of edus) {
-    // Tuition fees for children's education are claimed under Section 80C
-    // (per the user's instruction), not 80E (which is education-loan interest).
-    section80C += annualize(edu.amount, edu.frequency);
   }
 
   // Section 80C has a hard cap — read from config.
@@ -452,7 +444,7 @@ const DEDUCTION_INFO = {
   },
   section80D: {
     label: 'Section 80D',
-    note: 'Health-insurance premium for you and your family. Up to ₹25,000 (₹50,000 for senior citizens).',
+    note: `Health-insurance premium for you and your family. Up to ₹${_cfg.DEDUCTION_CAPS.SECTION_80D_SELF.toLocaleString('en-IN')} (₹${_cfg.DEDUCTION_CAPS.SECTION_80D_PARENTS.toLocaleString('en-IN')} for senior citizens).`,
   },
   section80E: {
     label: 'Section 80E',
@@ -466,12 +458,23 @@ const DEDUCTION_INFO = {
 
 // Build the static, plain-English breakdown of what was claimed (no AI).
 function buildDeductionBreakdown(agg) {
-  return Object.keys(DEDUCTION_INFO).map((section) => ({
-    section,
-    label: DEDUCTION_INFO[section].label,
-    amount: round(agg[section] || 0),
-    note: DEDUCTION_INFO[section].note,
-  }));
+  const mentionedSections = new Set();
+  const breakdown = [];
+  
+  for (const section of Object.keys(DEDUCTION_INFO)) {
+    const amount = round(agg[section] || 0);
+    if (amount > 0 && !mentionedSections.has(section)) {
+      mentionedSections.add(section);
+      breakdown.push({
+        section,
+        label: DEDUCTION_INFO[section].label,
+        amount,
+        note: DEDUCTION_INFO[section].note,
+      });
+    }
+  }
+  
+  return breakdown;
 }
 
 function inr(n) {

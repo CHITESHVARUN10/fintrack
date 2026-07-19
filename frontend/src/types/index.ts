@@ -440,11 +440,17 @@ export type DeductionSource =
   | 'USER_MANUAL'
   | 'SYSTEM_DEFAULT'
 
-export type DeductionStatus =
-  | 'Applied'
-  | 'Excluded – Unconfirmed'
-  | 'Excluded – Exceeds Limit'
-  | 'Excluded – Not Allowed in Regime'
+export type ExclusionCategory =
+  | 'CATEGORY_DATA_VALIDATION'
+  | 'CATEGORY_REGIME_RULE'
+
+export type ExclusionReason =
+  | 'DUPLICATE_LOWER_AMOUNT'
+  | 'EXCEEDS_STATUTORY_LIMIT'
+  | 'UNCONFIRMED_SUBTYPE'
+  | 'LOW_CONFIDENCE'
+  | 'NOT_ALLOWED_IN_REGIME'
+  | 'NOT_APPLICABLE_TO_PROPERTY_TYPE'
 
 // A single, source-tracked deduction (Part 2). Every deduction in the
 // system — extracted, from financial records, or manual — is exactly one of
@@ -458,8 +464,15 @@ export interface DeductionLineItem {
   source: DeductionSource | null
   confidence: number // 0–100
   needsConfirmation: boolean
+  status?: string
+  reason?: string | null
+  originFile?: string | null
+  verificationMethod?: string | null
   notes: string | null
   duplicateRisk: boolean
+  exclusionCategory?: ExclusionCategory | null
+  exclusionReason?: ExclusionReason | null
+  exclusionNote?: string | null
 }
 
 export type GrossSalarySource = 'FORM16_EXPLICIT' | 'COMPONENT_SUM' | 'USER_EDITED'
@@ -511,7 +524,9 @@ export interface CalculationTraceStep {
 }
 
 export interface UnverifiedDeduction extends DeductionLineItem {
-  status: DeductionStatus
+  exclusionCategory?: ExclusionCategory | null
+  exclusionReason?: ExclusionReason | null
+  exclusionNote?: string | null
   reason: string
 }
 
