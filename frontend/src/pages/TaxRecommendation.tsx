@@ -350,25 +350,10 @@ function RegimeWaterfall({ trace, recommended }: { trace: RegimeTrace; recommend
 
       {/* Result footer */}
       <div className="p-lg border-t-[3px] border-on-surface text-center bg-surface-container-low">
-        {trace.refund > 0 ? (
-          <>
-            <p className="font-bold uppercase mb-1 text-on-surface">Refund Due</p>
-            <p className="font-bold text-2xl text-on-surface">{formatCurrency(trace.refund)}</p>
-          </>
-        ) : trace.taxPayable > 0 ? (
-          <>
-            <p className="font-bold uppercase mb-1 text-error">Tax Payable</p>
-            <p className="font-bold text-2xl text-error">{formatCurrency(trace.taxPayable)}</p>
-          </>
-        ) : (
-          <>
-            <p className="font-bold uppercase mb-1">Balanced</p>
-            <p className="font-bold text-2xl">₹0</p>
-          </>
-        )}
-        <p className="font-mono-data text-xs mt-2">
-          Final tax {formatCurrency(trace.finalTax)}
-        </p>
+        <p className="font-bold uppercase mb-1 text-on-surface">Refund Due</p>
+        <p className="font-bold text-2xl text-on-surface">{formatCurrency(trace.refund)}</p>
+        <p className="font-bold uppercase mb-1 mt-3 text-on-surface">Final Tax Liability</p>
+        <p className="font-bold text-2xl text-on-surface">{formatCurrency(trace.finalTax)}</p>
       </div>
     </div>
   )
