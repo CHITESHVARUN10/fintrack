@@ -52,38 +52,33 @@ router.post('/register', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(value.password, 12);
     const isFirstUser = (await User.countDocuments()) === 0;
 
-    let familyAccountId = null;
-    if (isFirstUser) {
-      const family = new FamilyAccount({ name: `${value.name}'s Family` });
-      family.members = [];
-      await family.save();
-      familyAccountId = family._id;
-    } else {
-      // Join the existing (single) family account.
-      const existingFamily = await FamilyAccount.findOne().sort({ createdAt: 1 });
-      familyAccountId = existingFamily ? existingFamily._id : null;
-    }
-
     const user = new User({
       name: value.name,
       email,
       passwordHash,
       role: isFirstUser ? 'admin' : 'member',
-      familyAccountId,
+      familyAccountId: null,
     });
     await user.save();
 
     if (isFirstUser) {
-      // Link the family account to its admin.
-      const family = await FamilyAccount.findById(familyAccountId);
-      family.adminId = user._id;
-      family.members = [user._id];
+      const { generateInviteCode } = require('../../utils/inviteCode');
+      const FamilyMembership = require('../../models/familymembership.model');
+      let inviteCode;
+      for (let i = 0; i < 10; i++) {
+        const c = generateInviteCode();
+        const dup = await FamilyAccount.findOne({ inviteCode: c });
+        if (!dup) { inviteCode = c; break; }
+      }
+      const family = new FamilyAccount({ name: `${value.name}'s Family`, adminId: user._id, members: [user._id], inviteCode });
       await family.save();
-    } else if (familyAccountId) {
-      // Add the new member to the family's member list.
-      await FamilyAccount.findByIdAndUpdate(familyAccountId, {
-        $addToSet: { members: user._id },
-      });
+      user.familyAccountId = family._id;
+      await user.save();
+      await FamilyMembership.findOneAndUpdate(
+        { userId: user._id, familyId: family._id },
+        { userId: user._id, familyId: family._id, role: 'ADMIN', status: 'ACTIVE', requestedAt: new Date(), reviewedAt: new Date(), reviewedBy: user._id },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
     }
 
     return res.status(201).json({ user: sanitizeUser(user), role: user.role });

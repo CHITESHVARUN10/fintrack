@@ -20,7 +20,12 @@ import { Education } from './pages/Education'
 import { Tax } from './pages/Tax'
 import { Reports } from './pages/Reports'
 import { Family } from './pages/Family'
+import { FamilyCreateJoin } from './pages/FamilyCreateJoin'
 import { Notifications } from './pages/Notifications'
+import { Transactions } from './pages/Transactions'
+import { ImportPage } from './pages/ImportPage'
+import { FamilyDashboard } from './pages/FamilyDashboard'
+import { Budgets } from './pages/Budgets'
 import { Settings } from './pages/Settings'
 import { Form16List } from './pages/Form16List'
 import { Form16Upload } from './pages/Form16Upload'
@@ -83,6 +88,11 @@ function AnimatedRoutes() {
             }
           >
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="family/create-join" element={<FamilyCreateJoin />} />
+            <Route path="family/dashboard" element={<FamilyDashboard />} />
+            <Route path="transactions" element={<Transactions />} />
+            <Route path="import" element={<ImportPage />} />
+            <Route path="budgets" element={<Budgets />} />
             <Route path="income" element={<Income />} />
             <Route path="income/new" element={<AddIncome />} />
             <Route path="subscriptions" element={<Subscriptions />} />

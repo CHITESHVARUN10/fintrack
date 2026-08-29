@@ -170,6 +170,52 @@ export const memberService = {
       .then((r) => (r.data ?? []).map((m: Record<string, unknown>) => normalizeMember(m))),
 }
 
+export const familyService = {
+  create: (payload: { name: string }) => apiClient.post('/families', payload).then((r) => r.data),
+  me: () => apiClient.get('/families/me').then((r) => r.data),
+  join: (inviteCode: string) => apiClient.post('/families/join', { inviteCode }).then((r) => r.data),
+  members: (familyId: string) => apiClient.get(`/families/${familyId}/members`).then((r) => r.data),
+  requests: (familyId: string) => apiClient.get(`/families/${familyId}/requests`).then((r) => r.data),
+  review: (familyId: string, membershipId: string, action: 'accept' | 'reject') =>
+    apiClient.patch(`/families/${familyId}/requests/${membershipId}`, { action }).then((r) => r.data),
+  removeMember: (familyId: string, userId: string) =>
+    apiClient.delete(`/families/${familyId}/members/${userId}`).then((r) => r.data),
+  rotateCode: (familyId: string) => apiClient.post(`/families/${familyId}/rotate-code`).then((r) => r.data),
+}
+
+export const transactionService = {
+  list: (params?: Record<string, string | number | boolean>) =>
+    apiClient.get('/transactions', { params }).then((r) => r.data),
+  get: (id: string) => apiClient.get(`/transactions/${id}`).then((r) => r.data),
+  create: (payload: Record<string, unknown>) => apiClient.post('/transactions', payload).then((r) => r.data),
+  update: (id: string, payload: Record<string, unknown>) => apiClient.patch(`/transactions/${id}`, payload).then((r) => r.data),
+  resolve: (id: string, action: 'merge' | 'keepSeparate', targetId?: string) =>
+    apiClient.post(`/transactions/${id}/resolve`, { action, targetId }).then((r) => r.data),
+}
+
+export const analyticsService = {
+  family: (params: Record<string,string>)=> apiClient.get('/analytics/family', { params }).then(r=> r.data),
+}
+export const recipientService = {
+  list: (params?: Record<string,string>)=> apiClient.get('/recipients', { params }).then(r=> r.data),
+  teach: (payload: { label?: string; vendorKey?: string; upiId?: string; category: string })=> apiClient.post('/recipients', payload).then(r=> r.data),
+  update: (id: string, payload: Record<string,string>)=> apiClient.put(`/recipients/${id}`, payload).then(r=> r.data),
+  apply: (id: string, overwrite=false)=> apiClient.post(`/recipients/${id}/apply`, { overwrite }).then(r=> r.data),
+}
+export const importService = {
+  bank: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return apiClient.post('/imports/bank', fd).then((r) => r.data)
+  },
+  screenshot: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return apiClient.post('/imports/screenshot', fd).then((r) => r.data)
+  },
+  batch: (id: string) => apiClient.get(`/imports/batches/${id}`).then((r) => r.data),
+}
+
 // Backend Form 16 docs use Mongo `_id`; normalize so the frontend `Form16`
 // type (and all call sites) stay unchanged.
 export function normalizeForm16(raw: Record<string, unknown>): Form16 {

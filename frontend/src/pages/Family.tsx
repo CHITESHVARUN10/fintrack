@@ -1,16 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Icon } from '../components/ui/Icon'
 import { initials } from '../lib/format'
 import type { FamilyMember } from '../types'
 import { InviteMemberModal } from '../components/family/InviteMemberModal'
+import { familyService } from '../services/api'
+import { apiClient } from '../services/apiClient'
 
 const AVATAR_COLORS = ['bg-brand-yellow', 'bg-tertiary-container', 'bg-error-container', 'bg-surface-variant']
 
 export function Family() {
   const { members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [family, setFamily] = useState<{ _id: string; inviteCode?: string; name: string } | null>(null)
+  const [requests, setRequests] = useState<{ _id: string; userId: { name: string; email: string } }[]>([])
+
+  useEffect(() => {
+    apiClient.get('/families/me').then((r) => {
+      if (r.data?.family) {
+        setFamily(r.data.family)
+        familyService.requests(r.data.family._id).then((d) => setRequests(d.requests || [])).catch(() => {})
+      }
+    }).catch(() => {})
+  }, [])
+
+  async function handleReview(id: string, action: 'accept' | 'reject') {
+    if (!family) return
+    await familyService.review(family._id, id, action)
+    setRequests((prev) => prev.filter((x) => x._id !== id))
+  }
 
   if (loading) return <LoadingBlock label="Loading members…" />
 
@@ -31,6 +50,31 @@ export function Family() {
           ) : undefined
         }
       />
+
+      {family?.inviteCode && (
+        <div className="brutal bg-brand-yellow p-sm flex items-center justify-between mb-md">
+          <div><span className="text-xs font-bold uppercase tracking-wider">Invite Code</span><span className="ml-sm font-mono font-bold text-lg tracking-widest">{family.inviteCode}</span></div>
+          <div className="flex gap-xs">
+            <button onClick={() => navigator.clipboard.writeText(family.inviteCode!)} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Copy</button>
+            {isAdmin && <button onClick={async () => { const r = await familyService.rotateCode(family._id); setFamily(r.family) }} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Rotate</button>}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && requests.length > 0 && (
+        <div className="brutal bg-white p-md mb-md">
+          <h3 className="font-bold uppercase tracking-tight mb-sm">Join Requests</h3>
+          {requests.map((rq) => (
+            <div key={rq._id} className="flex items-center justify-between brutal-thin p-sm mb-xs">
+              <span className="text-sm font-medium">{rq.userId?.name || rq.userId?.email}</span>
+              <div className="flex gap-xs">
+                <button onClick={() => handleReview(rq._id, 'accept')} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Accept</button>
+                <button onClick={() => handleReview(rq._id, 'reject')} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
         {members.map((m: FamilyMember, i: number) => (

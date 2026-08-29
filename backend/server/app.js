@@ -52,6 +52,12 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 // ---- Route groups (mounted under /api) ----
 app.use('/api/auth', require('./routes/auth/auth.routes'));
+app.use('/api/families', require('./routes/families/families.routes'));
+app.use('/api/transactions', require('./routes/transactions/transactions.routes'));
+app.use('/api/imports', require('./routes/imports/imports.routes'));
+app.use('/api/budgets', require('./routes/budgets/budgets.routes'));
+app.use('/api/recipients', require('./routes/recipients/recipients.routes'));
+app.use('/api/analytics', require('./routes/analytics/analytics.routes'));
 app.use('/api/dashboard', require('./routes/dashboard/dashboard.routes'));
 app.use('/api/income', require('./routes/income/income.routes'));
 app.use('/api/subscriptions', require('./routes/subscriptions/subscriptions.routes'));

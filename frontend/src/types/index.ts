@@ -16,6 +16,76 @@ export interface User {
 
 export interface FamilyMember extends User {
   avatarColor?: string
+  membershipRole?: string
+  membershipStatus?: string
+}
+
+export interface FamilyAccount {
+  _id: string
+  name: string
+  adminId: string
+  members: string[]
+  inviteCode?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FamilyMembership {
+  _id: string
+  userId: string
+  familyId: string
+  role: 'ADMIN' | 'MEMBER'
+  status: 'PENDING' | 'ACTIVE' | 'REJECTED' | 'REMOVED'
+  inviteCode?: string
+  requestedAt: string
+  reviewedBy?: string
+  reviewedAt?: string
+}
+
+export interface TransactionCategory {
+  id: string
+  label: string
+}
+
+export type TxType = 'EXPENSE' | 'INCOME' | 'INTERNAL_TRANSFER' | 'CASH_WITHDRAWAL' | 'CASH_EXPENSE'
+export type TxMode = 'UPI' | 'BANK' | 'CASH' | 'CARD' | 'OTHER'
+export type TxSource = 'MANUAL' | 'BANK_STATEMENT' | 'SCREENSHOT' | 'SHARE' | 'TELEGRAM' | 'WHATSAPP'
+export type TxStatus = 'ACTIVE' | 'PENDING_REVIEW' | 'RECONCILED' | 'VOIDED'
+
+export interface CanonicalTransaction {
+  _id: string
+  familyId: string
+  createdBy: string
+  type: TxType
+  mode: TxMode
+  amountPaise: number
+  currency: string
+  occurredAt: string
+  category?: string
+  sender?: { name?: string; upiId?: string; accountRef?: string }
+  recipient?: { name?: string; upiId?: string; accountRef?: string }
+  familyTransfer?: { fromUserId: string; toUserId: string }
+  visibility: string
+  status: TxStatus
+  confidence?: number
+  sourceIds: string[]
+  metadata?: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SourceRecord {
+  _id: string
+  transactionId: string
+  familyId: string
+  createdBy: string
+  source: TxSource
+  rawPayload?: unknown
+  parsedFields?: unknown
+  upiId?: string
+  transactionIdExt?: string
+  utr?: string
+  confidence?: number
 }
 
 export type IncomeCategory = 'Salary' | 'Freelance' | 'Rental' | 'Business' | 'Other'

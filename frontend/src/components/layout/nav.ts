@@ -17,7 +17,11 @@ export const navItems: NavItem[] = [
   { label: 'Form 16', to: '/form16', icon: 'receipt_long' },
   { label: 'Tax Calculator', to: '/tax', icon: 'calculate' },
   { label: 'Reports', to: '/reports', icon: 'bar_chart' },
+  { label: 'Family Dashboard', to: '/family/dashboard', icon: 'monitoring' },
   { label: 'Members', to: '/family', icon: 'group' },
+  { label: 'Transactions', to: '/transactions', icon: 'receipt_long' },
+  { label: 'Import', to: '/import', icon: 'upload_file' },
+  { label: 'Budgets', to: '/budgets', icon: 'savings' },
   { label: 'Settings', to: '/settings', icon: 'settings' },
 ]
 
@@ -34,6 +38,10 @@ export const routeTitles: Record<string, string> = {
   '/form16': 'Form 16 Records',
   '/tax': 'Tax Calculator',
   '/reports': 'Reports',
+  '/family/dashboard': 'Family Dashboard',
   '/family': 'Members',
+  '/transactions': 'Transactions',
+  '/import': 'Import',
+  '/budgets': 'Budgets',
   '/settings': 'Settings',
 }
