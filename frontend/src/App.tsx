@@ -25,6 +25,8 @@ import { Notifications } from './pages/Notifications'
 import { Transactions } from './pages/Transactions'
 import { ImportPage } from './pages/ImportPage'
 import { FamilyDashboard } from './pages/FamilyDashboard'
+import { Vendors } from './pages/Vendors'
+import { VendorDetail } from './pages/VendorDetail'
 import { Budgets } from './pages/Budgets'
 import { Settings } from './pages/Settings'
 import { Form16List } from './pages/Form16List'
@@ -90,6 +92,8 @@ function AnimatedRoutes() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="family/create-join" element={<FamilyCreateJoin />} />
             <Route path="family/dashboard" element={<FamilyDashboard />} />
+            <Route path="vendors" element={<Vendors />} />
+            <Route path="vendors/:id" element={<VendorDetail />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="import" element={<ImportPage />} />
             <Route path="budgets" element={<Budgets />} />

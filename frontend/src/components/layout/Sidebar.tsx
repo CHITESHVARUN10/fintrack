@@ -24,12 +24,12 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/dashboard'}
+            end={item.to === '/dashboard' || item.to === '/family'}
             className={({ isActive }) =>
               cn(
                 'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
                 isActive
-                  ? 'text-on-surface border-on-surface'
+                  ? 'bg-brand-yellow text-on-surface border-on-surface'
                   : 'text-on-surface-variant border-transparent hover:bg-surface-container-high hover:border-on-surface',
               )
             }

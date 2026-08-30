@@ -34,7 +34,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
     return ListView(padding: const EdgeInsets.all(16), children: [
       BrutalCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('NEW BUDGET', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-        DropdownButtonFormField<String>(value: scope, decoration: const InputDecoration(labelText: 'Scope'), items: const ['FAMILY','CATEGORY','MEMBER'].map((e)=> DropdownMenuItem(value:e, child: Text(e))).toList(), onChanged: (v)=> setState(()=> scope=v!)),
+        DropdownButtonFormField<String>(initialValue: scope, decoration: const InputDecoration(labelText: 'Scope'), items: const ['FAMILY','CATEGORY','MEMBER'].map((e)=> DropdownMenuItem(value:e, child: Text(e))).toList(), onChanged: (v)=> setState(()=> scope=v!)),
         TextField(controller: categoryCtrl, decoration: const InputDecoration(hintText: 'Category (for CATEGORY scope)')),
         TextField(controller: amountCtrl, decoration: const InputDecoration(hintText: 'Amount ₹'), keyboardType: TextInputType.number),
         const SizedBox(height: 8),

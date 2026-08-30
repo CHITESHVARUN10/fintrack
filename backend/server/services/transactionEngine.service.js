@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const Transaction = require('../models/transaction.model');
 const SourceRecord = require('../models/sourcerecord.model');
 const { fingerprintCandidate, scoreCandidate, classifyConfidence } = require('./reconciliation.service');
-const { normalizeVendorKey, resolveCategory, upsertFromCategory } = require('./recipient.service');
+const { normalizeVendorKey, resolveCategory, upsertFromCategory, resolveProduct, predictCategoryForAmount } = require('./recipient.service');
 
 function validateCandidate(c) {
   if (!c.amountPaise || c.amountPaise <= 0) throw Object.assign(new Error('amountPaise required'), { status: 400 });
@@ -48,6 +48,13 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
   if (decision === 'AUTO' && best) {
     const sr = await SourceRecord.create({ transactionId: best._id, familyId, createdBy, source, rawPayload, parsedFields: candidate, batchId, fingerprint: fp, upiId: candidate.upiId, transactionIdExt: candidate.transactionIdExt, utr: candidate.utr, confidence: bestScore });
     await Transaction.findByIdAndUpdate(best._id, { $addToSet: { sourceIds: sr._id }, confidence: bestScore, status: 'RECONCILED' });
+    try{
+      const rVk = normalizeVendorKey(candidate.recipient?.name||'', candidate.upiId||candidate.recipient?.upiId||'');
+      const rUpi = candidate.upiId||candidate.recipient?.upiId||null;
+      const rLabel = candidate.recipient?.name||rUpi||rVk;
+      const rCats = candidate.categorySplit && candidate.categorySplit.length ? candidate.categorySplit.map(function(s){ return s.category; }) : (candidate.category && candidate.category!=='Other' ? [candidate.category] : []);
+      if(rVk||rUpi) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert reconciled]', e.message); });
+    } catch(e){ console.warn('[vendor reconciled]', e.message); }
     const tx = await Transaction.findById(best._id);
     return { transaction: tx, sourceRecord: sr, reconciled: true, level: bestLevel };
   }
@@ -55,27 +62,55 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
   if (decision === 'REVIEW' && best) {
     const tx = await Transaction.create({
       familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
-      occurredAt: candidate.occurredAt, category: candidate.category, sender: candidate.sender, recipient: candidate.recipient,
+      occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory||undefined, productName: candidate.productName||undefined, lineItems: candidate.lineItems||undefined, sender: candidate.sender, recipient: candidate.recipient,
       familyTransfer: candidate.familyTransfer, cashLeg: candidate.cashLeg, visibility: candidate.visibility || 'FAMILY', status: 'PENDING_REVIEW', confidence: bestScore, candidateOf: best._id, batchId, fingerprint: fp, metadata: candidate.metadata,
     });
     const sr = await SourceRecord.create({ transactionId: tx._id, familyId, createdBy, source, rawPayload, parsedFields: candidate, batchId, fingerprint: fp, upiId: candidate.upiId, transactionIdExt: candidate.transactionIdExt, utr: candidate.utr, confidence: bestScore });
     tx.sourceIds = [sr._id]; await tx.save();
+    try{
+      const rVk = normalizeVendorKey(candidate.recipient?.name||'', candidate.upiId||candidate.recipient?.upiId||'');
+      const rUpi = candidate.upiId||candidate.recipient?.upiId||null;
+      const rLabel = candidate.recipient?.name||rUpi||rVk;
+      const rCats = candidate.categorySplit && candidate.categorySplit.length ? candidate.categorySplit.map(function(s){ return s.category; }) : (candidate.category && candidate.category!=='Other' ? [candidate.category] : []);
+      if(rVk||rUpi) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert review]', e.message); });
+    } catch(e){ console.warn('[vendor review]', e.message); }
     return { transaction: tx, sourceRecord: sr, pendingReview: true, candidateOf: best._id, level: bestLevel };
   }
 
-  // Auto-apply vendor category when candidate is Other
+  // Smart auto-apply vendor category when candidate is Other — uses vendor history + product amount signature
   try {
     if (!candidate.category || candidate.category === 'Other') {
       const vk = normalizeVendorKey(candidate.recipient?.name || candidate.recipient?.label || '', candidate.upiId || candidate.recipient?.upiId);
-      if (vk || candidate.upiId) {
-        const resolved = await resolveCategory({ familyId, vendorKey: vk, upiId: candidate.upiId || candidate.recipient?.upiId });
-        if (resolved && resolved !== 'Other') { candidate.category = resolved; candidate.metadata = { ...(candidate.metadata||{}), vendorResolved: true, vendorKey: vk }; }
+      const upiForLookup = candidate.upiId || candidate.recipient?.upiId;
+      if (vk || upiForLookup) {
+        // Try direct category, then amount-based product prediction
+        let resolved = await resolveCategory({ familyId, vendorKey: vk, upiId: upiForLookup });
+        if (!resolved || resolved==='Other') {
+          resolved = await predictCategoryForAmount({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
+        }
+        if (resolved && resolved !== 'Other') {
+          candidate.category = resolved;
+          candidate.metadata = { ...(candidate.metadata||{}), vendorResolved: true, vendorKey: vk, resolvedCategory: resolved };
+        } else {
+          // try product signature as hint for subcategory/productName
+          const prod = await resolveProduct({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
+          if (prod){
+            const pName = prod.name || prod.productName || prod.product?.name;
+            const pCat = prod.category || prod.product?.category;
+            const pSub = prod.subcategory || prod.product?.subcategory;
+            if (pCat && pCat!=='Other'){ candidate.category = pCat; candidate.metadata = { ...(candidate.metadata||{}), vendorResolved:true, vendorKey:vk, productResolved:true, productName:pName }; }
+            if (pSub) candidate.subcategory = pSub;
+            if (pName) candidate.productName = pName;
+          }
+        }
       }
     }
   } catch {}
   const tx = await Transaction.create({
     familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
-    occurredAt: candidate.occurredAt, category: candidate.category, sender: candidate.sender, recipient: candidate.recipient,
+    occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory || undefined, productName: candidate.productName || undefined, productRef: candidate.productRef || undefined,
+    lineItems: candidate.lineItems || undefined,
+    sender: candidate.sender, recipient: candidate.recipient,
     familyTransfer: candidate.familyTransfer, cashLeg: candidate.cashLeg, visibility: candidate.visibility || 'FAMILY', status: 'ACTIVE', confidence: bestScore, batchId, fingerprint: fp, metadata: candidate.metadata,
   });
   const sr = await SourceRecord.create({ transactionId: tx._id, familyId, createdBy, source, rawPayload, parsedFields: candidate, batchId, fingerprint: fp, upiId: candidate.upiId, transactionIdExt: candidate.transactionIdExt, utr: candidate.utr, confidence: bestScore });
@@ -85,14 +120,19 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     const vk = normalizeVendorKey(candidate.recipient?.name || '', candidate.upiId || candidate.recipient?.upiId);
     const upi = candidate.upiId || candidate.recipient?.upiId || null;
     const label = candidate.recipient?.name || upi || vk;
-    if ((vk || upi) && candidate.category && candidate.category !== 'Other') {
-      await upsertFromCategory({ familyId, createdBy, vendorKey: vk, upiId: upi, label, category: candidate.category });
-    } else if (vk || upi) {
-      // still bump hits even when category is Other
-      const RecipientDirectory = require('../models/recipientdirectory.model');
-      if (vk) await RecipientDirectory.findOneAndUpdate({ familyId, vendorKey: vk }, { $inc: { hits: 1 }, $set: { lastSeen: new Date(), ...(upi?{upiId: String(upi).toLowerCase()}:{}), label: label || vk }, $setOnInsert: { familyId, vendorKey: vk, label: label||vk } }, { upsert: true });
+    const cats = candidate.categorySplit && candidate.categorySplit.length ? candidate.categorySplit.map(function(s){ return s.category; }) : (candidate.category && candidate.category!=='Other' ? [candidate.category] : []);
+    // collect products from lineItems or productName for vendor learning
+    let productsForVendor = [];
+    if (candidate.lineItems && candidate.lineItems.length){
+      productsForVendor = candidate.lineItems.filter(li=> li.productName).map(li=> ({ name: li.productName, category: li.category || candidate.category, subcategory: li.subcategory, typicalAmountPaise: li.amountPaise }));
+    } else if (candidate.productName){
+      productsForVendor = [{ name: candidate.productName, category: candidate.category, subcategory: candidate.subcategory, typicalAmountPaise: candidate.amountPaise }];
     }
-  } catch {}
+    if ((vk || upi)) {
+      const vendorDoc = await upsertFromCategory({ familyId, createdBy, vendorKey: vk, upiId: upi, label, categories: cats, category: candidate.category, products: productsForVendor.length? productsForVendor: undefined, amountPaise: candidate.amountPaise });
+      if (vendorDoc && tx) { tx.recipientVendorRef = vendorDoc._id; await tx.save().catch(function(){}); }
+    }
+  } catch(e){ console.warn('[vendor active]', e.message); }
 
   return { transaction: tx, sourceRecord: sr, created: true, level: bestLevel };
 }

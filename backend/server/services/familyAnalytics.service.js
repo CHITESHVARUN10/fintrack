@@ -67,9 +67,32 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   }
   const byModeArr = Array.from(byMode.entries()).map(([mode, spendPaise])=> ({ mode, spendPaise, spend: spendPaise/100 }));
 
-  // heatmap: already byDay, expose as array; highest
-  const heatmap = Array.from(byDay.entries()).map(([date, spendPaise])=> ({ date, spendPaise, spend: spendPaise/100 }));
+  // heatmap: zero-fill range so empty days are visible
+  let heatmap = [];
+  if (from && to) {
+    const start = new Date(from); start.setHours(0,0,0,0);
+    const end = new Date(to); end.setHours(0,0,0,0);
+    for (let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+      const k=d.toISOString().slice(0,10);
+      const spendPaise = byDay.get(k)||0;
+      heatmap.push({ date:k, spendPaise, spend: spendPaise/100 });
+    }
+  } else {
+    heatmap = Array.from(byDay.entries()).sort((a,b)=> a[0].localeCompare(b[0])).map(([date, spendPaise])=> ({ date, spendPaise, spend: spendPaise/100 }));
+    // also fill gaps between min and max day in data
+    if (heatmap.length>1){
+      const min=new Date(heatmap[0].date), max=new Date(heatmap[heatmap.length-1].date);
+      const filled=[];
+      for (let d=new Date(min); d<=max; d.setDate(d.getDate()+1)){
+        const k=d.toISOString().slice(0,10);
+        const found=heatmap.find(h=> h.date===k);
+        filled.push(found||{date:k, spendPaise:0, spend:0});
+      }
+      heatmap=filled;
+    }
+  }
   const highestDay = heatmap.length ? heatmap.reduce((a,b)=> a.spendPaise>b.spendPaise?a:b) : null;
+  if (highestDay && highestDay.spendPaise===0) { /* no spend days, keep null-ish */ }
 
   // avg daily (over range or span of data)
   let days = 1;

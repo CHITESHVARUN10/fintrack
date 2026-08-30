@@ -30,6 +30,13 @@ function findHeaderIndex(headers, candidates) {
   return -1;
 }
 
+// ICICI & generic helper: detect if we have separate withdrawal/deposit columns
+function detectDebitCreditHeaders(headers) {
+  const hasWithdrawal = headers.some((h) => h.includes('withdrawal'));
+  const hasDeposit = headers.some((h) => h.includes('deposit'));
+  return hasWithdrawal && hasDeposit;
+}
+
 function parseBankDate(raw) {
   if (!raw) return null;
   if (raw instanceof Date && !isNaN(raw.getTime())) return raw;
@@ -69,21 +76,31 @@ function parseCSV(buffer) {
     const cols = splitCSV(line).map(normalizeHeaderCell);
     const hasDate = cols.some((h) => h.includes('transaction date') || h === 'date' || h.includes('value date'));
     const hasAmount = cols.some((h) => h.includes('amount') || h.includes('debit') || h.includes('credit') || h.includes('withdrawal') || h.includes('deposit'));
-    const hasDesc = cols.some((h) => h.includes('description') || h.includes('narration') || h.includes('particulars') || h.includes('details'));
+    const hasDesc = cols.some((h) => h.includes('description') || h.includes('narration') || h.includes('particulars') || h.includes('details') || h.includes('remarks'));
     if (hasDate && (hasAmount || hasDesc)) { headerIdx = i; headers = cols; break; }
   }
   if (headerIdx === -1) return [];
 
-  const dateIdx = findHeaderIndex(headers, ['transaction date', 'txn date', 'value date', 'date']);
-  const descIdx = findHeaderIndex(headers, ['description', 'narration', 'particulars', 'details']);
-  const chqIdx = findHeaderIndex(headers, ['chq /ref no', 'chq/ref no', 'chq', 'ref no', 'reference', 'utr', 'transaction id', 'txn id']);
-  const amountIdx = findHeaderIndex(headers, ['amount']);
-  const drCrIdx = headers.findIndex((h, i) => i > amountIdx && h.includes('dr') && h.includes('cr'));
-  const debitIdx = amountIdx === -1 ? findHeaderIndex(headers, ['debit', 'withdrawal', 'dr amount']) : -1;
-  const creditIdx = amountIdx === -1 ? findHeaderIndex(headers, ['credit', 'deposit', 'cr amount']) : -1;
+  let dateIdx = findHeaderIndex(headers, ['transaction date', 'txn date', 'value date', 'date']);
+  let descIdx = findHeaderIndex(headers, ['transaction remarks', 'remarks', 'description', 'narration', 'particulars', 'details']);
+  let chqIdx = findHeaderIndex(headers, ['cheque number', 'chq /ref no', 'chq/ref no', 'chq', 'ref no', 'reference', 'utr', 'transaction id', 'txn id']);
+  let amountIdx = findHeaderIndex(headers, ['amount']);
+  // ICICI has separate Withdrawal/Deposit columns both containing "amount" – treat as debit/credit, not single amount
+  const hasWithdrawalDeposit = detectDebitCreditHeaders(headers);
+  let debitIdx = -1;
+  let creditIdx = -1;
+  let useSingleAmount = amountIdx !== -1;
+  if (hasWithdrawalDeposit) {
+    useSingleAmount = false;
+    amountIdx = -1;
+    debitIdx = findHeaderIndex(headers, ['withdrawal', 'debit', 'dr amount']);
+    creditIdx = findHeaderIndex(headers, ['deposit', 'credit', 'cr amount']);
+  } else if (amountIdx === -1) {
+    debitIdx = findHeaderIndex(headers, ['debit', 'withdrawal', 'dr amount']);
+    creditIdx = findHeaderIndex(headers, ['credit', 'deposit', 'cr amount']);
+  }
+  const drCrIdx = useSingleAmount ? headers.findIndex((h, i) => i > amountIdx && h.includes('dr') && h.includes('cr')) : -1;
   const upiIdx = findHeaderIndex(headers, ['upi', 'counterparty']);
-
-  const useSingleAmount = amountIdx !== -1;
   const rows = [];
   for (let i = headerIdx + 1; i < rawLines.length; i++) {
     const line = rawLines[i];
@@ -134,66 +151,166 @@ function parseCSV(buffer) {
 }
 
 async function parseXLSX(buffer) {
+  // try ExcelJS first (handles .xlsx)
+  let rows = [];
   try {
     const ExcelJS = require('exceljs');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
     const ws = wb.worksheets[0];
-    if (!ws) return [];
+    if (ws) {
+      let headerIdx = -1;
+      let headers = [];
+      ws.eachRow((row, n) => {
+        if (headerIdx !== -1) return;
+        const vals = [];
+        row.eachCell((c, col) => { vals[col - 1] = normalizeHeaderCell(String(c.value ?? '')); });
+        const hasDate = vals.some((h) => h && (h.includes('transaction date') || h === 'date' || h.includes('value date')));
+        const hasAmount = vals.some((h) => h && (h.includes('amount') || h.includes('debit') || h.includes('credit') || h.includes('withdrawal') || h.includes('deposit')));
+        const hasDesc = vals.some((h) => h && (h.includes('remarks') || h.includes('description') || h.includes('narration')));
+        if (hasDate && (hasAmount || hasDesc)) { headerIdx = n; headers = vals; }
+      });
+      if (headerIdx !== -1) {
+        let dateIdx = findHeaderIndex(headers, ['transaction date', 'txn date', 'value date', 'date']);
+        let descIdx = findHeaderIndex(headers, ['transaction remarks', 'remarks', 'description', 'narration', 'particulars', 'details']);
+        let chqIdx = findHeaderIndex(headers, ['cheque number', 'chq /ref no', 'chq/ref no', 'chq', 'ref no', 'reference', 'utr', 'transaction id', 'txn id']);
+        let amountIdx = findHeaderIndex(headers, ['amount']);
+        const hasWithdrawalDeposit = headers.some((h) => h && h.includes('withdrawal')) && headers.some((h) => h && h.includes('deposit'));
+        let debitIdx = -1;
+        let creditIdx = -1;
+        let useSingleAmount = amountIdx !== -1;
+        if (hasWithdrawalDeposit) {
+          useSingleAmount = false;
+          amountIdx = -1;
+          debitIdx = findHeaderIndex(headers, ['withdrawal', 'debit', 'dr amount']);
+          creditIdx = findHeaderIndex(headers, ['deposit', 'credit', 'cr amount']);
+        } else if (amountIdx === -1) {
+          debitIdx = findHeaderIndex(headers, ['debit', 'withdrawal', 'dr amount']);
+          creditIdx = findHeaderIndex(headers, ['credit', 'deposit', 'cr amount']);
+        }
+        const drCrIdx = useSingleAmount ? headers.findIndex((h, i) => h && i > amountIdx && h.includes('dr') && h.includes('cr')) : -1;
+        const upiIdx = findHeaderIndex(headers, ['upi', 'counterparty']);
+        ws.eachRow((row, n) => {
+          if (n <= headerIdx) return;
+          const cols = [];
+          row.eachCell((c, col) => {
+            const v = c.value;
+            if (v instanceof Date) cols[col - 1] = v;
+            else if (v && typeof v === 'object' && v.text) cols[col - 1] = String(v.text).trim();
+            else cols[col - 1] = v != null ? String(v).trim() : '';
+          });
+          const firstCell = normalizeHeaderCell(String(cols[0] || ''));
+          if (firstCell.includes('closing balance') || firstCell.includes('important note')) return;
+          if (cols.every((c) => !String(c || '').trim())) return;
+          const dateRaw = dateIdx !== -1 ? cols[dateIdx] : '';
+          const occurredAt = parseBankDate(dateRaw) || new Date();
+          let amount = 0;
+          let type = 'EXPENSE';
+          if (useSingleAmount) {
+            amount = Math.abs(parseAmountStr(cols[amountIdx]));
+            if (!amount) return;
+            const dc = drCrIdx !== -1 ? normalizeHeaderCell(String(cols[drCrIdx] || '')) : '';
+            type = dc === 'cr' || dc.includes('cr') ? 'INCOME' : dc === 'dr' || dc.includes('dr') ? 'EXPENSE' : amount < 0 ? 'EXPENSE' : 'INCOME';
+          } else {
+            const debitAmt = Math.abs(parseAmountStr(cols[debitIdx !== -1 ? debitIdx : 0]));
+            const creditAmt = Math.abs(parseAmountStr(cols[creditIdx !== -1 ? creditIdx : 0]));
+            if (debitAmt > 0) { amount = debitAmt; type = 'EXPENSE'; }
+            else if (creditAmt > 0) { amount = creditAmt; type = 'INCOME'; }
+            else return;
+          }
+          if (!amount) return;
+          const description = descIdx !== -1 ? String(cols[descIdx] || '').trim() : '';
+          const chqRef = chqIdx !== -1 ? String(cols[chqIdx] || '').trim() : '';
+          const upiCell = upiIdx !== -1 ? String(cols[upiIdx] || '').trim() : '';
+          const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
+          rows.push({ occurredAt, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: n } });
+        });
+        if (rows.length) return rows;
+      }
+    }
+  } catch (e) {
+    // fall through to xlsx fallback
+  }
+
+  // Fallback for old .xls (BIFF) using SheetJS 'xlsx' library
+  try {
+    const XLSX = require('xlsx');
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) return rows.length ? rows : [];
+    const ws = wb.Sheets[sheetName];
+    // use sheet_to_json with header:1 to get raw rows
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false, raw: true });
+    if (!raw || raw.length === 0) return rows.length ? rows : [];
+    // find header row
     let headerIdx = -1;
     let headers = [];
-    ws.eachRow((row, n) => {
-      if (headerIdx !== -1) return;
-      const vals = [];
-      row.eachCell((c, col) => { vals[col - 1] = normalizeHeaderCell(String(c.value ?? '')); });
-      const hasDate = vals.some((h) => h && (h.includes('transaction date') || h === 'date' || h.includes('value date')));
-      const hasAmount = vals.some((h) => h && (h.includes('amount') || h.includes('debit') || h.includes('credit')));
-      if (hasDate && hasAmount) { headerIdx = n; headers = vals; }
-    });
-    if (headerIdx === -1) return [];
-    const dateIdx = findHeaderIndex(headers, ['transaction date', 'txn date', 'value date', 'date']);
-    const descIdx = findHeaderIndex(headers, ['description', 'narration', 'particulars', 'details']);
-    const chqIdx = findHeaderIndex(headers, ['chq /ref no', 'chq/ref no', 'chq', 'ref no', 'reference', 'utr']);
-    const amountIdx = findHeaderIndex(headers, ['amount']);
-    const drCrIdx = headers.findIndex((h, i) => h && i > amountIdx && h.includes('dr') && h.includes('cr'));
-    const debitIdx = amountIdx === -1 ? findHeaderIndex(headers, ['debit', 'withdrawal']) : -1;
-    const creditIdx = amountIdx === -1 ? findHeaderIndex(headers, ['credit', 'deposit']) : -1;
-    const useSingleAmount = amountIdx !== -1;
-    const rows = [];
-    ws.eachRow((row, n) => {
-      if (n <= headerIdx) return;
-      const cols = [];
-      row.eachCell((c, col) => {
-        const v = c.value;
-        if (v instanceof Date) cols[col - 1] = v;
-        else cols[col - 1] = v != null ? String(v).trim() : '';
-      });
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i];
+      if (!row || !row.length) continue;
+      const norm = row.map((c) => normalizeHeaderCell(String(c ?? '')));
+      const hasDate = norm.some((h) => h && (h.includes('transaction date') || h === 'date' || h.includes('value date')));
+      const hasAmount = norm.some((h) => h && (h.includes('amount') || h.includes('debit') || h.includes('credit') || h.includes('withdrawal') || h.includes('deposit')));
+      const hasDesc = norm.some((h) => h && (h.includes('remarks') || h.includes('description') || h.includes('narration')));
+      if (hasDate && (hasAmount || hasDesc)) { headerIdx = i; headers = norm; break; }
+    }
+    if (headerIdx === -1) return rows.length ? rows : [];
+    let dateIdx = findHeaderIndex(headers, ['transaction date', 'txn date', 'value date', 'date']);
+    let descIdx = findHeaderIndex(headers, ['transaction remarks', 'remarks', 'description', 'narration', 'particulars', 'details']);
+    let chqIdx = findHeaderIndex(headers, ['cheque number', 'chq /ref no', 'chq/ref no', 'chq', 'ref no', 'reference', 'utr', 'transaction id', 'txn id']);
+    let amountIdx = findHeaderIndex(headers, ['amount']);
+    const hasWithdrawalDeposit = headers.some((h) => h && h.includes('withdrawal')) && headers.some((h) => h && h.includes('deposit'));
+    let debitIdx = -1;
+    let creditIdx = -1;
+    let useSingleAmount = amountIdx !== -1;
+    if (hasWithdrawalDeposit) {
+      useSingleAmount = false;
+      amountIdx = -1;
+      debitIdx = findHeaderIndex(headers, ['withdrawal', 'debit', 'dr amount']);
+      creditIdx = findHeaderIndex(headers, ['deposit', 'credit', 'cr amount']);
+    } else if (amountIdx === -1) {
+      debitIdx = findHeaderIndex(headers, ['debit', 'withdrawal', 'dr amount']);
+      creditIdx = findHeaderIndex(headers, ['credit', 'deposit', 'cr amount']);
+    }
+    const drCrIdx = useSingleAmount ? headers.findIndex((h, i) => h && i > amountIdx && h.includes('dr') && h.includes('cr')) : -1;
+    const upiIdx = findHeaderIndex(headers, ['upi', 'counterparty']);
+    const out = [];
+    for (let i = headerIdx + 1; i < raw.length; i++) {
+      const row = raw[i];
+      if (!row) continue;
+      const cols = row.map((c) => (c instanceof Date ? c : c != null ? String(c).trim() : ''));
+      // also handle Date objects from xlsx cellDates
       const firstCell = normalizeHeaderCell(String(cols[0] || ''));
-      if (firstCell.includes('closing balance') || firstCell.includes('important note')) return;
-      if (cols.every((c) => !String(c || '').trim())) return;
+      if (firstCell.includes('closing balance') || firstCell.includes('important note')) break;
+      if (cols.every((c) => !String(c || '').trim())) continue;
       const dateRaw = dateIdx !== -1 ? cols[dateIdx] : '';
       const occurredAt = parseBankDate(dateRaw) || new Date();
       let amount = 0;
       let type = 'EXPENSE';
       if (useSingleAmount) {
         amount = Math.abs(parseAmountStr(cols[amountIdx]));
-        if (!amount) return;
+        if (!amount) continue;
         const dc = drCrIdx !== -1 ? normalizeHeaderCell(String(cols[drCrIdx] || '')) : '';
-        type = dc === 'cr' || dc.includes('cr') ? 'INCOME' : 'EXPENSE';
+        type = dc === 'cr' || dc.includes('cr') ? 'INCOME' : dc === 'dr' || dc.includes('dr') ? 'EXPENSE' : 'INCOME';
       } else {
         const debitAmt = Math.abs(parseAmountStr(cols[debitIdx !== -1 ? debitIdx : 0]));
         const creditAmt = Math.abs(parseAmountStr(cols[creditIdx !== -1 ? creditIdx : 0]));
         if (debitAmt > 0) { amount = debitAmt; type = 'EXPENSE'; }
         else if (creditAmt > 0) { amount = creditAmt; type = 'INCOME'; }
-        else return;
+        else continue;
       }
-      if (!amount) return;
+      if (!amount) continue;
       const description = descIdx !== -1 ? String(cols[descIdx] || '').trim() : '';
       const chqRef = chqIdx !== -1 ? String(cols[chqIdx] || '').trim() : '';
-      rows.push({ occurredAt, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, rawPayload: { row: n } });
-    });
-    return rows;
-  } catch { return []; }
+      const upiCell = upiIdx !== -1 ? String(cols[upiIdx] || '').trim() : '';
+      const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
+      out.push({ occurredAt, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: i + 1 } });
+    }
+    if (out.length) return out;
+  } catch (e2) {
+    // ignore, return whatever we have
+  }
+  return rows;
 }
 
 const crypto = require('crypto');

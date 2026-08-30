@@ -29,10 +29,12 @@ router.post('/bank', upload.single('file'), async (req,res,next)=>{
     if(!requireFamily(req,res)) return;
     if(!req.file) return res.status(400).json({ error:'file required' });
     const fHash = hashFile(req.file.buffer);
-    const existing = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash }).lean();
+    const existing = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash, status: { $ne: 'failed' } }).lean();
     if(existing){
       return res.json({ status:'duplicate_file', duplicateOf: existing.batchId, fileName: req.file.originalname, fileHash: fHash, message: `Already imported on ${new Date(existing.createdAt).toLocaleString('en-IN')} — ${existing.total} rows`, batch: existing });
     }
+    // if previous attempt was failed (0 rows), remove it so re-import can succeed
+    await ImportBatch.deleteMany({ familyId: req.user.familyAccountId, fileHash: fHash, status: 'failed' });
     const isXlsx = req.file.originalname.toLowerCase().endsWith('.xlsx') || req.file.originalname.toLowerCase().endsWith('.xls');
     const candidates = isXlsx ? await parseXLSX(req.file.buffer) : parseCSV(req.file.buffer);
     if (candidates.length === 0) {

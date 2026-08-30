@@ -56,6 +56,7 @@ app.use('/api/families', require('./routes/families/families.routes'));
 app.use('/api/transactions', require('./routes/transactions/transactions.routes'));
 app.use('/api/imports', require('./routes/imports/imports.routes'));
 app.use('/api/budgets', require('./routes/budgets/budgets.routes'));
+app.use('/api/vendors', require('./routes/vendors.routes'));
 app.use('/api/recipients', require('./routes/recipients/recipients.routes'));
 app.use('/api/analytics', require('./routes/analytics/analytics.routes'));
 app.use('/api/dashboard', require('./routes/dashboard/dashboard.routes'));

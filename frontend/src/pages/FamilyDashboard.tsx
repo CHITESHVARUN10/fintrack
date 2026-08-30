@@ -5,7 +5,7 @@ import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell,
 } from 'recharts'
 
 const CAT_COLORS = ['#FFE500','#1e1c10','#00fcfb','#FF6B6B','#9b5de5','#00bbf9','#f72585','#43aa8b']
@@ -68,7 +68,7 @@ export function FamilyDashboard(){
           })}</div>
         </div>
         <button onClick={load} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase">{loading?'Loading…':'Apply'}</button>
-        {(selMembers.length||selModes.length) ? <button onClick={()=>{ setSelMembers([]); setSelModes([])}} className="brutal bg-white px-md py-xs font-bold uppercase text-xs">Clear</button>: null}
+        {(selMembers.length||selModes.length) ? <button onClick={async()=>{ setSelMembers([]); setSelModes([]); setLoading(true); try{ const res=await analyticsService.family({ from, to }); setData(res); } finally { setLoading(false);} }} className="brutal bg-white px-md py-xs font-bold uppercase text-xs">Clear</button>: null}
       </div>
 
       {data && (
@@ -107,7 +107,9 @@ export function FamilyDashboard(){
                       <XAxis type="number" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
                       <YAxis type="category" dataKey="category" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} width={90} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
                       <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Bar dataKey="spend" name="Spend ₹" fill="#1e1c10" stroke="#1e1c10" strokeWidth={2} />
+                      <Bar dataKey="spend" name="Spend ₹" stroke="#1e1c10" strokeWidth={2}>
+                        {data.byCategory.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -146,20 +148,54 @@ export function FamilyDashboard(){
           </div>
 
           <div className="brutal bg-white p-md">
-            <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="calendar_month" /> Daily Heatmap</h3>
+            <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="calendar_month" /> Daily Heatmap <span className="text-xs normal-case opacity-60 ml-auto">darker = higher spend</span></h3>
             {(data.heatmap||[]).length===0 ? <div className="text-sm opacity-60">No days.</div> : (
-              <div className="grid grid-cols-7 md:grid-cols-14 gap-xs">
-                {(() => {
-                  const max = Math.max(...data.heatmap.map((h:any)=> h.spendPaise), 1)
-                  return data.heatmap.map((h:any)=> {
-                    const intensity = h.spendPaise / max
-                    const bg = intensity>0.66? '#1e1c10' : intensity>0.33? '#6b6a5e' : '#e9e2cf'
-                    const fg = intensity>0.33? 'white':'#1e1c10'
-                    const isMax = data.highestDay && h.date===data.highestDay.date
-                    return <div key={h.date} title={`${h.date}: ${formatCurrency(h.spend)}`} className={`brutal-thin p-xs text-center text-xs font-bold ${isMax?'border-brand-yellow':''}`} style={{ background:bg, color: fg }}>{h.date.slice(5)}<div className="opacity-80">{formatCurrency(h.spend)}</div></div>
-                  })
-                })()}
-              </div>
+              <>
+                <div className="grid gap-xs" style={{ gridTemplateColumns: `repeat(${Math.min(14, data.heatmap.length)}, minmax(0,1fr))` }}>
+                  {(() => {
+                    const vals = data.heatmap.map((h:any)=> h.spendPaise).filter((v:number)=> v>0).sort((a:number,b:number)=> a-b)
+                    // quantile breaks for 5-step palette (p20,p40,p60,p80) else fallback to linear
+                    const q = (arr:number[], pct:number)=> {
+                      if(!arr.length) return 0
+                      const idx = Math.ceil(pct*arr.length)-1
+                      return arr[Math.max(0, Math.min(arr.length-1, idx))]
+                    }
+                    const q20=q(vals,0.2), q40=q(vals,0.4), q60=q(vals,0.6), q80=q(vals,0.8)
+                    const palette = [
+                      { bg:'#ffffff', fg:'#1e1c10' }, // 0
+                      { bg:'#fff7a0', fg:'#1e1c10' }, // q0-q20
+                      { bg:'#ffe500', fg:'#1e1c10' }, // q20-q40
+                      { bg:'#d4a017', fg:'white' },
+                      { bg:'#6b6a5e', fg:'white' },
+                      { bg:'#1e1c10', fg:'white' }, // q80-max
+                    ]
+                    const hiDate = data.highestDay?.date
+                    return data.heatmap.map((h:any)=> {
+                      const v=h.spendPaise
+                      let level=0
+                      if(v===0) level=0
+                      else if(v<=q20) level=1
+                      else if(v<=q40) level=2
+                      else if(v<=q60) level=3
+                      else if(v<=q80) level=4
+                      else level=5
+                      const { bg, fg } = palette[level]
+                      const isMax = v>0 && h.date===hiDate
+                      return <div key={h.date} title={`${h.date}: ₹${(v/100).toLocaleString('en-IN')} — ${v===0?'no spend':`level ${level}/5`}`} className={`brutal-thin p-xs text-center text-xs font-bold min-h-[44px] flex flex-col justify-center ${isMax?'ring-2 ring-brand-yellow':''}`} style={{ background:bg, color: fg }}>{h.date.slice(5)}<div className="opacity-80 text-[10px]">{v? formatCurrency(h.spend): '—'}</div></div>
+                    })
+                  })()}
+                </div>
+                <div className="flex items-center gap-xs mt-sm text-xs font-bold uppercase">
+                  <span className="opacity-60">Scale</span>
+                  <span className="brutal-thin w-4 h-4" style={{background:'#ffffff'}} /> 0
+                  <span className="brutal-thin w-4 h-4" style={{background:'#fff7a0'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'#ffe500'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'#d4a017'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'#6b6a5e'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'#1e1c10'}} /> max
+                  <span className="ml-auto text-[11px] normal-case opacity-60">Empty days shown as white — not gaps</span>
+                </div>
+              </>
             )}
           </div>
         </>

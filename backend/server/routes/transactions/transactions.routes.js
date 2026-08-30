@@ -74,7 +74,7 @@ router.get('/compare', async (req, res, next) => {
 // GET /api/transactions/:id
 router.get('/:id', async (req, res, next) => {
   try {
-    const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email');
+    const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('recipientVendorRef');
     if (!tx) return res.status(404).json({ error: 'Not found' });
     if (String(tx.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Forbidden' });
     const sources = await SourceRecord.find({ transactionId: tx._id });
@@ -96,6 +96,19 @@ router.post('/', async (req, res, next) => {
       mode: Joi.string().valid('UPI','BANK','CASH','CARD','OTHER').default('OTHER'),
       occurredAt: Joi.date().required(),
       category: Joi.string().allow('', null),
+      subcategory: Joi.string().allow('', null),
+      productName: Joi.string().allow('', null),
+      productRef: Joi.string().allow('', null),
+      categorySplit: Joi.array().items(Joi.object({ category: Joi.string().required(), amountPaise: Joi.number().integer().min(1).required() })).allow(null),
+      lineItems: Joi.array().items(Joi.object({
+        productName: Joi.string().allow('', null),
+        productRef: Joi.string().allow('', null),
+        category: Joi.string().allow('', null),
+        subcategory: Joi.string().allow('', null),
+        quantity: Joi.number().allow(null),
+        unit: Joi.string().allow('', null),
+        amountPaise: Joi.number().integer().min(1).required(),
+      })).allow(null),
       recipient: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
       sender: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
       familyTransfer: Joi.object({ fromUserId: Joi.string().allow(null), toUserId: Joi.string().required() }).allow(null),
@@ -122,8 +135,36 @@ router.patch('/:id', async (req, res, next) => {
     const tx = await Transaction.findById(req.params.id);
     if (!tx) return res.status(404).json({ error: 'Not found' });
     if (String(tx.createdBy) !== String(req.user._id) && req.user.role!=='admin') return res.status(403).json({ error: 'Forbidden' });
-    const allowed = ['category','mode','type','visibility','recipient','sender'];
+    const allowed = ['category','subcategory','productName','productRef','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
     for (const k of allowed) if (req.body[k]!==undefined) tx[k]=req.body[k];
+    // if category changed, also learn vendor directory
+    try{
+      if (req.body.category && req.body.category!=='Other' && tx.recipientVendorRef){
+        const RecipientDirectory = require('../../models/recipientdirectory.model');
+        const vendor = await RecipientDirectory.findById(tx.recipientVendorRef);
+        if (vendor){
+          const cats = [req.body.category];
+          const { upsertFromCategory } = require('../../services/recipient.service');
+          await upsertFromCategory({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, categories: cats, amountPaise: tx.amountPaise });
+        }
+      }
+      // if product info changed, upsert product
+      if ((req.body.productName || (req.body.lineItems && req.body.lineItems.length)) && tx.recipientVendorRef){
+        const RecipientDirectory = require('../../models/recipientdirectory.model');
+        const vendor = await RecipientDirectory.findById(tx.recipientVendorRef);
+        if (vendor){
+          const { upsertProduct } = require('../../services/recipient.service');
+          if (req.body.productName){
+            await upsertProduct({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, product: { name: req.body.productName, category: req.body.category || vendor.primaryCategory, subcategory: req.body.subcategory||'', typicalAmountPaise: tx.amountPaise } });
+          }
+          if (req.body.lineItems){
+            for(const li of req.body.lineItems){
+              if(li.productName) await upsertProduct({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, product: { name: li.productName, category: li.category||req.body.category||vendor.primaryCategory, subcategory: li.subcategory||'', typicalAmountPaise: li.amountPaise } });
+            }
+          }
+        }
+      }
+    } catch(e){ console.warn('[patch vendor learn]', e.message); }
     await tx.save();
     res.json({ transaction: tx });
   } catch (err) { next(err); }

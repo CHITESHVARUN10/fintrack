@@ -22,7 +22,7 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
     final fd = FormData.fromMap({'file': MultipartFile.fromBytes(f.bytes!, filename: f.name)});
     final r = await ApiClient.dio.post('/imports/bank', data: fd);
     final status = r.data['status']?.toString() ?? '';
-    if(status=='duplicate_file'){ setState(()=> bankResult = 'DUPLICATE: ' + (r.data['message']?.toString() ?? 'Already imported')); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.data['message']?.toString() ?? 'Duplicate file'))); return; }
+    if(status=='duplicate_file'){ setState(()=> bankResult = 'DUPLICATE: ${r.data['message']?.toString() ?? 'Already imported'}'); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.data['message']?.toString() ?? 'Duplicate file'))); return; }
     setState(()=> bankResult = r.data.toString());
   }
 
@@ -33,7 +33,7 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
     final bytes = await x.readAsBytes();
     final fd = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: x.name)});
     final r = await ApiClient.dio.post('/imports/screenshot', data: fd);
-    if((r.data['status']?.toString() ?? '')=='duplicate_file'){ setState(()=> shotResult = 'DUPLICATE: '+(r.data['message']?.toString() ?? '')); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicate screenshot'))); return; }
+    if((r.data['status']?.toString() ?? '')=='duplicate_file'){ setState(()=> shotResult = 'DUPLICATE: ${r.data['message']?.toString() ?? ''}'); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicate screenshot'))); return; }
     setState(()=> shotResult = r.data.toString());
   }
 
