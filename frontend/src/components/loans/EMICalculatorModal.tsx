@@ -44,7 +44,6 @@ export function EMICalculatorModal({ open, onClose, onUse }: { open: boolean; on
 
   function handleExportCsv() {
     if (!calc) return
-    const rows = view === 'monthly' ? calc.schedule : calc.yearly as any
     let csv = ''
     if (view === 'monthly') {
       csv += 'Month,Date,EMI,Principal,Interest,Opening,Closing\n'

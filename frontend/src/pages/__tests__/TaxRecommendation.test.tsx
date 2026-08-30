@@ -1,10 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { vi, describe, beforeEach, it, expect } from 'vitest'
+import { vi, describe, beforeEach, it, expect, type Mock } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { TaxRecommendation } from '../TaxRecommendation'
 import { form16Service } from '../../services/api'
-import React from 'react'
 
 // Mock the API service
 vi.mock('../../services/api', () => ({
@@ -54,13 +53,13 @@ describe('TaxRecommendation duplicate suggestion render bug (Final 3% Part 1)', 
 
   it('renders exactly four suggestion cards when exactly four unique suggestions are provided', async () => {
     const suggestions = [
-      { id: '1', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 },
-      { id: '2', title: 'Claim 80D', detail: 'Health insurance', icon: 'health_and_safety', potentialSaving: 7500 },
-      { id: '3', title: 'Claim 80CCD', detail: 'NPS contribution', icon: 'account_balance', potentialSaving: 15000 },
-      { id: '4', title: 'Claim 24b', detail: 'Home loan interest', icon: 'home', potentialSaving: 60000 },
+      { id: '1', section: '80C', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 },
+      { id: '2', section: '80D', title: 'Claim 80D', detail: 'Health insurance', icon: 'health_and_safety', potentialSaving: 7500 },
+      { id: '3', section: '80CCD', title: 'Claim 80CCD', detail: 'NPS contribution', icon: 'account_balance', potentialSaving: 15000 },
+      { id: '4', section: '24b', title: 'Claim 24b', detail: 'Home loan interest', icon: 'home', potentialSaving: 60000 },
     ]
 
-    ;(form16Service.getRecommendation as vi.Mock).mockResolvedValue(mockTaxResult(suggestions))
+    ;(form16Service.getRecommendation as Mock).mockResolvedValue(mockTaxResult(suggestions))
 
     render(
       <MemoryRouter initialEntries={['/form16/123/recommendation']}>
@@ -81,13 +80,13 @@ describe('TaxRecommendation duplicate suggestion render bug (Final 3% Part 1)', 
 
   it('renders exactly three suggestion cards when four are provided but two are identical (dedup guard test)', async () => {
     const suggestions = [
-      { id: '1', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 },
-      { id: '2', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 }, // IDENTICAL TO #1
-      { id: '3', title: 'Claim 80CCD', detail: 'NPS contribution', icon: 'account_balance', potentialSaving: 15000 },
-      { id: '4', title: 'Claim 24b', detail: 'Home loan interest', icon: 'home', potentialSaving: 60000 },
+      { id: '1', section: '80C', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 },
+      { id: '2', section: '80C', title: 'Claim 80C', detail: 'Invest 1.5L', icon: 'savings', potentialSaving: 45000 }, // IDENTICAL TO #1
+      { id: '3', section: '80CCD', title: 'Claim 80CCD', detail: 'NPS contribution', icon: 'account_balance', potentialSaving: 15000 },
+      { id: '4', section: '24b', title: 'Claim 24b', detail: 'Home loan interest', icon: 'home', potentialSaving: 60000 },
     ]
 
-    ;(form16Service.getRecommendation as vi.Mock).mockResolvedValue(mockTaxResult(suggestions))
+    ;(form16Service.getRecommendation as Mock).mockResolvedValue(mockTaxResult(suggestions))
 
     render(
       <MemoryRouter initialEntries={['/form16/123/recommendation']}>

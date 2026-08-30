@@ -70,8 +70,6 @@ export function RetroLoader({
   }, [funMessages.length])
   const fun = useScramble(funMessages[funIdx] ?? '')
 
-  const pct = ((Math.min(step, steps.length - 1) + 1) / steps.length) * 100
-
   return (
     <main className="w-full max-w-2xl bg-white brutal flex flex-col overflow-hidden">
       <header className="p-xl pb-6 bg-white relative overflow-hidden border-b-[3px] border-on-surface">

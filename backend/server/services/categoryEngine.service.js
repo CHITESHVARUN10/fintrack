@@ -1,21 +1,80 @@
 const RecipientDirectory = require('../models/recipientdirectory.model');
+const EMILoan = require('../models/loan.model');
+const Subscription = require('../models/subscription.model');
 const { MANUAL_UPI_HANDLE_MAP, KEYWORD_CATEGORY_MAP } = require('../config/bhimUpiMap');
 const { normalizeVendorKey } = require('./recipient.service');
 
 // Lightweight rule-based categorizer (no AI) – combination of manual + auto-learn
-// Returns { category, subcategory, confidence, trace: [{rule, category, confidence}] }
+// Returns { category, subcategory, confidence, trace: [{rule, category, confidence}], loanRef, subscriptionRef }
 
 async function predictCategory({ familyId, vendorKey, upiId, amountPaise, description = '', vendorDoc = null }) {
   const trace = [];
-  let best = { category: 'Other', confidence: 0, rule: 'none' };
+  let best = { category: 'Other', subcategory: null, confidence: 0, rule: 'none', loanRef: null, subscriptionRef: null };
 
-  function consider(category, confidence, rule) {
+  function consider(category, confidence, rule, subcategory = null, refs = {}) {
     if (!category || category === 'Other') return;
     trace.push({ rule, category, confidence });
-    if (confidence > best.confidence) best = { category, confidence, rule };
+    if (confidence > best.confidence) {
+      best = {
+        category,
+        confidence,
+        rule,
+        subcategory: subcategory || best.subcategory,
+        loanRef: refs.loanRef || best.loanRef,
+        subscriptionRef: refs.subscriptionRef || best.subscriptionRef,
+      };
+    }
   }
 
-  // 1. Vendor primaryCategory – highest signal (hit-ranked)
+  // 1. Active Family Loans match (High signal)
+  if (familyId) {
+    try {
+      const activeLoans = await EMILoan.find({ familyAccountId: familyId, status: 'Active' }).lean();
+      const descLower = String(description || '').toLowerCase();
+      const upiLower = String(upiId || '').toLowerCase();
+      for (const loan of activeLoans) {
+        const loanNameLow = String(loan.loanName || '').toLowerCase().trim();
+        const lenderLow = String(loan.lender || '').toLowerCase().trim();
+        const isNameMatch = (loanNameLow && loanNameLow.length > 2 && (descLower.includes(loanNameLow) || upiLower.includes(loanNameLow))) ||
+                            (lenderLow && lenderLow.length > 2 && (descLower.includes(lenderLow) || upiLower.includes(lenderLow)));
+        const loanAmountPaise = Math.round(Number(loan.emiAmount || 0) * 100);
+        const isAmountMatch = amountPaise && loanAmountPaise && Math.abs(amountPaise - loanAmountPaise) <= Math.max(100, loanAmountPaise * 0.05);
+
+        if (isNameMatch && isAmountMatch) {
+          consider('Bills', 90, `family_loan_exact_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
+          break;
+        } else if (isNameMatch) {
+          consider('Bills', 80, `family_loan_name_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
+        } else if (isAmountMatch && (descLower.includes('emi') || descLower.includes('loan') || descLower.includes('nach') || descLower.includes('ach') || descLower.includes('mortgage'))) {
+          consider('Bills', 85, `family_loan_amount_kw_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Active Family Subscriptions match (High signal)
+  if (familyId) {
+    try {
+      const activeSubs = await Subscription.find({ familyAccountId: familyId, status: 'Active' }).lean();
+      const descLower = String(description || '').toLowerCase();
+      const upiLower = String(upiId || '').toLowerCase();
+      for (const sub of activeSubs) {
+        const subNameLow = String(sub.name || '').toLowerCase().trim();
+        const isNameMatch = subNameLow && subNameLow.length > 2 && (descLower.includes(subNameLow) || upiLower.includes(subNameLow));
+        const subAmountPaise = Math.round(Number(sub.amount || 0) * 100);
+        const isAmountMatch = amountPaise && subAmountPaise && Math.abs(amountPaise - subAmountPaise) <= Math.max(100, subAmountPaise * 0.05);
+
+        if (isNameMatch && isAmountMatch) {
+          consider(sub.category || 'Entertainment', 90, `family_sub_exact_${sub._id}`, 'Subscription', { subscriptionRef: sub._id });
+          break;
+        } else if (isNameMatch) {
+          consider(sub.category || 'Entertainment', 80, `family_sub_name_${sub._id}`, 'Subscription', { subscriptionRef: sub._id });
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Vendor primaryCategory – highest signal (hit-ranked)
   try {
     let vendor = vendorDoc;
     if (!vendor && familyId && (vendorKey || upiId)) {
@@ -28,18 +87,15 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
     if (vendor) {
       const primary = vendor.primaryCategory || vendor.category || (vendor.offerings && vendor.offerings[0]?.category);
       if (primary && primary !== 'Other') {
-        // confidence based on hits: >10 => 90, >3 => 80, else 70
         const hits = vendor.hits || 1;
         const conf = hits > 10 ? 90 : hits > 3 ? 80 : 70;
         consider(primary, conf, 'vendor_primary');
       }
-      // vendor offerings also as candidates (lower confidence)
       if (vendor.offerings) {
         for (const off of vendor.offerings) {
           if (off.category && off.category !== 'Other') consider(off.category, 40, 'vendor_offering');
         }
       }
-      // amount signature → product category
       if (amountPaise && vendor.priceMap && vendor.priceMap.length) {
         const tolerance = Math.max(100, amountPaise * 0.05);
         let bestPm = null;
@@ -56,7 +112,6 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
           else if (prod) consider(vendor.primaryCategory, 30, 'vendor_amount_fallback');
         }
       }
-      // auto-learn from UPI handle: if this vendor's handle maps to its primary, boost handle rule
       if (upiId && vendor.primaryCategory) {
         const handle = String(upiId).split('@')[1]?.toLowerCase();
         if (handle) consider(vendor.primaryCategory, 50, `auto_learn_handle_${handle}`);
@@ -96,9 +151,11 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
 
   return {
     category: best.category,
-    subcategory: null, // could be extended via taxonomy
+    subcategory: best.subcategory || null,
     confidence: best.confidence,
     rule: best.rule,
+    loanRef: best.loanRef || null,
+    subscriptionRef: best.subscriptionRef || null,
     trace,
   };
 }

@@ -193,7 +193,25 @@ router.post('/bulk-categorize', async (req, res, next) => {
         if (pred.category && pred.category !== 'Other' && pred.confidence >= threshold) {
           details.push({ id: tx._id, oldCategory: tx.category || 'Other', newCategory: pred.category, confidence: pred.confidence, rule: pred.rule, amount: tx.amountPaise });
           if (!dryRun) {
-            await Transaction.updateOne({ _id: tx._id }, { $set: { category: pred.category, subcategory: pred.subcategory || undefined, metadata: { ...(tx.metadata || {}), bulkCategorized: true, bulkCategoryConfidence: pred.confidence, bulkCategoryRule: pred.rule, bulkCategoryTrace: pred.trace } } });
+            const updateDoc = {
+              category: pred.category,
+              subcategory: pred.subcategory || undefined,
+              metadata: {
+                ...(tx.metadata || {}),
+                bulkCategorized: true,
+                bulkCategoryConfidence: pred.confidence,
+                bulkCategoryRule: pred.rule,
+                bulkCategoryTrace: pred.trace,
+              },
+            };
+            if (pred.loanRef && !tx.loanRef) {
+              updateDoc.loanRef = pred.loanRef;
+              updateDoc.loanMeta = { isLoanPayment: true, isPrepayment: false };
+            }
+            if (pred.subscriptionRef && !tx.subscriptionRef) {
+              updateDoc.subscriptionRef = pred.subscriptionRef;
+            }
+            await Transaction.updateOne({ _id: tx._id }, { $set: updateDoc });
             // also teach vendor directory for future
             try {
               const { upsertFromCategory } = require('../../services/recipient.service');

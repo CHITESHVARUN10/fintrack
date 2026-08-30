@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/ui/PageHeader'
-import { transactionService, familyService } from '../services/api'
+import { transactionService, familyService, loanService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
@@ -259,7 +259,7 @@ export function Transactions() {
         <div className="brutal bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-on-surface text-white"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Subscription</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
+              <thead className="bg-on-surface text-white"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Sub / Loan</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
               <tbody>
                 {filtered.map((t) => {
                   const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy as any).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
@@ -284,7 +284,17 @@ export function Transactions() {
                         )}
                       </td>
                       <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
-                        {(t as any).subscriptionRef ? <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block">{typeof (t as any).subscriptionRef==='object' ? ((t as any).subscriptionRef.name||'Sub') : 'Linked'}</span> : <span className="opacity-30">—</span>}
+                        {(t as any).loanRef ? (
+                          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block" title={typeof (t as any).loanRef==='object'? (t as any).loanRef.loanName: 'Loan'}>
+                            {(t as any).loanMeta?.isPrepayment ? '⭐ Prepay' : 'Loan EMI'}: {typeof (t as any).loanRef==='object' ? ((t as any).loanRef.loanName||'Loan') : 'Linked'}
+                          </span>
+                        ) : (t as any).subscriptionRef ? (
+                          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block">
+                            {typeof (t as any).subscriptionRef==='object' ? ((t as any).subscriptionRef.name||'Sub') : 'Sub'}
+                          </span>
+                        ) : (
+                          <span className="opacity-30">—</span>
+                        )}
                       </td>
                       <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
                         <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${t.visibility==='PRIVATE'?'bg-on-surface text-white':'bg-white'}`}>{t.visibility||'FAMILY'}</span>
@@ -357,6 +367,7 @@ export function Transactions() {
               <div className="text-[11px] opacity-60">Private is invisible to other family members even in dashboard/budgets/reports.</div>
               <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
               <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
+              <LoanLinkBox tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
               <DetailRow label="Status" value={detail.transaction.status} />
               <DetailRow label="Confidence" value={detail.transaction.confidence != null ? `${detail.transaction.confidence}%` : '—'} />
               {detail.transaction.candidateOf && <DetailRow label="Possible duplicate of" value={String(detail.transaction.candidateOf).slice(0, 12)} />}
@@ -539,7 +550,6 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
   useEffect(()=>{
     apiClient.get('/subscriptions').then((r:any)=>{
       const arr = Array.isArray(r.data) ? r.data : (r.data?.items||[])
-      // normalize: backend returns array directly
       const list = arr.map((s:any)=> ({ id: s._id||s.id, name: s.name, amount: s.amount, billingDate: s.billingDate }))
       setSubs(list)
       if(tx.subscriptionRef){
@@ -547,7 +557,7 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
         if(sid) setSelected(String(sid))
       }
     }).catch(()=>{})
-  }, [tx._id])
+  }, [tx._id, tx.subscriptionRef])
   const linked = tx.subscriptionRef
   const linkedName = linked ? (typeof linked==='object' ? (linked.name||linked.title||'Subscription') : subs.find(s=> String(s.id)===String(linked))?.name || 'Linked') : null
   async function link(){
@@ -589,7 +599,152 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
     {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold">{toast}</div>}
   </div>
 }
+
+function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
+  const [loans, setLoans] = useState<any[]>([])
+  const [selectedLoan, setSelectedLoan] = useState('')
+  const [isPrepay, setIsPrepay] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    loanService.list().then((arr: any) => {
+      const list = (Array.isArray(arr) ? arr : arr?.items || []).map((l: any) => ({
+        id: l._id || l.id,
+        name: l.loanName,
+        lender: l.lender,
+        type: l.loanType,
+        emi: l.emiAmount,
+        outstanding: l.outstandingAmount,
+      }))
+      setLoans(list)
+      if (tx.loanRef) {
+        const lid = typeof tx.loanRef === 'object' ? (tx.loanRef._id || tx.loanRef.id) : tx.loanRef
+        if (lid) setSelectedLoan(String(lid))
+      }
+      if (tx.loanMeta?.isPrepayment) setIsPrepay(true)
+    }).catch(() => {})
+  }, [tx._id, tx.loanRef, tx.loanMeta])
+
+  const linked = tx.loanRef
+  const linkedName = linked
+    ? (typeof linked === 'object' ? (linked.loanName || linked.name) : loans.find((l) => String(l.id) === String(linked))?.name || 'Loan')
+    : null
+  const isPrepayment = tx.loanMeta?.isPrepayment
+
+  async function link() {
+    if (!selectedLoan) {
+      setToast('Select a loan')
+      setTimeout(() => setToast(null), 2000)
+      return
+    }
+    setBusy(true)
+    try {
+      await loanService.linkTransaction(selectedLoan, {
+        transactionId: tx._id,
+        isPrepayment: isPrepay,
+      })
+      setToast(`Linked as ${isPrepay ? 'Prepayment' : 'Regular EMI'}`)
+      setTimeout(() => setToast(null), 2500)
+      onDone()
+    } catch (e: any) {
+      setToast(e?.response?.data?.error || 'Link failed')
+      setTimeout(() => setToast(null), 2500)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function unlink() {
+    const loanId = typeof linked === 'object' ? (linked._id || linked.id) : linked
+    if (!loanId) return
+    setBusy(true)
+    try {
+      await loanService.unlinkTransaction(loanId, { transactionId: tx._id })
+      setToast('Unlinked from loan')
+      setTimeout(() => setToast(null), 2000)
+      onDone()
+    } catch (e: any) {
+      setToast(e?.response?.data?.error || 'Unlink failed')
+      setTimeout(() => setToast(null), 2000)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="brutal-thin p-sm bg-white flex flex-col gap-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase">Link to EMI Loan / Prepayment</span>
+        {linked && (
+          <span className="brutal-thin bg-tertiary-container px-xs py-0.5 text-[10px] font-bold uppercase">
+            {isPrepayment ? '⭐ Prepayment' : 'Regular EMI'}
+          </span>
+        )}
+      </div>
+      <span className="text-xs opacity-60">
+        Attach this transaction as an EMI payment or part-prepayment to track debt payoff progress.
+      </span>
+
+      {linked ? (
+        <div className="flex items-center justify-between gap-sm text-xs">
+          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 font-bold">
+            Linked: {linkedName} {isPrepayment ? '(Prepayment)' : '(EMI)'}
+          </span>
+          <button
+            type="button"
+            onClick={unlink}
+            disabled={busy}
+            className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-error-container"
+          >
+            Unlink
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-xs">
+          <div className="flex gap-xs">
+            <select
+              value={selectedLoan}
+              onChange={(e) => setSelectedLoan(e.target.value)}
+              className="brutal-thin px-sm py-xs text-xs flex-1 bg-white"
+            >
+              <option value="">Select loan…</option>
+              {loans.map((l: any) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} ({l.lender || l.type}) — EMI ₹{l.emi}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={link}
+              disabled={busy || !selectedLoan}
+              className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase"
+            >
+              Link
+            </button>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-bold cursor-pointer mt-1">
+            <input
+              type="checkbox"
+              checked={isPrepay}
+              onChange={(e) => setIsPrepay(e.target.checked)}
+            />
+            <span>Mark as Prepayment (Extra principal reduction)</span>
+          </label>
+        </div>
+      )}
+
+      {loans.length === 0 && (
+        <div className="text-[11px] opacity-60">No active loans found — create one in Loans page.</div>
+      )}
+      {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold">{toast}</div>}
+    </div>
+  )
+}
+
 function vendorInfoCategoryChip(detail:any){ const v=detail.vendorInfo || detail.transaction?.recipientVendorRef; if(!v) return null; const cats=(v.offerings||[]).map((o:any)=>o.category).join(', '); if(!cats) return null; return <div className="brutal-thin bg-white p-xs text-xs">Vendor offers: <span className="font-bold">{cats}</span> · default <span className="font-bold">{v.primaryCategory||v.category}</span>{(v.products||[]).length? <> · sells <span className="font-bold">{v.products.map((p:any)=> p.name).join(', ')}</span></> : null}</div> }
 function DetailRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return <div className="flex justify-between gap-md"><span className="text-on-surface-variant uppercase text-xs font-bold tracking-wider">{label}</span><span className={bold ? 'font-bold' : 'font-medium'}>{value}</span></div>
 }
+

@@ -11,9 +11,11 @@ import { Dashboard } from './pages/Dashboard'
 import { Income } from './pages/Income'
 import { AddIncome } from './pages/AddIncome'
 import { Subscriptions } from './pages/Subscriptions'
+import { SubscriptionDetail } from './pages/SubscriptionDetail'
 import { Recurring } from './pages/Recurring'
 import { Investments } from './pages/Investments'
 import { Loans } from './pages/Loans'
+import { LoanDetail } from './pages/LoanDetail'
 import { Insurance } from './pages/Insurance'
 import { Education } from './pages/Education'
 import { Tax } from './pages/Tax'
@@ -99,9 +101,11 @@ function AnimatedRoutes() {
             <Route path="income" element={<Income />} />
             <Route path="income/new" element={<AddIncome />} />
             <Route path="subscriptions" element={<Subscriptions />} />
+            <Route path="subscriptions/:id" element={<SubscriptionDetail />} />
             <Route path="recurring" element={<Recurring />} />
             <Route path="investments" element={<Investments />} />
             <Route path="loans" element={<Loans />} />
+            <Route path="loans/:id" element={<LoanDetail />} />
             <Route path="insurance" element={<Insurance />} />
             <Route path="education" element={<Education />} />
             <Route path="tax" element={<Tax />} />

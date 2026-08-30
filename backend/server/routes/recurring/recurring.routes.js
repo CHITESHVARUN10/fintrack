@@ -33,6 +33,67 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// GET /api/recurring/suggestions
+router.get('/suggestions', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { buildSuggestionsForRecurring } = require('../../services/subscriptionLinker.service');
+    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
+    const suggestions = await buildSuggestionsForRecurring({ familyId: req.user.familyAccountId, memberId });
+    res.json({ suggestions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/recurring/:id/apply-suggestion
+router.post('/:id/apply-suggestion', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { applySuggestion } = require('../../services/subscriptionLinker.service');
+    const { acceptAmount, acceptDate, matchedTxIds } = req.body;
+    const updated = await applySuggestion({
+      kind: 'recurring',
+      id: req.params.id,
+      acceptAmount,
+      acceptDate,
+      matchedTxIds,
+      familyId: req.user.familyAccountId,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/recurring/:id/dismiss-suggestion
+router.post('/:id/dismiss-suggestion', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { dismissSuggestion } = require('../../services/subscriptionLinker.service');
+    const result = await dismissSuggestion({
+      kind: 'recurring',
+      id: req.params.id,
+      familyId: req.user.familyAccountId,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/recurring/:id
+router.get('/:id', async (req, res, next) => {
+  try {
+    const item = await RecurringPayment.findById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
+    res.json(item);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PUT /api/recurring/:id
 router.put('/:id', async (req, res, next) => {
   try {
@@ -46,27 +107,6 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-// GET /api/recurring/suggestions
-router.get('/suggestions', async (req, res, next) => {
-  try {
-    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
-    const { buildSuggestionsForRecurring } = require('../../services/subscriptionLinker.service');
-    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
-    const suggestions = await buildSuggestionsForRecurring({ familyId: req.user.familyAccountId, memberId });
-    res.json({ suggestions });
-  } catch (err) { next(err); }
-});
-
-router.post('/:id/apply-suggestion', async (req, res, next) => {
-  try {
-    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
-    const { applySuggestion } = require('../../services/subscriptionLinker.service');
-    const { acceptAmount, acceptDate } = req.body;
-    const updated = await applySuggestion({ kind: 'recurring', id: req.params.id, acceptAmount, acceptDate, familyId: req.user.familyAccountId });
-    res.json(updated);
-  } catch (err) { next(err); }
 });
 
 // DELETE /api/recurring/:id

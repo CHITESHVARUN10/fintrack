@@ -217,8 +217,6 @@ export function prepaymentImpact(inp: PrepayInput): PrepayResult {
     const nRem = totalMonths - k
     const newEmiRaw = r === 0 ? newOutstanding / nRem : (newOutstanding * r * Math.pow(1 + r, nRem)) / (Math.pow(1 + r, nRem) - 1)
     const newEmi = Math.round(newEmiRaw)
-    const withPayable = emi * k + newEmi * nRem + prepay
-    const withInterest = Math.max(0, withPayable - principal)
     const newScheduleTail = amortizationSchedule(newOutstanding, annualRatePct, nRem, {
       startDate: k < schedule.length ? schedule[k]?.date : schedule[schedule.length - 1]?.date,
       emiDate,

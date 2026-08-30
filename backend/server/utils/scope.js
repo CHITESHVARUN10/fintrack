@@ -11,16 +11,15 @@ function buildListFilter(req) {
   return { memberId: req.user._id };
 }
 
-// Whether the requesting user may read/modify a given document.
 function canModify(req, doc) {
-  if (!doc) return false;
-  if (doc.memberId && doc.memberId.equals(req.user._id)) return true;
-  if (
-    req.user.role === 'admin' &&
-    req.user.familyAccountId &&
-    doc.familyAccountId &&
-    doc.familyAccountId.equals(req.user.familyAccountId)
-  ) {
+  if (!doc || !req.user) return false;
+  const userMemberId = req.user._id ? String(req.user._id) : '';
+  const docMemberId = doc.memberId ? String(doc.memberId) : '';
+  if (docMemberId && userMemberId && docMemberId === userMemberId) return true;
+
+  const userFamilyId = req.user.familyAccountId ? String(req.user.familyAccountId) : '';
+  const docFamilyId = doc.familyAccountId ? String(doc.familyAccountId) : doc.familyId ? String(doc.familyId) : '';
+  if (userFamilyId && docFamilyId && userFamilyId === docFamilyId) {
     return true;
   }
   return false;

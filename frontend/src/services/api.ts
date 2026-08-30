@@ -38,21 +38,40 @@ export const incomeService = {
 }
 
 export const subscriptionService = {
-  list: (frequency?: 'monthly' | 'yearly'): Promise<Subscription[]> =>
-    apiClient
-      .get('/subscriptions', { params: { frequency } })
-      .then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/subscriptions/suggestions').then((r) => r.data),
-  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+  list: (params?: { frequency?: string }): Promise<Subscription[]> =>
+    apiClient.get('/subscriptions', { params }).then((r) => r.data),
+  get: (id: string): Promise<Subscription> =>
+    apiClient.get(`/subscriptions/${id}`).then((r) => r.data),
+  create: (payload: Record<string, unknown>): Promise<Subscription> =>
+    apiClient.post('/subscriptions', payload).then((r) => r.data),
+  update: (id: string, payload: Record<string, unknown>): Promise<Subscription> =>
+    apiClient.put(`/subscriptions/${id}`, payload).then((r) => r.data),
+  delete: (id: string): Promise<void> =>
+    apiClient.delete(`/subscriptions/${id}`).then(() => undefined),
+  getTransactions: (id: string): Promise<{ linked: any[]; suggestions: any[]; totalPaidPaise: number; totalCount: number }> =>
+    apiClient.get(`/subscriptions/${id}/transactions`).then((r) => r.data),
+  linkTransaction: (id: string, payload: { transactionId: string }) =>
+    apiClient.post(`/subscriptions/${id}/link-transaction`, payload).then((r) => r.data),
+  unlinkTransaction: (id: string, payload: { transactionId: string }) =>
+    apiClient.post(`/subscriptions/${id}/unlink-transaction`, payload).then((r) => r.data),
+  recordPayment: (id: string, payload: { amount?: number; date?: string; mode?: string; notes?: string; transactionId?: string }) =>
+    apiClient.post(`/subscriptions/${id}/record-payment`, payload).then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: any[] }> =>
+    apiClient.get('/subscriptions/suggestions').then((r) => r.data),
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/subscriptions/${id}/apply-suggestion`, payload).then((r) => r.data),
+  dismissSuggestion: (id: string) =>
+    apiClient.post(`/subscriptions/${id}/dismiss-suggestion`).then((r) => r.data),
 }
 
 export const recurringService = {
   list: (): Promise<RecurringPayment[]> =>
     apiClient.get('/recurring').then((r) => r.data),
   suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/recurring/suggestions').then((r) => r.data),
-  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/recurring/${id}/apply-suggestion`, payload).then((r) => r.data),
+  dismissSuggestion: (id: string) =>
+    apiClient.post(`/recurring/${id}/dismiss-suggestion`).then((r) => r.data),
 }
 
 export const investmentService = {
@@ -64,9 +83,22 @@ export const investmentService = {
 
 export const loanService = {
   list: (): Promise<EMILoan[]> => apiClient.get('/loans').then((r) => r.data),
+  get: (id: string): Promise<EMILoan> => apiClient.get(`/loans/${id}`).then((r) => r.data),
+  getSchedule: (id: string): Promise<any> => apiClient.get(`/loans/${id}/schedule`).then((r) => r.data),
+  getTransactions: (id: string): Promise<any> => apiClient.get(`/loans/${id}/transactions`).then((r) => r.data),
+  linkTransaction: (id: string, payload: { transactionId: string; isPrepayment?: boolean }) =>
+    apiClient.post(`/loans/${id}/link-transaction`, payload).then((r) => r.data),
+  unlinkTransaction: (id: string, payload: { transactionId: string }) =>
+    apiClient.post(`/loans/${id}/unlink-transaction`, payload).then((r) => r.data),
+  recordPrepayment: (id: string, payload: { amount?: number; transactionId?: string; date?: string; mode?: string; notes?: string }) =>
+    apiClient.post(`/loans/${id}/record-prepayment`, payload).then((r) => r.data),
+  calculate: (payload: { principal: number; rate: number; tenureMonths: number; startDate?: string; emiDate?: number }) =>
+    apiClient.post('/loans/calculate', payload).then((r) => r.data),
   suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/loans/suggestions').then((r) => r.data),
-  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/loans/${id}/apply-suggestion`, payload).then((r) => r.data),
+  dismissSuggestion: (id: string) =>
+    apiClient.post(`/loans/${id}/dismiss-suggestion`).then((r) => r.data),
 }
 
 export const expenseService = {

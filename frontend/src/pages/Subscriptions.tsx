@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -258,6 +259,7 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
 }
 
 export function Subscriptions() {
+  const navigate = useNavigate()
   const [freq, setFreq] = useState<Freq>('monthly')
   const [items, setItems] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(true)
@@ -288,10 +290,58 @@ export function Subscriptions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [freq])
 
-  useEffect(() => {
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('fintrack_dismissed_subs') || '[]')
+    } catch {
+      return []
+    }
+  })
+
+  const loadSuggestions = () => {
     setSuggLoading(true)
-    apiClient.get('/subscriptions/suggestions').then((r:any)=> setSuggestions(r.data?.suggestions||[])).catch(()=>{}).finally(()=> setSuggLoading(false))
-  }, [])
+    apiClient
+      .get('/subscriptions/suggestions')
+      .then((r: any) => {
+        const raw = r.data?.suggestions || []
+        const filtered = raw.filter((s: any) => !dismissedIds.includes(s.id))
+        setSuggestions(filtered)
+      })
+      .catch(() => {})
+      .finally(() => setSuggLoading(false))
+  }
+
+  useEffect(() => {
+    load()
+    loadSuggestions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freq])
+
+  const handleAcceptSuggestion = async (s: any) => {
+    try {
+      await apiClient.post(`/subscriptions/${s.id}/apply-suggestion`, {
+        acceptAmount: s.suggested?.amount ?? s.current?.amount,
+        acceptDate: s.suggested?.billingDate ?? s.current?.billingDate,
+        matchedTxIds: s.matchedTxIds,
+      })
+      setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+      load()
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to accept suggestion')
+    }
+  }
+
+  const handleDismissSuggestion = async (s: any) => {
+    const nextDismissed = [...dismissedIds, s.id]
+    setDismissedIds(nextDismissed)
+    try {
+      localStorage.setItem('fintrack_dismissed_subs', JSON.stringify(nextDismissed))
+    } catch {}
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+    try {
+      await apiClient.post(`/subscriptions/${s.id}/dismiss-suggestion`)
+    } catch {}
+  }
 
   const handleDelete = async (sub: Subscription) => {
     if (!window.confirm(`Delete "${sub.name}"?`)) return
@@ -321,7 +371,7 @@ export function Subscriptions() {
     <div>
       <PageHeader
         title="Subscriptions"
-        subtitle="Monthly and yearly subscription services."
+        subtitle="Monthly and yearly subscription services & billing records."
         action={
           <Button variant="yellow" onClick={() => setOpen(true)}>
             <Icon name="add" className="text-xl" />
@@ -337,7 +387,7 @@ export function Subscriptions() {
             onClick={() => setFreq(f)}
             className={`brutal-sm px-4 py-2 font-bold uppercase active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${
               freq === f
-                ? 'bg-brand-yellow text-on-surface'
+                 ? 'bg-brand-yellow text-on-surface'
                 : 'bg-white text-on-surface hover:bg-surface-container-high'
             }`}
           >
@@ -349,7 +399,7 @@ export function Subscriptions() {
       {suggestions.length>0 && (
         <div className="brutal bg-brand-yellow p-md mb-md">
           <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="lightbulb" /> Ledger Link — Suggestions from Transactions {suggLoading && <span className="text-xs opacity-60">(checking...)</span>}</h3>
-          <div className="text-xs opacity-80 mb-sm">We detected monthly payments matching your subscriptions. Amount tolerance 5% (15% for variable like electricity). Accept to update billing date/amount.</div>
+          <div className="text-xs opacity-80 mb-sm">We detected payments matching your subscriptions. Accept to update your billing schedule and automatically link matching transactions to subscription payment history.</div>
           <div className="flex flex-col gap-sm">
             {suggestions.map((s:any)=> (
               <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs">
@@ -357,14 +407,12 @@ export function Subscriptions() {
                   <span className="font-bold">{s.name}</span>
                   <span className="text-xs brutal-thin px-xs py-0.5 bg-surface-container-low">confidence {s.confidence}%</span>
                 </div>
-                <div className="text-xs">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : '—'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
+                <div className="text-xs">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : 'Link matching payments'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
                 <div className="text-xs opacity-60">Matched {s.matchedCount} transaction(s) {s.sample?.[0] && `e.g. ${new Date(s.sample[0].date).toLocaleDateString('en-IN')} ${formatCurrency(s.sample[0].amount)} ${String(s.sample[0].recipient||'').slice(0,30)}`}</div>
-                {s.suggested && (
-                  <div className="flex gap-sm">
-                    <button onClick={async()=>{ await apiClient.post(`/subscriptions/${s.id}/apply-suggestion`, { acceptAmount: s.suggested.amount, acceptDate: s.suggested.billingDate }); setSuggestions(prev=> prev.filter(x=> x.id!==s.id)); load(); }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Accept</button>
-                    <button onClick={()=> setSuggestions(prev=> prev.filter(x=> x.id!==s.id))} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Dismiss</button>
-                  </div>
-                )}
+                <div className="flex gap-sm mt-1">
+                  <button onClick={() => handleAcceptSuggestion(s)} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Accept</button>
+                  <button onClick={() => handleDismissSuggestion(s)} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Dismiss</button>
+                </div>
               </div>
             ))}
           </div>
@@ -375,12 +423,16 @@ export function Subscriptions() {
         {items.map((sub: Subscription) => (
           <div key={sub.id} className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover">
             <div className="flex justify-between items-start">
-              <div className="flex items-center gap-xs">
+              <button
+                type="button"
+                onClick={() => navigate(`/subscriptions/${sub.id}`)}
+                className="flex items-center gap-xs text-left hover:text-primary transition-colors"
+              >
                 <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center">
                   <Icon name="subscriptions" />
                 </div>
-                <span className="font-bold">{sub.name}</span>
-              </div>
+                <span className="font-bold underline decoration-2">{sub.name}</span>
+              </button>
               <Badge color={sub.status === 'Active' ? 'cyan' : 'surface'}>
                 {sub.status}
               </Badge>
@@ -396,21 +448,34 @@ export function Subscriptions() {
               <Icon name="event_repeat" className="text-sm" />
               Billing on {formatDay(sub.billingDate)} · {sub.paymentMethod}
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-on-surface/20">
               <button
-                onClick={() => setEditing(sub)}
-                className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
-                title="Edit"
+                type="button"
+                onClick={() => navigate(`/subscriptions/${sub.id}`)}
+                className="bg-brand-yellow px-sm py-1.5 brutal-thin text-xs font-bold uppercase hover:bg-white active:translate-x-[1px] active:translate-y-[1px] flex items-center gap-1"
+                title="View subscription history & linked transactions"
               >
-                <Icon name="edit" className="text-sm" />
+                <Icon name="visibility" className="text-sm" />
+                History &amp; Detail
               </button>
-              <button
-                onClick={() => handleDelete(sub)}
-                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
-                title="Delete"
-              >
-                <Icon name="delete" className="text-sm" />
-              </button>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setEditing(sub)}
+                  className="bg-white p-1.5 brutal-thin hover:bg-surface-container-high active:translate-x-[1px] active:translate-y-[1px]"
+                  title="Edit"
+                >
+                  <Icon name="edit" className="text-sm" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(sub)}
+                  className="bg-error-container text-on-error-container p-1.5 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[1px] active:translate-y-[1px]"
+                  title="Delete"
+                >
+                  <Icon name="delete" className="text-sm" />
+                </button>
+              </div>
             </div>
           </div>
         ))}

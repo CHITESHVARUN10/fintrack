@@ -18,6 +18,70 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/loans/suggestions
+router.get('/suggestions', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { buildSuggestionsForLoans } = require('../../services/subscriptionLinker.service');
+    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
+    const suggestions = await buildSuggestionsForLoans({ familyId: req.user.familyAccountId, memberId });
+    res.json({ suggestions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/loans/calculate — standalone calc (no DB) for BE reuse & PDF
+router.post('/calculate', async (req, res, next) => {
+  try {
+    const { principal, rate, tenureMonths, startDate, emiDate } = req.body;
+    const { calcFull, validateLoanInputs } = require('../../utils/loanCalc');
+    const P = Number(principal), R = Number(rate), N = Number(tenureMonths);
+    const errs = validateLoanInputs(P, R, N);
+    if (errs.length) return res.status(400).json({ error: errs.join(' · ') });
+    const result = calcFull(P, R, N, { startDate, emiDate });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/loans/:id/apply-suggestion
+router.post('/:id/apply-suggestion', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { applySuggestion } = require('../../services/subscriptionLinker.service');
+    const { acceptAmount, acceptDate, matchedTxIds } = req.body;
+    const updated = await applySuggestion({
+      kind: 'loan',
+      id: req.params.id,
+      acceptAmount,
+      acceptDate,
+      matchedTxIds,
+      familyId: req.user.familyAccountId,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/loans/:id/dismiss-suggestion
+router.post('/:id/dismiss-suggestion', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { dismissSuggestion } = require('../../services/subscriptionLinker.service');
+    const result = await dismissSuggestion({
+      kind: 'loan',
+      id: req.params.id,
+      familyId: req.user.familyAccountId,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/loans/:id — detail
 router.get('/:id', async (req, res, next) => {
   try {
@@ -124,16 +188,61 @@ router.post('/:id/unlink-transaction', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/loans/calculate — standalone calc (no DB) for BE reuse & PDF
-router.post('/calculate', async (req, res, next) => {
+// POST /api/loans/:id/record-prepayment — record prepayment via transaction link or manual entry
+router.post('/:id/record-prepayment', async (req, res, next) => {
   try {
-    const { principal, rate, tenureMonths, startDate, emiDate } = req.body;
-    const { calcFull, validateLoanInputs } = require('../../utils/loanCalc');
-    const P = Number(principal), R = Number(rate), N = Number(tenureMonths);
-    const errs = validateLoanInputs(P,R,N);
-    if (errs.length) return res.status(400).json({ error: errs.join(' · ') });
-    const result = calcFull(P,R,N,{ startDate, emiDate });
-    res.json(result);
+    const loan = await EMILoan.findById(req.params.id);
+    if (!loan) return res.status(404).json({ error: 'Not found' });
+    if (!canModify(req, loan)) return res.status(403).json({ error: 'Forbidden' });
+    const { amount, transactionId, date, mode, notes } = req.body;
+    const prepayVal = Number(amount || 0);
+    if (!prepayVal && !transactionId) return res.status(400).json({ error: 'Amount or transactionId is required' });
+
+    const Transaction = require('../../models/transaction.model');
+    let tx;
+    let effectiveAmount = prepayVal;
+
+    if (transactionId) {
+      tx = await Transaction.findById(transactionId);
+      if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (String(tx.familyId) !== String(loan.familyAccountId)) return res.status(403).json({ error: 'Transaction not in family' });
+      tx.loanRef = loan._id;
+      tx.loanMeta = { isLoanPayment: true, isPrepayment: true };
+      if (!tx.category || tx.category === 'Other') tx.category = 'Bills';
+      tx.subcategory = 'Loan Prepayment';
+      await tx.save();
+      effectiveAmount = tx.amountPaise ? tx.amountPaise / 100 : prepayVal;
+    } else {
+      tx = new Transaction({
+        familyId: loan.familyAccountId,
+        createdBy: req.user._id,
+        type: 'EXPENSE',
+        amountPaise: Math.round(effectiveAmount * 100),
+        currency: 'INR',
+        occurredAt: date ? new Date(date) : new Date(),
+        category: 'Bills',
+        subcategory: 'Loan Prepayment',
+        mode: mode || 'BANK',
+        recipient: { name: loan.lender || loan.loanName },
+        loanRef: loan._id,
+        loanMeta: { isLoanPayment: true, isPrepayment: true },
+        visibility: 'FAMILY',
+        status: 'ACTIVE',
+        metadata: { prepaymentNotes: notes || '' },
+      });
+      await tx.save();
+    }
+
+    // Update loan outstanding
+    loan.outstandingAmount = Math.max(0, Math.round(Number(loan.outstandingAmount || 0) - effectiveAmount));
+    if (loan.outstandingAmount === 0) {
+      loan.status = 'Prepaid';
+    }
+    const logEntry = `Prepaid ₹${effectiveAmount.toLocaleString('en-IN')} on ${new Date().toISOString().slice(0,10)}${notes ? ` (${notes})` : ''}`;
+    loan.notes = loan.notes ? `${loan.notes}\n${logEntry}` : logEntry;
+    await loan.save();
+
+    res.status(201).json({ loan, transaction: tx });
   } catch (err) { next(err); }
 });
 
@@ -165,27 +274,6 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-// GET /api/loans/suggestions
-router.get('/suggestions', async (req, res, next) => {
-  try {
-    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
-    const { buildSuggestionsForLoans } = require('../../services/subscriptionLinker.service');
-    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
-    const suggestions = await buildSuggestionsForLoans({ familyId: req.user.familyAccountId, memberId });
-    res.json({ suggestions });
-  } catch (err) { next(err); }
-});
-
-router.post('/:id/apply-suggestion', async (req, res, next) => {
-  try {
-    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
-    const { applySuggestion } = require('../../services/subscriptionLinker.service');
-    const { acceptAmount, acceptDate } = req.body;
-    const updated = await applySuggestion({ kind: 'loan', id: req.params.id, acceptAmount, acceptDate, familyId: req.user.familyAccountId });
-    res.json(updated);
-  } catch (err) { next(err); }
 });
 
 // DELETE /api/loans/:id
