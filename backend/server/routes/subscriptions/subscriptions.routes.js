@@ -66,6 +66,28 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
+// GET /api/subscriptions/suggestions — global linker: detect monthly recurring via ledger
+router.get('/suggestions', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { buildSuggestionsForSubscriptions } = require('../../services/subscriptionLinker.service');
+    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
+    const suggestions = await buildSuggestionsForSubscriptions({ familyId: req.user.familyAccountId, memberId });
+    res.json({ suggestions });
+  } catch (err) { next(err); }
+});
+
+// POST /api/subscriptions/:id/apply-suggestion
+router.post('/:id/apply-suggestion', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const { applySuggestion } = require('../../services/subscriptionLinker.service');
+    const { acceptAmount, acceptDate } = req.body;
+    const updated = await applySuggestion({ kind: 'subscription', id: req.params.id, acceptAmount, acceptDate, familyId: req.user.familyAccountId });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
 // DELETE /api/subscriptions/:id
 router.delete('/:id', async (req, res, next) => {
   try {

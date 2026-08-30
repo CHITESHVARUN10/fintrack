@@ -13,6 +13,12 @@ const AdHocExpense = require('../models/expense.model');
 const User = require('../models/user.model');
 const Form16 = require('../models/form16.model');
 const TaxRecommendation = require('../models/taxrecommendation.model');
+const Transaction = require('../models/transaction.model');
+const Budget = require('../models/budget.model');
+const RecipientDirectory = require('../models/recipientdirectory.model');
+const ImportBatch = require('../models/importbatch.model');
+const FamilyAccount = require('../models/familyaccount.model');
+const { getFamilyAnalytics } = require('./familyAnalytics.service');
 
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeRegimeTaxes, aggregateDeductions, generateTips } = require('../services/tax.service');
@@ -577,6 +583,140 @@ async function generateTaxPDF(userId, year) {
   return renderTaxPdf(await buildTaxData(userId, year));
 }
 
+async function buildFamilyData(familyId, from, to, requesterId) {
+  const analytics = await getFamilyAnalytics({ familyId, from, to, requesterId });
+  const family = await FamilyAccount.findById(familyId).lean();
+  const members = await User.find({ familyAccountId: familyId }).select('name email role').lean();
+  const budgets = await Budget.find({ familyId }).lean();
+  const vendors = await RecipientDirectory.find({ familyId, status: { $ne: 'ARCHIVED' } }).sort({ hits: -1 }).limit(20).lean();
+  const recentBatches = await ImportBatch.find({ familyId }).sort({ createdAt: -1 }).limit(10).lean();
+  const txCount = await Transaction.countDocuments({ familyId, status: { $ne: 'VOIDED' } });
+  return { analytics, family: family || { name: 'Family' }, members, budgets, vendors, recentBatches, txCount, from, to };
+}
+
+async function renderFamilyPdf(data) {
+  const { doc, done } = startPdf(`Family Report — ${data.from || ''} to ${data.to || ''}`.trim() || 'Family Report');
+  kv(doc, 'Family', data.family.name || 'Family');
+  kv(doc, 'Members', data.members.map((m) => `${m.name} (${m.email})`).join(', ') || '—');
+  kv(doc, 'Period', `${data.from || 'start'} to ${data.to || 'today'}`);
+  kv(doc, 'Transactions', String(data.txCount));
+  kv(doc, 'Total Spend', inr((data.analytics.summary.actualExpenditurePaise || 0) / 100));
+  kv(doc, 'Avg / day', inr(data.analytics.avgDaily || 0));
+
+  section(doc, 'By Member Share (100%)');
+  if (!data.analytics.byMemberShare || data.analytics.byMemberShare.length === 0) doc.text('  No data.');
+  else for (const m of data.analytics.byMemberShare) bullet(doc, `${m.name} — ${inr(m.spend)} (${m.sharePct.toFixed(1)}%) ×${m.count}`);
+
+  section(doc, 'By Category Share (100%)');
+  if (!data.analytics.byCategoryShare || data.analytics.byCategoryShare.length === 0) doc.text('  No data.');
+  else for (const c of data.analytics.byCategoryShare) bullet(doc, `${c.category} — ${inr(c.spend)} (${c.sharePct.toFixed(1)}%)`);
+
+  section(doc, 'By Vendor Share (100%)');
+  if (!data.analytics.byVendorShare || data.analytics.byVendorShare.length === 0) doc.text('  No vendors.');
+  else for (const v of data.analytics.byVendorShare) bullet(doc, `${v.vendor} — ${inr(v.spend)} (${v.sharePct.toFixed(1)}%) ×${v.count}`);
+
+  section(doc, 'By Mode Share');
+  if (!data.analytics.byModeShare || data.analytics.byModeShare.length === 0) doc.text('  No mode data.');
+  else for (const m of data.analytics.byModeShare) bullet(doc, `${m.mode} — ${inr(m.spend)} (${m.sharePct?.toFixed(1) ?? ''}%)`);
+
+  section(doc, 'Member × Vendor (top)');
+  if (!data.analytics.byMemberByVendor || data.analytics.byMemberByVendor.length === 0) doc.text('  No data.');
+  else for (const r of data.analytics.byMemberByVendor.slice(0, 20)) bullet(doc, `${r.memberName} → ${r.vendor} — ${inr(r.spend)} ×${r.count}`);
+
+  section(doc, 'Monthly Area (Income vs Expense)');
+  if (!data.analytics.monthlyArea || data.analytics.monthlyArea.length === 0) doc.text('  No monthly data.');
+  else for (const m of data.analytics.monthlyArea) bullet(doc, `${m.month} — Expense ${inr(m.expense)} | Income ${inr(m.income)} | Net ${inr(m.net)}`);
+
+  section(doc, 'Budgets (Transaction-based)');
+  if (data.budgets.length === 0) doc.text('  No budgets.');
+  else for (const b of data.budgets) bullet(doc, `${b.scope}${b.category ? `:${b.category}` : ''}${b.memberId ? ` (member)` : ''} — ${inr(b.amountPaise / 100)} period ${b.periodKey || ''}`);
+
+  section(doc, 'Top Vendors (what they sell)');
+  if (data.vendors.length === 0) doc.text('  No vendors.');
+  else for (const v of data.vendors.slice(0, 10)) bullet(doc, `${v.label} (${v.vendorKey}) — ${v.primaryCategory || v.category || 'Other'} hits ${v.hits} products ${(v.products || []).map((p) => p.name).join(', ') || '—'}`);
+
+  section(doc, 'Recent Imports');
+  if (data.recentBatches.length === 0) doc.text('  No imports.');
+  else for (const b of data.recentBatches) bullet(doc, `${b.fileName || b.batchId} — ${b.total} rows ${b.status} ${new Date(b.createdAt).toISOString().slice(0, 10)}`);
+
+  section(doc, 'Note');
+  bullet(doc, 'Private transactions are excluded from family aggregates (invisible to other members).');
+  bullet(doc, 'All amounts derived from Transaction ledger (source of truth). Variable bills tolerance 15% for Utility, 5% otherwise.');
+
+  doc.end();
+  return done;
+}
+
+async function renderFamilyExcel(data) {
+  const sheets = [
+    {
+      name: 'Summary',
+      columns: [{ header: 'Metric', key: 'metric' }, { header: 'Value', key: 'value' }],
+      rows: [
+        { metric: 'Family', value: data.family.name || '' },
+        { metric: 'Members', value: data.members.map((m) => m.name).join(', ') },
+        { metric: 'Period From', value: data.from || '' },
+        { metric: 'Period To', value: data.to || '' },
+        { metric: 'Transactions', value: data.txCount },
+        { metric: 'Total Spend', value: (data.analytics.summary.actualExpenditurePaise || 0) / 100 },
+        { metric: 'Avg / day', value: data.analytics.avgDaily || 0 },
+      ],
+    },
+    {
+      name: 'By Member Share',
+      columns: [{ header: 'Member', key: 'name' }, { header: 'Spend', key: 'spend' }, { header: 'Share %', key: 'sharePct' }, { header: 'Count', key: 'count' }],
+      rows: (data.analytics.byMemberShare || []).map((m) => ({ name: m.name, spend: m.spend, sharePct: Number(m.sharePct.toFixed(2)), count: m.count })),
+    },
+    {
+      name: 'By Category Share',
+      columns: [{ header: 'Category', key: 'category' }, { header: 'Spend', key: 'spend' }, { header: 'Share %', key: 'sharePct' }],
+      rows: (data.analytics.byCategoryShare || []).map((c) => ({ category: c.category, spend: c.spend, sharePct: Number(c.sharePct.toFixed(2)) })),
+    },
+    {
+      name: 'By Vendor Share',
+      columns: [{ header: 'Vendor', key: 'vendor' }, { header: 'Spend', key: 'spend' }, { header: 'Share %', key: 'sharePct' }, { header: 'Count', key: 'count' }],
+      rows: (data.analytics.byVendorShare || []).map((v) => ({ vendor: v.vendor, spend: v.spend, sharePct: Number(v.sharePct.toFixed(2)), count: v.count })),
+    },
+    {
+      name: 'By Mode Share',
+      columns: [{ header: 'Mode', key: 'mode' }, { header: 'Spend', key: 'spend' }, { header: 'Share %', key: 'sharePct' }],
+      rows: (data.analytics.byModeShare || []).map((m) => ({ mode: m.mode, spend: m.spend, sharePct: Number((m.sharePct || 0).toFixed(2)) })),
+    },
+    {
+      name: 'Member x Vendor',
+      columns: [{ header: 'Member', key: 'memberName' }, { header: 'Vendor', key: 'vendor' }, { header: 'Spend', key: 'spend' }, { header: 'Count', key: 'count' }],
+      rows: (data.analytics.byMemberByVendor || []).map((r) => ({ memberName: r.memberName, vendor: r.vendor, spend: r.spend, count: r.count })),
+    },
+    {
+      name: 'Monthly Area',
+      columns: [{ header: 'Month', key: 'month' }, { header: 'Expense', key: 'expense' }, { header: 'Income', key: 'income' }, { header: 'Net', key: 'net' }],
+      rows: (data.analytics.monthlyArea || []).map((m) => ({ month: m.month, expense: m.expense, income: m.income, net: m.net })),
+    },
+    {
+      name: 'Budgets',
+      columns: [{ header: 'Scope', key: 'scope' }, { header: 'Category', key: 'category' }, { header: 'Amount', key: 'amount' }, { header: 'Period', key: 'period' }],
+      rows: data.budgets.map((b) => ({ scope: b.scope, category: b.category || '', amount: (b.amountPaise || 0) / 100, period: b.periodKey || b.period })),
+    },
+    {
+      name: 'Vendors',
+      columns: [{ header: 'Label', key: 'label' }, { header: 'VendorKey', key: 'vendorKey' }, { header: 'Category', key: 'category' }, { header: 'Hits', key: 'hits' }],
+      rows: data.vendors.map((v) => ({ label: v.label, vendorKey: v.vendorKey, category: v.primaryCategory || v.category || '', hits: v.hits })),
+    },
+  ];
+  return renderExcel('Family Report', sheets);
+}
+
+async function buildFamilyDataWrapper(familyId, from, to, requesterId) {
+  return buildFamilyData(familyId, from, to, requesterId);
+}
+
+async function generateFamilyPDF(familyId, from, to, requesterId) {
+  return renderFamilyPdf(await buildFamilyData(familyId, from, to, requesterId));
+}
+async function generateFamilyExcel(familyId, from, to, requesterId) {
+  return renderFamilyExcel(await buildFamilyData(familyId, from, to, requesterId));
+}
+
 module.exports = {
   buildMonthlyData,
   buildAnnualData,
@@ -589,4 +729,7 @@ module.exports = {
   generateCategoryPDF,
   generateCategoryExcel,
   generateTaxPDF,
+  buildFamilyData,
+  generateFamilyPDF,
+  generateFamilyExcel,
 };

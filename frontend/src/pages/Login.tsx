@@ -27,9 +27,9 @@ export function Login() {
       setFlash(true)
       window.setTimeout(() => navigate('/dashboard'), 220)
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error ?? 'Login failed. Please try again.'
+      const data = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      const msg = data?.error ? `${data.error}${details}` : 'Login failed. Please try again.'
       setError(msg)
       setShake(true)
       window.setTimeout(() => setShake(false), 420)

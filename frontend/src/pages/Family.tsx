@@ -33,6 +33,46 @@ export function Family() {
 
   if (loading) return <LoadingBlock label="Loading members…" />
 
+  const hasNoFamily = !user?.familyAccountId || !family
+
+  if (hasNoFamily) {
+    return (
+      <div>
+        <PageHeader
+          title="Family Members"
+          subtitle="You’re not in a family yet — create one or join with an invite code."
+        />
+        <div className="brutal bg-white p-xl flex flex-col gap-md max-w-2xl">
+          <div className="flex items-center gap-sm text-sm font-bold bg-brand-yellow border-[3px] border-on-surface p-sm">
+            <Icon name="info" />
+            Create a new family to become admin and invite members, or join an existing family with a code from your admin.
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+            <a
+              href="/family/create-join"
+              className="brutal bg-brand-yellow p-lg flex flex-col items-center justify-center gap-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] transition-all text-center"
+            >
+              <Icon name="group_add" className="text-4xl" />
+              <span className="font-bold text-lg uppercase">Create Family</span>
+              <span className="text-xs font-medium text-on-surface-variant">Start a new household as admin</span>
+            </a>
+            <a
+              href="/family/create-join"
+              className="brutal bg-white p-lg flex flex-col items-center justify-center gap-sm hover:bg-surface-container-high hover:translate-x-[1px] hover:translate-y-[1px] transition-all text-center"
+            >
+              <Icon name="login" className="text-4xl" />
+              <span className="font-bold text-lg uppercase">Join Family</span>
+              <span className="text-xs font-medium text-on-surface-variant">Enter an invite code like VF7K92</span>
+            </a>
+          </div>
+          <div className="text-xs font-bold text-on-surface-variant bg-surface-container-low border-[3px] border-on-surface p-sm">
+            Tip: After creating or joining, you’ll unlock Import, Transactions, Budgets and the Invite Member button. Go to <span className="underline">Family Setup</span> in the sidebar.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <PageHeader

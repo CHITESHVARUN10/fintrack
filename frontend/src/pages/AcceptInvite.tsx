@@ -27,9 +27,9 @@ export function AcceptInvite() {
       setFlash(true)
       window.setTimeout(() => setFlash(false), 220)
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error ?? 'Could not activate this account.'
+      const data = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      const msg = data?.error ? `${data.error}${details}` : 'Could not activate this account.'
       setError(msg)
     } finally {
       setLoading(false)

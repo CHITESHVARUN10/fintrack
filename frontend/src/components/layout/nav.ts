@@ -6,12 +6,12 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: 'dashboard' },
+  { label: 'Family Setup', to: '/family/create-join', icon: 'group_add' },
   { label: 'Income', to: '/income', icon: 'account_balance_wallet' },
   { label: 'Subscriptions', to: '/subscriptions', icon: 'subscriptions' },
   { label: 'Recurring Payments', to: '/recurring', icon: 'autorenew' },
   { label: 'Investments', to: '/investments', icon: 'trending_up' },
   { label: 'EMI and Loans', to: '/loans', icon: 'real_estate_agent' },
-  { label: 'Expenses', to: '/expenses', icon: 'receipt_long' },
   { label: 'Insurance', to: '/insurance', icon: 'health_and_safety' },
   { label: 'Education', to: '/education', icon: 'school' },
   { label: 'Form 16', to: '/form16', icon: 'receipt_long' },
@@ -28,12 +28,12 @@ export const navItems: NavItem[] = [
 
 export const routeTitles: Record<string, string> = {
   '/dashboard': 'FinStack Dashboard',
+  '/family/create-join': 'Family Setup',
   '/income': 'Income Tracker',
   '/subscriptions': 'Subscriptions',
   '/recurring': 'Recurring Payments',
   '/investments': 'Investments',
   '/loans': 'EMI & Loans',
-  '/expenses': 'Expenses',
   '/insurance': 'Insurance',
   '/education': 'Education',
   '/form16': 'Form 16 Records',

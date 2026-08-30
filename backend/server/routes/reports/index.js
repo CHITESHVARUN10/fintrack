@@ -9,6 +9,8 @@ const {
   generateCategoryPDF,
   generateCategoryExcel,
   generateTaxPDF,
+  generateFamilyPDF,
+  generateFamilyExcel,
 } = require('../../services/reportService');
 
 const router = express.Router();
@@ -91,6 +93,25 @@ router.get('/tax', async (req, res, next) => {
     const buf = await generateTaxPDF(memberId, year);
     res.setHeader('Content-Type', PDF);
     res.setHeader('Content-Disposition', `attachment; filename="tax-summary-${year}.pdf"`);
+    return res.send(buf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/family?from=&to=&format=pdf|excel — unified on Transaction ledger (source of truth)
+router.get('/family', async (req, res, next) => {
+  try {
+    if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    const from = req.query.from ? String(req.query.from) : undefined;
+    const to = req.query.to ? String(req.query.to) : undefined;
+    const isExcel = req.query.format === 'excel';
+    const buf = isExcel
+      ? await generateFamilyExcel(req.user.familyAccountId, from, to, req.user._id)
+      : await generateFamilyPDF(req.user.familyAccountId, from, to, req.user._id);
+    const ext = isExcel ? 'xlsx' : 'pdf';
+    res.setHeader('Content-Type', isExcel ? XLSX : PDF);
+    res.setHeader('Content-Disposition', `attachment; filename="family-report-${from || 'start'}-to-${to || 'today'}.${ext}"`);
     return res.send(buf);
   } catch (err) {
     next(err);

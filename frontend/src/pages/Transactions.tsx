@@ -5,9 +5,10 @@ import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
 
-type Tx = { _id: string; type: string; mode: string; amountPaise: number; category?: string; subcategory?: string; productName?: string; status: string; occurredAt: string; recipient?: { name?: string; upiId?: string }; sender?: { name?: string }; createdBy?: { name: string; email: string } | string; candidateOf?: string; confidence?: number; utr?: string; upiId?: string }
+type Tx = { _id: string; type: string; mode: string; amountPaise: number; category?: string; subcategory?: string; productName?: string; status: string; occurredAt: string; recipient?: { name?: string; upiId?: string }; sender?: { name?: string }; createdBy?: { name: string; email: string } | string; candidateOf?: string; confidence?: number; utr?: string; upiId?: string; visibility?: string }
 
-const ALL_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
+const DEFAULT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
+let ALL_CATEGORIES: string[] = [...DEFAULT_CATEGORIES]
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-white',
   RECONCILED: 'bg-tertiary-container',
@@ -32,7 +33,7 @@ export function Transactions() {
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
   const [summary, setSummary] = useState<any>(null)
-  const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '' })
+  const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '', visibility: 'FAMILY' })
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
@@ -50,6 +51,20 @@ export function Transactions() {
   const [vendorSuggest, setVendorSuggest] = useState<any[]>([])
   const [showVendorSuggest, setShowVendorSuggest] = useState(false)
   const vendorSuggestRef = useRef(0)
+  const [dynamicCats, setDynamicCats] = useState<string[]>(DEFAULT_CATEGORIES)
+
+  useEffect(()=>{
+    apiClient.get('/recipients/categories').then((r:any)=>{
+      const cats = r.data?.categories || r.data?.items || []
+      if(Array.isArray(cats) && cats.length){
+        const merged = Array.from(new Set([...cats, ...DEFAULT_CATEGORIES]))
+        ALL_CATEGORIES = merged as string[]
+        setDynamicCats(merged as string[])
+      }
+    }).catch(()=>{})
+    // also collect categories from existing transactions for free-form support
+    apiClient.get('/transactions', { params:{ limit: 1 } }).catch(()=>{})
+  }, [])
 
   function load() {
     setLoading(true)
@@ -91,9 +106,8 @@ export function Transactions() {
     e.preventDefault()
     const amountPaise = Math.round(Number(form.amount || 0) * 100)
     if (!amountPaise) return
-    await transactionService.create({ amountPaise, type: form.type, mode: form.mode, category: form.category, occurredAt: form.occurredAt, recipient: form.recipient ? { name: form.recipient } : undefined, familyTransfer: (form as any).toUserId ? { toUserId: (form as any).toUserId } : undefined } as any)
-    setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '' })
-    setVendorSuggest([]); setShowVendorSuggest(false)
+    await transactionService.create({ amountPaise, type: form.type, mode: form.mode, category: form.category, occurredAt: form.occurredAt, recipient: form.recipient ? { name: form.recipient } : undefined, visibility: form.visibility, familyTransfer: (form as any).toUserId ? { toUserId: (form as any).toUserId } : undefined } as any)
+    setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '', visibility: 'FAMILY' })
     load()
   }
 
@@ -117,6 +131,22 @@ export function Transactions() {
     await transactionService.update(id, { category: catEditVal } as any)
     setCatEditId(null); load()
     if (detailId === id) { const d: any = await transactionService.get(id); setDetail(d) }
+  }
+
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkResult, setBulkResult] = useState<any>(null)
+  const otherCount = useMemo(() => items.filter((t) => !t.category || t.category === 'Other').length, [items])
+  async function bulkCategorize() {
+    if (otherCount === 0) return
+    setBulkLoading(true)
+    setBulkResult(null)
+    try {
+      const res: any = await apiClient.post('/transactions/bulk-categorize', { familyView, confidenceThreshold: 30, limit: 200 })
+      setBulkResult(res.data)
+      load()
+    } catch (e: any) {
+      setBulkResult({ error: e?.response?.data?.error || e.message || 'Bulk categorize failed' })
+    } finally { setBulkLoading(false) }
   }
 
   return (
@@ -147,6 +177,39 @@ export function Transactions() {
         </div>
       )}
 
+      {otherCount > 0 && (
+        <div className="brutal bg-brand-yellow p-sm mb-md flex flex-col gap-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold">{otherCount} transaction(s) with "Other" category — auto-categorize using vendor, UPI handle &amp; past spend (BHIM-like)</span>
+            <button onClick={bulkCategorize} disabled={bulkLoading} className="brutal bg-white px-md py-xs font-bold uppercase text-sm disabled:opacity-50">
+              {bulkLoading ? 'Categorizing…' : 'Categorize Others'}
+            </button>
+          </div>
+          <div className="text-xs opacity-80">Uses your vendor directory, UPI handle map and keyword rules. Low confidence stays as Other.</div>
+          {bulkResult && (
+            <div className="brutal-thin bg-white p-sm text-xs">
+              {bulkResult.error ? (
+                <span className="font-bold text-red-600">{bulkResult.error}</span>
+              ) : (
+                <>
+                  <span className="font-bold">Scanned {bulkResult.scanned}, updated {bulkResult.updated}, still Other {bulkResult.stillOther}</span>
+                  {bulkResult.details && bulkResult.details.length > 0 && (
+                    <div className="mt-xs flex flex-col gap-xs max-h-32 overflow-auto">
+                      {bulkResult.details.slice(0, 10).map((d: any) => (
+                        <div key={d.id} className="flex justify-between">
+                          <span>{(d.amount / 100).toFixed(2)} {d.oldCategory} → {d.newCategory}</span>
+                          <span className="opacity-60">{d.confidence}% {d.rule}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <form onSubmit={handleCreate} className="brutal bg-white p-md flex flex-wrap gap-sm mb-md items-end">
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Amount ₹<input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="brutal-thin px-sm py-xs" placeholder="500" /></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Type<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="brutal-thin px-sm py-xs"><option>EXPENSE</option><option>INCOME</option><option>INTERNAL_TRANSFER</option><option>CASH_WITHDRAWAL</option><option>CASH_EXPENSE</option></select></label>
@@ -166,6 +229,7 @@ export function Transactions() {
           )}
         </label>
         {form.type === 'INTERNAL_TRANSFER' && <label className="flex flex-col text-xs font-bold uppercase gap-1">To member<select value={(form as any).toUserId || ''} onChange={(e) => setForm({ ...form, toUserId: e.target.value } as any)} className="brutal-thin px-sm py-xs"><option value="">Select</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}
+        <label className="flex flex-col text-xs font-bold uppercase gap-1">Visibility<select value={form.visibility} onChange={(e)=> setForm({...form, visibility:e.target.value})} className="brutal-thin px-sm py-xs"><option value="FAMILY">Family</option><option value="PRIVATE">Private (hidden)</option></select></label>
         <button type="submit" className="brutal bg-brand-yellow px-md py-xs font-bold uppercase">+ Add</button>
       </form>
 
@@ -195,7 +259,7 @@ export function Transactions() {
         <div className="brutal bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-on-surface text-white"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
+              <thead className="bg-on-surface text-white"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Subscription</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
               <tbody>
                 {filtered.map((t) => {
                   const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy as any).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
@@ -218,6 +282,12 @@ export function Transactions() {
                         ) : (
                           <button onClick={() => { setCatEditId(t._id); setCatEditVal(t.category || 'Other') }} className="brutal-thin px-xs py-0.5 text-xs bg-white hover:bg-brand-yellow">{t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}</button>
                         )}
+                      </td>
+                      <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
+                        {(t as any).subscriptionRef ? <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block">{typeof (t as any).subscriptionRef==='object' ? ((t as any).subscriptionRef.name||'Sub') : 'Linked'}</span> : <span className="opacity-30">—</span>}
+                      </td>
+                      <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
+                        <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${t.visibility==='PRIVATE'?'bg-on-surface text-white':'bg-white'}`}>{t.visibility||'FAMILY'}</span>
                       </td>
                       <td className="px-sm py-xs" onClick={(e) => e.stopPropagation()}>
                         <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${STATUS_STYLES[t.status] || 'bg-white'}`}>{t.status.replace('_', ' ')}</span>
@@ -253,7 +323,21 @@ export function Transactions() {
               <DetailRow label="Amount" value={money(detail.transaction.amountPaise)} bold />
               <DetailRow label="Type" value={detail.transaction.type} />
               <DetailRow label="Mode" value={detail.transaction.mode} />
-              <DetailRow label="Category" value={detail.transaction.category || '—'} />
+              <div className="flex justify-between items-center gap-sm">
+                <span className="text-on-surface-variant uppercase text-xs font-bold tracking-wider">Category</span>
+                {catEditId===detail.transaction._id ? (
+                  <span className="flex gap-xs items-center">
+                    <select value={catEditVal} onChange={e=> setCatEditVal(e.target.value)} className="brutal-thin px-xs py-0.5 text-xs bg-white">{dynamicCats.map(c=> <option key={c} value={c}>{c}</option>)}</select>
+                    <button onClick={()=> saveCategory(detail.transaction._id)} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold">Save</button>
+                    <button onClick={()=> setCatEditId(null)} className="brutal bg-white px-xs py-0.5 text-xs font-bold">Cancel</button>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-sm">
+                    <span className="font-medium">{detail.transaction.category || '—'}</span>
+                    <button onClick={()=> { setCatEditId(detail.transaction._id); setCatEditVal(detail.transaction.category||'Other')}} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold uppercase">Edit</button>
+                  </span>
+                )}
+              </div>
               {detail.transaction.subcategory && <DetailRow label="Subcategory" value={detail.transaction.subcategory} />}
               {detail.transaction.productName && <DetailRow label="Product" value={detail.transaction.productName} />}
               {detail.transaction.categorySplit && detail.transaction.categorySplit.length>0 && <div className="brutal-thin bg-surface-container-low p-xs text-xs">Split: {detail.transaction.categorySplit.map((s:any)=> `${s.category} ${(s.amountPaise/100).toLocaleString('en-IN')}`).join(' + ')}</div>}
@@ -265,7 +349,14 @@ export function Transactions() {
               <DetailRow label="Sender" value={detail.transaction.sender?.name || '—'} />
               <DetailRow label="UTR / Ref" value={detail.transaction.utr || detail.sources?.[0]?.utr || '—'} />
               <DetailRow label="UPI" value={detail.transaction.upiId || detail.sources?.[0]?.upiId || detail.transaction.recipient?.upiId || '—'} />
+              <div className="flex justify-between items-center gap-sm">
+                <span className="text-on-surface-variant uppercase text-xs font-bold tracking-wider">Visibility</span>
+                <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${detail.transaction.visibility==='PRIVATE'?'bg-on-surface text-white':'bg-white'}`}>{detail.transaction.visibility||'FAMILY'}</span>
+                <button onClick={async()=>{ await transactionService.update(detail.transaction._id, { visibility: detail.transaction.visibility==='PRIVATE'?'FAMILY':'PRIVATE' } as any); const d:any=await transactionService.get(detail.transaction._id); setDetail(d); load(); }} className="brutal bg-white px-xs py-0.5 text-xs font-bold uppercase">{detail.transaction.visibility==='PRIVATE'?'Make Family':'Make Private (hide)'}</button>
+              </div>
+              <div className="text-[11px] opacity-60">Private is invisible to other family members even in dashboard/budgets/reports.</div>
               <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
+              <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
               <DetailRow label="Status" value={detail.transaction.status} />
               <DetailRow label="Confidence" value={detail.transaction.confidence != null ? `${detail.transaction.confidence}%` : '—'} />
               {detail.transaction.candidateOf && <DetailRow label="Possible duplicate of" value={String(detail.transaction.candidateOf).slice(0, 12)} />}
@@ -438,6 +529,64 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
       <button onClick={teach} disabled={busy} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase self-start">{busy?'Saving…':'Save vendor'}</button>
       {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold flex items-center gap-xs"><span className="w-5 h-5 flex items-center justify-center bg-brand-yellow border border-on-surface text-xs">✓</span>{toast}</div>}
     </div>
+  </div>
+}
+function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
+  const [subs, setSubs] = useState<any[]>([])
+  const [selected, setSelected] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState<string|null>(null)
+  useEffect(()=>{
+    apiClient.get('/subscriptions').then((r:any)=>{
+      const arr = Array.isArray(r.data) ? r.data : (r.data?.items||[])
+      // normalize: backend returns array directly
+      const list = arr.map((s:any)=> ({ id: s._id||s.id, name: s.name, amount: s.amount, billingDate: s.billingDate }))
+      setSubs(list)
+      if(tx.subscriptionRef){
+        const sid = typeof tx.subscriptionRef==='object' ? (tx.subscriptionRef._id||tx.subscriptionRef.id) : tx.subscriptionRef
+        if(sid) setSelected(String(sid))
+      }
+    }).catch(()=>{})
+  }, [tx._id])
+  const linked = tx.subscriptionRef
+  const linkedName = linked ? (typeof linked==='object' ? (linked.name||linked.title||'Subscription') : subs.find(s=> String(s.id)===String(linked))?.name || 'Linked') : null
+  async function link(){
+    if(!selected) { setToast('Pick a subscription'); setTimeout(()=>setToast(null),2000); return }
+    setBusy(true)
+    try{
+      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: selected } as any)
+      setToast('Linked — future payments to this vendor will be known as subscription')
+      setTimeout(()=>setToast(null),2500)
+      onDone()
+    }catch(e:any){ setToast(e?.response?.data?.error||'Link failed'); setTimeout(()=>setToast(null),2500) } finally{ setBusy(false) }
+  }
+  async function unlink(){
+    setBusy(true)
+    try{
+      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: null } as any)
+      setToast('Unlinked'); setTimeout(()=>setToast(null),2000)
+      onDone()
+    }catch(e:any){ setToast('Unlink failed'); setTimeout(()=>setToast(null),2000) } finally{ setBusy(false) }
+  }
+  return <div className="brutal-thin p-sm bg-white flex flex-col gap-sm">
+    <span className="text-xs font-bold uppercase">Link to Subscription (auto-pay)</span>
+    <span className="text-xs opacity-60">If this transaction is for an auto-pay (Netflix, electricity, SIP), link it. We’ll know this vendor has that subscription for future insights.</span>
+    {linked ? (
+      <div className="flex items-center gap-sm text-xs">
+        <span className="brutal-thin bg-brand-yellow px-xs py-0.5 font-bold">Linked: {linkedName}</span>
+        <button onClick={unlink} disabled={busy} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Unlink</button>
+      </div>
+    ) : (
+      <div className="flex gap-xs">
+        <select value={selected} onChange={e=> setSelected(e.target.value)} className="brutal-thin px-sm py-xs text-xs flex-1 bg-white">
+          <option value="">Select subscription…</option>
+          {subs.map((s:any)=> <option key={s.id} value={s.id}>{s.name} — ₹{s.amount} on {s.billingDate}</option>)}
+        </select>
+        <button onClick={link} disabled={busy||!selected} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Link</button>
+      </div>
+    )}
+    {subs.length===0 && <div className="text-[11px] opacity-60">No subscriptions yet — create one in Subscriptions page.</div>}
+    {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold">{toast}</div>}
   </div>
 }
 function vendorInfoCategoryChip(detail:any){ const v=detail.vendorInfo || detail.transaction?.recipientVendorRef; if(!v) return null; const cats=(v.offerings||[]).map((o:any)=>o.category).join(', '); if(!cats) return null; return <div className="brutal-thin bg-white p-xs text-xs">Vendor offers: <span className="font-bold">{cats}</span> · default <span className="font-bold">{v.primaryCategory||v.category}</span>{(v.products||[]).length? <> · sells <span className="font-bold">{v.products.map((p:any)=> p.name).join(', ')}</span></> : null}</div> }

@@ -26,6 +26,9 @@ const transactionSchema = new mongoose.Schema(
       },
     ],
     recipientVendorRef: { type: mongoose.Schema.Types.ObjectId, ref: 'RecipientDirectory' },
+    subscriptionRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
+    loanRef: { type: mongoose.Schema.Types.ObjectId, ref: 'EMILoan' },
+    loanMeta: { isLoanPayment: { type: Boolean, default: false }, isPrepayment: { type: Boolean, default: false } },
     sender: { name: String, upiId: String, accountRef: String },
     recipient: { name: String, upiId: String, accountRef: String },
     familyTransfer: { fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, toUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } },
@@ -49,6 +52,9 @@ transactionSchema.index({ familyId: 1, type: 1 });
 transactionSchema.index({ familyId: 1, category: 1 });
 transactionSchema.index({ familyId: 1, subcategory: 1 });
 transactionSchema.index({ familyId: 1, recipientVendorRef: 1, occurredAt: -1 });
+transactionSchema.index({ familyId: 1, subscriptionRef: 1 });
+transactionSchema.index({ familyId: 1, loanRef: 1, occurredAt: -1 });
+transactionSchema.index({ loanRef: 1 });
 transactionSchema.index({ amountPaise: 1, occurredAt: 1 });
 transactionSchema.index({ status: 1 });
 transactionSchema.index({ batchId: 1 });

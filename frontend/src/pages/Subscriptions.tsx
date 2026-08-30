@@ -264,6 +264,8 @@ export function Subscriptions() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Subscription | null>(null)
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggLoading, setSuggLoading] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -285,6 +287,11 @@ export function Subscriptions() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [freq])
+
+  useEffect(() => {
+    setSuggLoading(true)
+    apiClient.get('/subscriptions/suggestions').then((r:any)=> setSuggestions(r.data?.suggestions||[])).catch(()=>{}).finally(()=> setSuggLoading(false))
+  }, [])
 
   const handleDelete = async (sub: Subscription) => {
     if (!window.confirm(`Delete "${sub.name}"?`)) return
@@ -338,6 +345,31 @@ export function Subscriptions() {
           </button>
         ))}
       </div>
+
+      {suggestions.length>0 && (
+        <div className="brutal bg-brand-yellow p-md mb-md">
+          <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="lightbulb" /> Ledger Link — Suggestions from Transactions {suggLoading && <span className="text-xs opacity-60">(checking...)</span>}</h3>
+          <div className="text-xs opacity-80 mb-sm">We detected monthly payments matching your subscriptions. Amount tolerance 5% (15% for variable like electricity). Accept to update billing date/amount.</div>
+          <div className="flex flex-col gap-sm">
+            {suggestions.map((s:any)=> (
+              <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold">{s.name}</span>
+                  <span className="text-xs brutal-thin px-xs py-0.5 bg-surface-container-low">confidence {s.confidence}%</span>
+                </div>
+                <div className="text-xs">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : '—'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
+                <div className="text-xs opacity-60">Matched {s.matchedCount} transaction(s) {s.sample?.[0] && `e.g. ${new Date(s.sample[0].date).toLocaleDateString('en-IN')} ${formatCurrency(s.sample[0].amount)} ${String(s.sample[0].recipient||'').slice(0,30)}`}</div>
+                {s.suggested && (
+                  <div className="flex gap-sm">
+                    <button onClick={async()=>{ await apiClient.post(`/subscriptions/${s.id}/apply-suggestion`, { acceptAmount: s.suggested.amount, acceptDate: s.suggested.billingDate }); setSuggestions(prev=> prev.filter(x=> x.id!==s.id)); load(); }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Accept</button>
+                    <button onClick={()=> setSuggestions(prev=> prev.filter(x=> x.id!==s.id))} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Dismiss</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8">
         {items.map((sub: Subscription) => (

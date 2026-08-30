@@ -6,6 +6,7 @@ import { DownloadButton } from '../components/ui/DownloadButton'
 import { reportService, type ReportKind, type ReportFormat } from '../services/api'
 
 const reportTypes: { icon: string; title: string; desc: string; kind: ReportKind }[] = [
+  { icon: 'groups', title: 'Family Report', desc: 'Unified Transaction ledger: member/category/vendor/mode shares, monthly area, budgets.', kind: 'family' },
   { icon: 'calendar_month', title: 'Monthly Summary', desc: 'Income, obligations & expenses for one month.', kind: 'monthly' },
   { icon: 'event_repeat', title: 'Annual Summary', desc: 'Full-year income, obligations & trends.', kind: 'annual' },
   { icon: 'pie_chart', title: 'Category Breakdown', desc: 'Spending by category over a date range.', kind: 'category' },
@@ -33,7 +34,7 @@ function buildParams(kind: ReportKind, from: string, to: string): Record<string,
   const d = new Date(from)
   const p: Record<string, string | number> = { year: d.getFullYear() }
   if (kind === 'monthly') p.month = d.getMonth() + 1
-  if (kind === 'category') {
+  if (kind === 'category' || kind === 'family') {
     p.from = from
     p.to = to
   }
@@ -44,6 +45,7 @@ function buildFilename(kind: ReportKind, from: string, to: string, format: Repor
   const d = new Date(from)
   const year = d.getFullYear()
   const ext = format === 'pdf' ? 'pdf' : 'xlsx'
+  if (kind === 'family') return `family-report-${from}-to-${to}.${ext}`
   if (kind === 'monthly') return `monthly-report-${year}-${pad2(d.getMonth() + 1)}.${ext}`
   if (kind === 'annual') return `annual-report-${year}.${ext}`
   if (kind === 'tax') return `tax-summary-${year}.pdf`

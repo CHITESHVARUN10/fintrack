@@ -28,15 +28,22 @@ router.get('/:id/transactions', async (req,res,next)=>{
     const lim = Math.min(1000, Math.max(1, parseInt(String(limit||200),10)||200));
     const sk = Math.max(0, parseInt(String(skip||0),10)||0);
 
-    // Fetch transactions family-scoped; try to use recipientVendorRef index first
-    const baseFilter = { familyId: req.user.familyAccountId };
+    // Fetch transactions family-scoped; PRIVATE is invisible to others even in vendor aggregates
+    const baseFilter = { familyId: req.user.familyAccountId, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
     if (hasDate) baseFilter.occurredAt = filterDate;
-    if (memberId) baseFilter.createdBy = memberId;
+    if (memberId) {
+      if (String(memberId) !== String(req.user._id) && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only admin can filter by member' });
+      }
+      baseFilter.createdBy = memberId;
+      // when filtering by specific member, still respect PRIVATE: only that member's private visible to themselves or admin with include
+      // baseFilter already has $or, but if memberId is other user's, their PRIVATE will be excluded via $or (since createdBy != requester)
+    }
     if (category) baseFilter.category = category;
     if (productName) baseFilter.productName = { $regex: String(productName).trim(), $options:'i' };
 
     // First try direct ref match + fallback to name/upi fuzzy
-    let candidates = await Transaction.find(baseFilter).sort({ occurredAt:-1 }).populate('createdBy','name email').populate('recipientVendorRef').lean();
+    let candidates = await Transaction.find(baseFilter).sort({ occurredAt:-1 }).populate('createdBy','name email').populate('recipientVendorRef').populate('subscriptionRef').lean();
     // If we have many, we already filtered by family+date/member etc. Now narrow to this vendor
     const matched = [];
     let totalPaise=0;
@@ -83,6 +90,15 @@ router.get('/:id/transactions', async (req,res,next)=>{
     }
     const monthlyBuckets = Object.entries(monthlyBucketsMap).sort((a,b)=> a[0].localeCompare(b[0])).map(([month,paise])=> ({ month, paise, spend: paise/100 }));
     const byMemberArr = Object.entries(byMember).map(([id,v])=> ({ memberId:id, name:v.name, paise:v.paise, spend:v.paise/100, count:v.count }));
+    // linked subscriptions for this vendor (via transactions)
+    const linkedSubsMap = new Map();
+    for (const t of matched) {
+      if (t.subscriptionRef) {
+        const sid = String(t.subscriptionRef._id || t.subscriptionRef);
+        if (!linkedSubsMap.has(sid)) linkedSubsMap.set(sid, t.subscriptionRef);
+      }
+    }
+    const linkedSubscriptions = Array.from(linkedSubsMap.values());
     res.json({
       vendor,
       transactions: paged,
@@ -94,6 +110,7 @@ router.get('/:id/transactions', async (req,res,next)=>{
       byProduct,
       byMember: byMemberArr,
       monthlyBuckets,
+      linkedSubscriptions,
       count: matched.length,
       pagedCount: paged.length,
       skip: sk,

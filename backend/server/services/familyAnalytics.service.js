@@ -2,8 +2,14 @@ const Transaction = require('../models/transaction.model');
 const User = require('../models/user.model');
 const { computeLedgerSummary } = require('./transactionEngine.service');
 
-async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, modes, types }) {
+async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, modes, types, requesterId, includePrivate = false }) {
   const filter = { familyId, status: { $ne: 'VOIDED' } };
+  // PRIVATE is invisible to other members even in aggregates
+  if (!includePrivate && requesterId) {
+    filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: requesterId }] }];
+  } else if (!includePrivate) {
+    filter.visibility = { $ne: 'PRIVATE' };
+  }
   if (from || to) {
     filter.occurredAt = {};
     if (from) filter.occurredAt.$gte = new Date(from);
@@ -103,7 +109,63 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   }
   const avgDailyPaise = Math.round((summary.actualExpenditurePaise||0)/days);
 
-  return { summary, timeSeries, byMember, byCategory, topVendors, byMode: byModeArr, heatmap, highestDay, avgDailyPaise, avgDaily: avgDailyPaise/100, totalCount: items.length };
+  // 100% share calculations (all based on actualExpenditurePaise total)
+  const totalExpensePaise = summary.actualExpenditurePaise || 0;
+  const byMemberShare = byMember.map((m) => ({ ...m, sharePct: totalExpensePaise ? (m.spendPaise / totalExpensePaise) * 100 : 0 }));
+  const byCategoryShare = byCategory.map((c) => ({ ...c, sharePct: totalExpensePaise ? (c.spendPaise / totalExpensePaise) * 100 : 0 }));
+  const byVendorShare = topVendors.map((v) => ({ ...v, sharePct: totalExpensePaise ? (v.spendPaise / totalExpensePaise) * 100 : 0 }));
+  const byModeShare = byModeArr.map((m) => ({ ...m, sharePct: totalExpensePaise ? (m.spendPaise / totalExpensePaise) * 100 : 0 }));
+
+  // monthly area (income vs expense) for AreaChart
+  const monthlyMap = new Map();
+  for (const t of items) {
+    const k = new Date(t.occurredAt).toISOString().slice(0, 7);
+    const cur = monthlyMap.get(k) || { month: k, expensePaise: 0, incomePaise: 0 };
+    if (t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE') cur.expensePaise += t.amountPaise || 0;
+    else if (t.type === 'INCOME') cur.incomePaise += t.amountPaise || 0;
+    monthlyMap.set(k, cur);
+  }
+  const monthlyArea = Array.from(monthlyMap.values())
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((m) => ({ month: m.month, expense: m.expensePaise / 100, income: m.incomePaise / 100, expensePaise: m.expensePaise, incomePaise: m.incomePaise, net: (m.incomePaise - m.expensePaise) / 100 }));
+
+  // member x vendor matrix (for drilldown)
+  const byMemberByVendorMap = new Map();
+  for (const t of items) {
+    if (t.type !== 'EXPENSE' && t.type !== 'CASH_EXPENSE') continue;
+    const memberId = String(t.createdBy?._id || t.createdBy || 'unknown');
+    const memberName = t.createdBy?.name || memberId.slice(0, 8);
+    const vendor = String(t.recipient?.name || 'Unknown').trim().slice(0, 60) || 'Unknown';
+    const key = `${memberId}__${vendor}`;
+    const cur = byMemberByVendorMap.get(key) || { memberId, memberName, vendor, spendPaise: 0, count: 0 };
+    cur.spendPaise += t.amountPaise || 0;
+    cur.count += 1;
+    byMemberByVendorMap.set(key, cur);
+  }
+  const byMemberByVendor = Array.from(byMemberByVendorMap.values())
+    .map((v) => ({ ...v, spend: v.spendPaise / 100 }))
+    .sort((a, b) => b.spendPaise - a.spendPaise)
+    .slice(0, 50);
+
+  return {
+    summary,
+    timeSeries,
+    byMember,
+    byCategory,
+    topVendors,
+    byMode: byModeArr,
+    heatmap,
+    highestDay,
+    avgDailyPaise,
+    avgDaily: avgDailyPaise / 100,
+    totalCount: items.length,
+    byMemberShare,
+    byCategoryShare,
+    byVendorShare,
+    byModeShare,
+    monthlyArea,
+    byMemberByVendor,
+  };
 }
 
 module.exports = { getFamilyAnalytics };

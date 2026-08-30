@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { importService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
+import { useAuth } from '../context/AuthContext'
 
 type HistoryItem = { batchId: string; fileName?: string; source: string; total: number; created: number; reconciled: number; pendingReview: number; deduped: number; failed: number; status: string; createdAt: string; createdBy?: { name: string; email: string } }
 
@@ -26,6 +27,8 @@ function SuccessOverlay({ show, summary, onClose }: { show: boolean; summary?: s
 
 export function ImportPage() {
   const nav = useNavigate()
+  const { user } = useAuth()
+  const hasNoFamily = !user?.familyAccountId
   const [bankResult, setBankResult] = useState<any>(null)
   const [shotResult, setShotResult] = useState<any>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -71,15 +74,26 @@ export function ImportPage() {
   return (
     <div>
       <PageHeader title="Import" subtitle="Upload bank statements (CSV/XLSX) or UPI screenshots. Re-uploads are deduplicated." />
+      {hasNoFamily && (
+        <div className="brutal bg-brand-yellow p-md mb-md flex flex-wrap items-center justify-between gap-sm">
+          <div className="flex items-center gap-sm">
+            <Icon name="group_add" />
+            <span className="font-bold text-sm">You need a family to import. Create a new family or join one, then try again.</span>
+          </div>
+          <Link to="/family/create-join" className="brutal bg-white px-md py-xs font-bold uppercase text-sm">
+            Create / Join Family
+          </Link>
+        </div>
+      )}
       {err && <div className="brutal-thin bg-error-container text-on-error-container p-sm mb-md text-sm">{err}</div>}
 
       <div className="grid md:grid-cols-2 gap-md">
         <div className="brutal bg-white p-md flex flex-col gap-sm">
           <h3 className="font-bold uppercase flex items-center gap-sm"><Icon name="description" /> Bank Statement</h3>
           <p className="text-sm text-on-surface-variant">CSV or Excel (.xlsx). Header row must contain date, description, amount (Kotak-style: “Transaction Date”, “Description”, “Amount”, “Dr / Cr”).</p>
-          <label className={`brutal-thin bg-brand-yellow px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'bank' ? 'opacity-60 pointer-events-none' : ''}`}>
-            {busy === 'bank' ? 'Importing…' : 'Choose File'}
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={onBank} className="hidden" disabled={busy !== null} />
+          <label className={`brutal-thin bg-brand-yellow px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'bank' || hasNoFamily ? 'opacity-60 pointer-events-none' : ''}`}>
+            {hasNoFamily ? 'Create a family first' : busy === 'bank' ? 'Importing…' : 'Choose File'}
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={onBank} className="hidden" disabled={busy !== null || hasNoFamily} />
           </label>
           {bankResult && (
             <div className="brutal-thin bg-surface-container-low p-sm text-xs overflow-auto max-h-64">
@@ -92,9 +106,9 @@ export function ImportPage() {
         <div className="brutal bg-white p-md flex flex-col gap-sm">
           <h3 className="font-bold uppercase flex items-center gap-sm"><Icon name="image" /> UPI Screenshot</h3>
           <p className="text-sm text-on-surface-variant">Upload a payment screenshot; Gemini extracts amount/date/UPI.</p>
-          <label className={`brutal-thin bg-white border-on-surface px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'shot' ? 'opacity-60 pointer-events-none' : ''}`}>
-            {busy === 'shot' ? 'Extracting…' : 'Choose Image'}
-            <input type="file" accept="image/*" onChange={onShot} className="hidden" disabled={busy !== null} />
+          <label className={`brutal-thin bg-white border-on-surface px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'shot' || hasNoFamily ? 'opacity-60 pointer-events-none' : ''}`}>
+            {hasNoFamily ? 'Create a family first' : busy === 'shot' ? 'Extracting…' : 'Choose Image'}
+            <input type="file" accept="image/*" onChange={onShot} className="hidden" disabled={busy !== null || hasNoFamily} />
           </label>
           {shotResult && <pre className="brutal-thin bg-surface-container-low p-sm text-xs overflow-auto max-h-64">{JSON.stringify(shotResult, null, 2)}</pre>}
         </div>

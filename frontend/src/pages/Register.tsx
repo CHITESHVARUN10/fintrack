@@ -26,9 +26,9 @@ export function Register() {
       setFlash(true)
       window.setTimeout(() => navigate('/dashboard'), 220)
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error ?? 'Registration failed. Please try again.'
+      const data = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      const msg = data?.error ? `${data.error}${details}` : 'Registration failed. Please try again.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -108,14 +108,7 @@ export function Register() {
                 />
               </Field>
 
-              <div className="bg-brand-yellow border-[3px] border-on-surface p-sm shadow-brutal-sm flex items-start gap-sm">
-                <Icon name="mail" className="text-xl mt-0.5" filled />
-                <p className="font-bold uppercase tracking-tight leading-tight">
-                  You've been invited to join
-                  <br />
-                  <span className="bg-on-surface text-white px-1">Sharma Family</span> account.
-                </p>
-              </div>
+
 
               <Button
                 type="submit"

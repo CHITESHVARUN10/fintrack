@@ -5,7 +5,7 @@ import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell, PieChart, Pie,
 } from 'recharts'
 
 const CAT_COLORS = ['#FFE500','#1e1c10','#00fcfb','#FF6B6B','#9b5de5','#00bbf9','#f72585','#43aa8b']
@@ -80,6 +80,75 @@ export function FamilyDashboard(){
             <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold tracking-wider">Highest Day</div><div className="text-sm font-bold">{data.highestDay ? `${data.highestDay.date} — ${formatCurrency(data.highestDay.spend)}` : '—'}</div></div>
           </div>
 
+          {/* 100% share pies — member / category / vendor */}
+          <div className="grid lg:grid-cols-3 gap-md">
+            <div className="brutal bg-white p-md">
+              <h3 className="font-bold uppercase mb-sm">Member Share (100%)</h3>
+              {(data.byMemberShare||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({name, sharePct}:any)=> `${name} ${sharePct.toFixed(0)}%`}>
+                        {data.byMemberShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              <div className="text-xs opacity-60 mt-sm">Total {formatCurrency((s.actualExpenditurePaise||0)/100)} shared across {data.byMemberShare?.length||0} members</div>
+            </div>
+            <div className="brutal bg-white p-md">
+              <h3 className="font-bold uppercase mb-sm">Category Share (100%)</h3>
+              {(data.byCategoryShare||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({category, sharePct}:any)=> `${category} ${sharePct.toFixed(0)}%`}>
+                        {data.byCategoryShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.category]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            <div className="brutal bg-white p-md">
+              <h3 className="font-bold uppercase mb-sm">Vendor Share (100%)</h3>
+              {(data.byVendorShare||[]).length===0 ? <div className="text-sm opacity-60">No vendors.</div> : (
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({vendor, sharePct}:any)=> `${String(vendor).slice(0,12)} ${sharePct.toFixed(0)}%`}>
+                        {data.byVendorShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.vendor]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="brutal bg-white p-md">
+            <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="stacked_bar_chart" /> Monthly Area (Income vs Expense)</h3>
+            {(data.monthlyArea||[]).length===0 ? <div className="text-sm opacity-60">No monthly data.</div> : (
+              <div className="h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={data.monthlyArea} margin={{ top:8, right:8, left:-8, bottom:0 }}>
+                    <CartesianGrid strokeDasharray="0" stroke="#1e1c10" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                    <YAxis tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                    <Tooltip contentStyle={brutalTooltipStyle()} />
+                    <Legend wrapperStyle={{ fontWeight:700, fontSize:12 }} />
+                    <Area type="monotone" dataKey="expense" name="Expense ₹" stroke="#1e1c10" strokeWidth={3} fill="#FFE500" />
+                    <Area type="monotone" dataKey="income" name="Income ₹" stroke="#1e1c10" strokeWidth={3} fill="#00fcfb" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
           <div className="grid lg:grid-cols-2 gap-md">
             <div className="brutal bg-white p-md">
               <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="show_chart" /> Spend Over Time</h3>
@@ -144,6 +213,38 @@ export function FamilyDashboard(){
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-md">
+            <div className="brutal bg-white p-md">
+              <h3 className="font-bold uppercase mb-sm">By Mode</h3>
+              {(data.byModeShare||data.byMode||[]).length===0 ? <div className="text-sm opacity-60">No mode data.</div> : (
+                <div className="h-[260px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({mode, sharePct}:any)=> `${mode} ${sharePct?.toFixed(0) ?? ''}%`}>
+                        {(data.byModeShare||data.byMode).map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any,_n:any,p:any)=> [`${formatCurrency(v)}${p.payload.sharePct? ` (${p.payload.sharePct.toFixed(1)}%)`:''}`, p.payload.mode]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+            <div className="brutal bg-white p-md">
+              <h3 className="font-bold uppercase mb-sm">Member × Vendor (top)</h3>
+              {(data.byMemberByVendor||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
+                <div className="flex flex-col gap-xs max-h-[260px] overflow-auto">
+                  {data.byMemberByVendor.slice(0,20).map((r:any)=> (
+                    <div key={`${r.memberId}-${r.vendor}`} className="flex justify-between items-center brutal-thin px-sm py-xs bg-surface-container-low">
+                      <span className="text-xs font-bold truncate pr-sm">{r.memberName} → {r.vendor}</span>
+                      <span className="text-xs font-bold whitespace-nowrap">{formatCurrency(r.spend)} <span className="opacity-60">×{r.count}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="text-xs opacity-60 mt-sm">Shows how much each user spent on each vendor.</div>
             </div>
           </div>
 

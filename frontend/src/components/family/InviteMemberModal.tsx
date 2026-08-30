@@ -41,9 +41,9 @@ export function InviteMemberModal({
       )
       reset()
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error ?? 'Failed to send invite.'
+      const data = (err as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      const msg = data?.error ? `${data.error}${details}` : 'Failed to send invite.'
       setError(msg)
     } finally {
       setLoading(false)

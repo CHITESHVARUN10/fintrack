@@ -5,7 +5,7 @@ const Investment = require('../models/investment.model');
 const EMILoan = require('../models/loan.model');
 const Insurance = require('../models/insurance.model');
 const EducationPayment = require('../models/education.model');
-const AdHocExpense = require('../models/expense.model');
+const Transaction = require('../models/transaction.model');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
 
@@ -48,7 +48,7 @@ function nextOccurrence(dayOfMonth, lookaheadDays = 7, base = new Date()) {
 // --- Placeholder until Phase 8 wires the real taxService.calculateTax ---
 
 async function buildDashboard(userId) {
-  const [incomes, subs, recs, invs, loans, insurances, edus, expenses] = await Promise.all([
+  const [incomes, subs, recs, invs, loans, insurances, edus] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: { $ne: 'Cancelled' } }),
     RecurringPayment.find({ memberId: userId }),
@@ -56,7 +56,6 @@ async function buildDashboard(userId) {
     EMILoan.find({ memberId: userId, status: { $ne: 'Closed' } }),
     Insurance.find({ memberId: userId, status: { $ne: 'Lapsed' } }),
     EducationPayment.find({ memberId: userId }),
-    AdHocExpense.find({ memberId: userId }),
   ]);
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
@@ -105,6 +104,7 @@ async function buildDashboard(userId) {
     Subscriptions: subs.reduce((s, x) => s + subMonthlyAmount(x), 0),
     EMI: loans.reduce((s, x) => s + (x.emiAmount || 0), 0),
     Recurring: recs.reduce((s, x) => s + (x.amount || 0), 0),
+    Investments: invs.filter((x) => x.investmentType === 'mf_sip').reduce((s, x) => s + (x.sipAmount || 0), 0),
     Insurance: insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0),
     Education: edus.reduce((s, x) => s + eduMonthlyAmount(x), 0),
   };
@@ -118,12 +118,46 @@ async function buildDashboard(userId) {
 
   const deductions = await aggregateDeductions(userId);
 
+  // Transaction-based actual spend this month (replaces AdHocExpense) — individual, not family
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const adHocSpendThisMonth = expenses
-    .filter((e) => e.date >= monthStart && e.date < monthEnd)
-    .reduce((s, e) => s + (e.amount || 0), 0);
+  // Find user's family via User to scope transactions
+  const User = require('../models/user.model');
+  const me = await User.findById(userId).select('familyAccountId').lean();
+  let transactionSpendThisMonth = 0;
+  let transactionCountThisMonth = 0;
+  let transactionCategoryBreakdown = {};
+  let transactionVendorBreakdown = {};
+  let transactionCategoryEntries = [];
+  let transactionVendorEntries = [];
+  if (me?.familyAccountId) {
+    const txs = await Transaction.find({
+      familyId: me.familyAccountId,
+      createdBy: userId,
+      status: { $ne: 'VOIDED' },
+      type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
+      occurredAt: { $gte: monthStart, $lt: monthEnd },
+    }).lean();
+    transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
+    transactionCountThisMonth = txs.length;
+    // Build category breakdown from transactions (individual, current month)
+    const byCat = {};
+    const byVendor = {};
+    for (const t of txs) {
+      const cat = t.category || 'Other';
+      byCat[cat] = (byCat[cat] || 0) + (t.amountPaise || 0) / 100;
+      const vendor = (t.recipient?.name || 'Unknown').trim().slice(0, 40) || 'Unknown';
+      byVendor[vendor] = (byVendor[vendor] || 0) + (t.amountPaise || 0) / 100;
+    }
+    transactionCategoryBreakdown = byCat;
+    transactionVendorBreakdown = byVendor;
+    transactionCategoryEntries = Object.entries(byCat).map(([label, value]) => ({ label, value }));
+    transactionVendorEntries = Object.entries(byVendor)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }
 
   return {
     netMonthlyFlow,
@@ -131,8 +165,14 @@ async function buildDashboard(userId) {
     monthlyObligations,
     upcomingPayments: upcoming,
     monthlyBurnBreakdown,
+    transactionCategoryBreakdown,
+    transactionVendorBreakdown,
+    transactionCategoryEntries,
+    transactionVendorEntries,
     investmentPortfolioValue: { totalInvested, totalCurrentValue },
-    adHocSpendThisMonth,
+    transactionSpendThisMonth,
+    transactionCountThisMonth,
+    adHocSpendThisMonth: transactionSpendThisMonth,
     taxEstimate: (() => {
       const t = computeLiability({ grossSalary: monthlyIncome * 12, regime: 'New', deductions: { section80C: deductions.totalDeductions } });
       return { taxableIncome: t.taxableIncome, taxBeforeCess: t.incomeTaxAfterRebate, cess: t.cess, totalTax: t.finalTax };

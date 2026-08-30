@@ -32,15 +32,28 @@ export function Dashboard() {
       </div>
     )
 
-  const burnEntries = Object.entries(data.monthlyBurnBreakdown).filter(
-    ([, v]) => v > 0,
-  )
+  // Use transaction data for individual (current month) — fallback to old burn breakdown
+  const txCategoryEntries: { label: string; value: number }[] =
+    (data.transactionCategoryEntries && data.transactionCategoryEntries.length > 0
+      ? data.transactionCategoryEntries
+      : Object.entries(data.monthlyBurnBreakdown).map(([label, value]) => ({ label, value: value as number }))) as any
+  const burnEntries = txCategoryEntries
+    .map((e: any) => [e.label, e.value] as [string, number])
+    .filter(([, v]) => v > 0)
   const burnTotal = burnEntries.reduce((s, [, v]) => s + v, 0)
   const maxBurn = Math.max(...burnEntries.map(([, v]) => v), 1)
 
   const donut: DonutDatum[] = burnEntries.map(([label, value], i) => ({
     label,
     value: burnTotal ? Math.round((value / burnTotal) * 100) : 0,
+    color: BURN_COLORS[i % BURN_COLORS.length],
+  }))
+
+  const vendorEntries: { label: string; value: number }[] = data.transactionVendorEntries || []
+  const vendorTotal = vendorEntries.reduce((s, e) => s + e.value, 0)
+  const vendorDonut: DonutDatum[] = vendorEntries.map((e, i) => ({
+    label: e.label,
+    value: vendorTotal ? Math.round((e.value / vendorTotal) * 100) : 0,
     color: BURN_COLORS[i % BURN_COLORS.length],
   }))
 
@@ -91,13 +104,14 @@ export function Dashboard() {
         />
       </section>
 
-      {/* Charts */}
+      {/* Charts — transaction based, individual */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-md lg:gap-xl">
-        <Card color="white" className="lg:col-span-2 h-[400px] overflow-y-auto">
-          <h3 className="font-bold text-lg uppercase">Monthly Burn Breakdown</h3>
+        <Card color="white" className="h-[420px] overflow-y-auto">
+          <h3 className="font-bold text-lg uppercase">Monthly Spend Breakdown</h3>
+          <p className="text-xs font-bold text-on-surface-variant">From your transactions this month (individual)</p>
           {burnEntries.length === 0 ? (
             <p className="font-bold text-on-surface-variant mt-md">
-              No recurring obligations recorded yet.
+              No transactions this month — import or add one.
             </p>
           ) : (
             <div className="flex flex-col gap-sm mt-md">
@@ -121,16 +135,23 @@ export function Dashboard() {
           )}
           <div className="mt-lg pt-md border-t-[3px] border-on-surface flex justify-between items-center">
             <span className="font-bold text-xs uppercase text-on-surface-variant">
-              Ad-hoc Spend (this month)
+              Actual Spend (Transactions) this month
             </span>
             <span className="font-bold">
-              {formatCurrency(data.adHocSpendThisMonth)}
+              {formatCurrency(data.transactionSpendThisMonth ?? data.adHocSpendThisMonth)}
+              <span className="text-xs font-normal"> · {data.transactionCountThisMonth ?? 0} txns</span>
             </span>
+          </div>
+          <div className="mt-sm flex flex-wrap gap-xs text-xs font-bold">
+            <span className="brutal-thin bg-brand-yellow px-2 py-1">Subscriptions: {formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo</span>
+            <span className="brutal-thin bg-white px-2 py-1">Recurring: {formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo</span>
+            <span className="brutal-thin bg-surface-variant px-2 py-1">Investments SIP: {formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo</span>
           </div>
         </Card>
 
-        <Card color="surface" className="min-h-[400px] flex flex-col overflow-hidden">
-          <h3 className="font-bold text-lg uppercase mb-2">Breakdown</h3>
+        <Card color="surface" className="min-h-[420px] flex flex-col overflow-hidden">
+          <h3 className="font-bold text-lg uppercase mb-2">Category Breakdown</h3>
+          <p className="text-xs font-bold text-on-surface-variant">Your spend by category (transactions)</p>
           {donut.length === 0 ? (
             <p className="font-bold text-on-surface-variant mt-md">No data.</p>
           ) : (
@@ -149,6 +170,26 @@ export function Dashboard() {
                     <span className="font-bold text-xs">
                       {d.label} ({d.value}%)
                     </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card color="white" className="min-h-[420px] flex flex-col overflow-hidden">
+          <h3 className="font-bold text-lg uppercase mb-2">Vendor Breakdown</h3>
+          <p className="text-xs font-bold text-on-surface-variant">Your top vendors this month</p>
+          {vendorDonut.length === 0 ? (
+            <p className="font-bold text-on-surface-variant mt-md">No vendor spend yet.</p>
+          ) : (
+            <>
+              <DonutChart data={vendorDonut} centerLabel="Vendors" />
+              <div className="flex flex-col gap-xs mt-2 max-h-[140px] overflow-y-auto">
+                {vendorEntries.map((e) => (
+                  <div key={e.label} className="flex justify-between items-center bg-surface-variant brutal-thin px-2 py-1">
+                    <span className="font-bold text-xs truncate pr-2">{e.label}</span>
+                    <span className="font-bold text-xs">{formatCurrency(e.value)}</span>
                   </div>
                 ))}
               </div>

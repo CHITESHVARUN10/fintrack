@@ -14,7 +14,6 @@ import { Subscriptions } from './pages/Subscriptions'
 import { Recurring } from './pages/Recurring'
 import { Investments } from './pages/Investments'
 import { Loans } from './pages/Loans'
-import { Expenses } from './pages/Expenses'
 import { Insurance } from './pages/Insurance'
 import { Education } from './pages/Education'
 import { Tax } from './pages/Tax'
@@ -103,12 +102,12 @@ function AnimatedRoutes() {
             <Route path="recurring" element={<Recurring />} />
             <Route path="investments" element={<Investments />} />
             <Route path="loans" element={<Loans />} />
-            <Route path="expenses" element={<Expenses />} />
             <Route path="insurance" element={<Insurance />} />
             <Route path="education" element={<Education />} />
             <Route path="tax" element={<Tax />} />
             <Route path="reports" element={<Reports />} />
             <Route path="family" element={<Family />} />
+            <Route path="expenses" element={<Navigate to="/transactions" replace />} />
             <Route path="form16" element={<Form16List />} />
             <Route path="form16/review/:id" element={<Form16Review />} />
             <Route path="form16/recommendation/:id" element={<TaxRecommendation />} />

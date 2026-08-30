@@ -42,11 +42,17 @@ export const subscriptionService = {
     apiClient
       .get('/subscriptions', { params: { frequency } })
       .then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/subscriptions/suggestions').then((r) => r.data),
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+    apiClient.post(`/subscriptions/${id}/apply-suggestion`, payload).then((r) => r.data),
 }
 
 export const recurringService = {
   list: (): Promise<RecurringPayment[]> =>
     apiClient.get('/recurring').then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/recurring/suggestions').then((r) => r.data),
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+    apiClient.post(`/recurring/${id}/apply-suggestion`, payload).then((r) => r.data),
 }
 
 export const investmentService = {
@@ -58,6 +64,9 @@ export const investmentService = {
 
 export const loanService = {
   list: (): Promise<EMILoan[]> => apiClient.get('/loans').then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/loans/suggestions').then((r) => r.data),
+  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number }) =>
+    apiClient.post(`/loans/${id}/apply-suggestion`, payload).then((r) => r.data),
 }
 
 export const expenseService = {
@@ -127,13 +136,11 @@ export const notificationService = {
     apiClient.put('/notifications/read-all').then(() => undefined),
 }
 
-export type ReportKind = 'monthly' | 'annual' | 'category' | 'tax'
+export type ReportKind = 'monthly' | 'annual' | 'category' | 'tax' | 'family'
 export type ReportFormat = 'pdf' | 'excel'
 
 // Reports are generated on demand and streamed back as binary blobs
-// (application/pdf or .xlsx). The backend scopes every report to the
-// requesting user (it ignores any memberId the client might send for
-// non-admins), so no member scoping is needed on the client.
+// (application/pdf or .xlsx). Family report is unified on Transaction ledger (source of truth).
 export const reportService = {
   // GET /api/reports/:kind?...&format=pdf|excel — returns the file buffer.
   download: (

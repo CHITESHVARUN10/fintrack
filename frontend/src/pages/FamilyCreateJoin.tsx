@@ -20,8 +20,9 @@ export function FamilyCreateJoin() {
       nav('/family', { state: { created: res.family } })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to create family'
-      const data = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setErr(data || msg)
+      const data = (e as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      setErr(data?.error ? `${data.error}${details}` : msg)
     } finally { setLoading(false) }
   }
 
@@ -33,8 +34,9 @@ export function FamilyCreateJoin() {
       await familyService.join(code.trim().toUpperCase())
       nav('/family', { state: { joined: true } })
     } catch (e: unknown) {
-      const data = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setErr(data || 'Invalid invite code')
+      const data = (e as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      const details = data?.details?.length ? `: ${data.details.join(', ')}` : ''
+      setErr(data?.error ? `${data.error}${details}` : 'Invalid invite code')
     } finally { setLoading(false) }
   }
 

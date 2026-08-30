@@ -5,6 +5,7 @@ let SourceRecord;
 try { SourceRecord = require('../../models/sourcerecord.model'); } catch {}
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { ingest, computeLedgerSummary } = require('../../services/transactionEngine.service');
+const { canModify } = require('../../utils/scope');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -21,7 +22,17 @@ router.get('/', async (req, res, next) => {
     const familyView = req.query.familyView === 'true';
     const filter = { familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' } };
     if (!familyView) filter.createdBy = req.user._id;
-    else if (req.query.memberId) filter.createdBy = req.query.memberId;
+    else {
+      if (req.query.memberId) {
+        // only admin can filter by other member
+        if (String(req.query.memberId) !== String(req.user._id) && req.user.role !== 'admin') {
+          return res.status(403).json({ error: 'Only admin can filter by member' });
+        }
+        filter.createdBy = req.query.memberId;
+      }
+      // hide PRIVATE transactions from other members in family view (completely invisible)
+      filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] }];
+    }
     if (req.query.type) filter.type = req.query.type;
     if (req.query.category) filter.category = req.query.category;
     if (req.query.status) filter.status = req.query.status;
@@ -34,6 +45,12 @@ router.get('/', async (req, res, next) => {
         { upiId: { $regex: v, $options: 'i' } },
         { utr: { $regex: v, $options: 'i' } },
       ];
+    }
+    if (req.query.loanRef) {
+      filter.loanRef = req.query.loanRef;
+    }
+    if (req.query.subscriptionRef) {
+      filter.subscriptionRef = req.query.subscriptionRef;
     }
     if (req.query.minAmountPaise || req.query.maxAmountPaise) {
       filter.amountPaise = {};
@@ -50,7 +67,7 @@ router.get('/', async (req, res, next) => {
         filter.occurredAt.$lte = to;
       }
     }
-    const items = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(500).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').lean();
+    const items = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(500).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('subscriptionRef').populate('loanRef').lean();
     const summary = computeLedgerSummary(items);
     res.json({ items, summary });
   } catch (err) { next(err); }
@@ -71,53 +88,59 @@ router.get('/compare', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/transactions/:id
-router.get('/:id', async (req, res, next) => {
-  try {
-    const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('recipientVendorRef');
-    if (!tx) return res.status(404).json({ error: 'Not found' });
-    if (String(tx.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Forbidden' });
-    const sources = await SourceRecord.find({ transactionId: tx._id });
-    let candidateOfTx = null;
-    if (tx.candidateOf) {
-      candidateOfTx = await Transaction.findById(tx.candidateOf).populate('createdBy', 'name email').lean();
-    }
-    res.json({ transaction: tx, sources, candidateOfTx });
-  } catch (err) { next(err); }
-});
+  // GET /api/transactions/:id
+  router.get('/:id', async (req, res, next) => {
+    try {
+      const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('recipientVendorRef').populate('subscriptionRef').populate('loanRef');
+      if (!tx) return res.status(404).json({ error: 'Not found' });
+      if (String(tx.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Forbidden' });
+      if (tx.visibility === 'PRIVATE' && String(tx.createdBy?._id || tx.createdBy) !== String(req.user._id) && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Private transaction' });
+      }
+      const sources = await SourceRecord.find({ transactionId: tx._id });
+      let candidateOfTx = null;
+      if (tx.candidateOf) {
+        candidateOfTx = await Transaction.findById(tx.candidateOf).populate('createdBy', 'name email').lean();
+      }
+      res.json({ transaction: tx, sources, candidateOfTx });
+    } catch (err) { next(err); }
+  });
 
 // POST /api/transactions — manual ingest
-router.post('/', async (req, res, next) => {
-  try {
-    if (!requireFamily(req, res)) return;
-    const schema = Joi.object({
-      amountPaise: Joi.number().integer().min(1).required(),
-      type: Joi.string().valid('EXPENSE','INCOME','INTERNAL_TRANSFER','CASH_WITHDRAWAL','CASH_EXPENSE').required(),
-      mode: Joi.string().valid('UPI','BANK','CASH','CARD','OTHER').default('OTHER'),
-      occurredAt: Joi.date().required(),
-      category: Joi.string().allow('', null),
-      subcategory: Joi.string().allow('', null),
-      productName: Joi.string().allow('', null),
-      productRef: Joi.string().allow('', null),
-      categorySplit: Joi.array().items(Joi.object({ category: Joi.string().required(), amountPaise: Joi.number().integer().min(1).required() })).allow(null),
-      lineItems: Joi.array().items(Joi.object({
-        productName: Joi.string().allow('', null),
-        productRef: Joi.string().allow('', null),
+  router.post('/', async (req, res, next) => {
+    try {
+      if (!requireFamily(req, res)) return;
+      const schema = Joi.object({
+        amountPaise: Joi.number().integer().min(1).required(),
+        type: Joi.string().valid('EXPENSE','INCOME','INTERNAL_TRANSFER','CASH_WITHDRAWAL','CASH_EXPENSE').required(),
+        mode: Joi.string().valid('UPI','BANK','CASH','CARD','OTHER').default('OTHER'),
+        occurredAt: Joi.date().required(),
         category: Joi.string().allow('', null),
         subcategory: Joi.string().allow('', null),
-        quantity: Joi.number().allow(null),
-        unit: Joi.string().allow('', null),
-        amountPaise: Joi.number().integer().min(1).required(),
-      })).allow(null),
-      recipient: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
-      sender: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
-      familyTransfer: Joi.object({ fromUserId: Joi.string().allow(null), toUserId: Joi.string().required() }).allow(null),
-      cashLeg: Joi.object({ from: Joi.string().valid('BANK','CASH'), to: Joi.string().valid('BANK','CASH') }).allow(null),
-      visibility: Joi.string().valid('FAMILY','PRIVATE').default('FAMILY'),
-      upiId: Joi.string().allow('', null),
-      transactionIdExt: Joi.string().allow('', null),
-      utr: Joi.string().allow('', null),
-    });
+        productName: Joi.string().allow('', null),
+        productRef: Joi.string().allow('', null),
+        subscriptionRef: Joi.string().allow('', null),
+        loanRef: Joi.string().allow('', null),
+        loanMeta: Joi.object({ isLoanPayment: Joi.boolean().allow(null), isPrepayment: Joi.boolean().allow(null) }).allow(null),
+        categorySplit: Joi.array().items(Joi.object({ category: Joi.string().required(), amountPaise: Joi.number().integer().min(1).required() })).allow(null),
+        lineItems: Joi.array().items(Joi.object({
+          productName: Joi.string().allow('', null),
+          productRef: Joi.string().allow('', null),
+          category: Joi.string().allow('', null),
+          subcategory: Joi.string().allow('', null),
+          quantity: Joi.number().allow(null),
+          unit: Joi.string().allow('', null),
+          amountPaise: Joi.number().integer().min(1).required(),
+        })).allow(null),
+        recipient: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
+        sender: Joi.object({ name: Joi.string().allow('', null), upiId: Joi.string().allow('', null) }).allow(null),
+        familyTransfer: Joi.object({ fromUserId: Joi.string().allow(null), toUserId: Joi.string().required() }).allow(null),
+        cashLeg: Joi.object({ from: Joi.string().valid('BANK','CASH'), to: Joi.string().valid('BANK','CASH') }).allow(null),
+        visibility: Joi.string().valid('FAMILY','PRIVATE').default('FAMILY'),
+        upiId: Joi.string().allow('', null),
+        transactionIdExt: Joi.string().allow('', null),
+        utr: Joi.string().allow('', null),
+      });
     const { error, value } = schema.validate(req.body);
     if (error) return res.status(400).json({ error: 'Validation failed', details: error.details.map(d=> d.message) });
     const candidate = { ...value, occurredAt: new Date(value.occurredAt) };
@@ -129,14 +152,95 @@ router.post('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/transactions/:id
-router.patch('/:id', async (req, res, next) => {
+// POST /api/transactions/bulk-categorize — categorize Other transactions using CategoryEngine (BHIM-like)
+router.post('/bulk-categorize', async (req, res, next) => {
   try {
-    const tx = await Transaction.findById(req.params.id);
-    if (!tx) return res.status(404).json({ error: 'Not found' });
-    if (String(tx.createdBy) !== String(req.user._id) && req.user.role!=='admin') return res.status(403).json({ error: 'Forbidden' });
-    const allowed = ['category','subcategory','productName','productRef','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
-    for (const k of allowed) if (req.body[k]!==undefined) tx[k]=req.body[k];
+    if (!requireFamily(req, res)) return;
+    const { dryRun = false, confidenceThreshold = 30, limit = 200, familyView = true } = req.body || {};
+    const threshold = Math.max(0, Math.min(100, Number(confidenceThreshold) || 30));
+    const lim = Math.min(500, Math.max(1, Number(limit) || 200));
+    // build filter for Other category
+    const filter = {
+      familyId: req.user.familyAccountId,
+      status: { $ne: 'VOIDED' },
+      $and: [
+        { $or: [{ category: 'Other' }, { category: '' }, { category: { $exists: false } }, { category: null }] },
+        { $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] },
+      ],
+    };
+    // if not familyView and not admin, only own Others
+    const doFamily = familyView === true || familyView === 'true';
+    if (!doFamily) {
+      filter.createdBy = req.user._id;
+      // remove the visibility $or and keep only category $or, since we already filter by own
+      filter.$and = [{ $or: [{ category: 'Other' }, { category: '' }, { category: { $exists: false } }, { category: null }] }];
+    } else if (req.body.memberId && String(req.body.memberId) !== String(req.user._id)) {
+      if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admin can bulk categorize for other member' });
+      filter.createdBy = req.body.memberId;
+    }
+    const items = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(lim).lean();
+    const { predictCategory } = require('../../services/categoryEngine.service');
+    const { normalizeVendorKey } = require('../../services/recipient.service');
+    let updated = 0;
+    let stillOther = 0;
+    const details = [];
+    for (const tx of items) {
+      const vk = normalizeVendorKey(tx.recipient?.name || '', tx.upiId || tx.recipient?.upiId || '');
+      const upiId = tx.upiId || tx.recipient?.upiId || '';
+      const description = tx.recipient?.name || '';
+      try {
+        const pred = await predictCategory({ familyId: tx.familyId, vendorKey: vk, upiId, amountPaise: tx.amountPaise, description });
+        if (pred.category && pred.category !== 'Other' && pred.confidence >= threshold) {
+          details.push({ id: tx._id, oldCategory: tx.category || 'Other', newCategory: pred.category, confidence: pred.confidence, rule: pred.rule, amount: tx.amountPaise });
+          if (!dryRun) {
+            await Transaction.updateOne({ _id: tx._id }, { $set: { category: pred.category, subcategory: pred.subcategory || undefined, metadata: { ...(tx.metadata || {}), bulkCategorized: true, bulkCategoryConfidence: pred.confidence, bulkCategoryRule: pred.rule, bulkCategoryTrace: pred.trace } } });
+            // also teach vendor directory for future
+            try {
+              const { upsertFromCategory } = require('../../services/recipient.service');
+              const label = tx.recipient?.name || upiId || vk;
+              await upsertFromCategory({ familyId: tx.familyId, vendorKey: vk, upiId, label, categories: [pred.category], amountPaise: tx.amountPaise }).catch(() => {});
+            } catch {}
+          }
+          updated++;
+        } else {
+          stillOther++;
+          details.push({ id: tx._id, oldCategory: tx.category || 'Other', newCategory: 'Other', confidence: pred.confidence || 0, rule: pred.rule || 'none', amount: tx.amountPaise });
+        }
+      } catch (e) {
+        stillOther++;
+      }
+    }
+    // if dryRun, don't count as updated for stillOther? already handled
+    const scanned = items.length;
+    res.json({ scanned, updated, stillOther, dryRun: !!dryRun, threshold, details: details.slice(0, 50) });
+  } catch (err) { next(err); }
+});
+
+  // PATCH /api/transactions/:id
+  router.patch('/:id', async (req, res, next) => {
+    try {
+      const tx = await Transaction.findById(req.params.id);
+      if (!tx) return res.status(404).json({ error: 'Not found' });
+      if (String(tx.createdBy) !== String(req.user._id) && req.user.role!=='admin') return res.status(403).json({ error: 'Forbidden' });
+      // Validate subscriptionRef belongs to same family if provided
+      if (req.body.subscriptionRef) {
+        const Subscription = require('../../models/subscription.model');
+        const sub = await Subscription.findById(req.body.subscriptionRef);
+        if (!sub) return res.status(400).json({ error: 'Subscription not found' });
+        if (String(sub.familyAccountId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Subscription not in family' });
+      }
+      if (req.body.loanRef) {
+        const EMILoan = require('../../models/loan.model');
+        const loan = await EMILoan.findById(req.body.loanRef);
+        if (!loan) return res.status(400).json({ error: 'Loan not found' });
+        if (String(loan.familyAccountId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Loan not in family' });
+        if (!canModify(req, loan)) return res.status(403).json({ error: 'Forbidden loan' });
+        if (!req.body.loanMeta) req.body.loanMeta = { isLoanPayment: true, isPrepayment: false };
+      }
+      if (req.body.subscriptionRef === '' || req.body.subscriptionRef === null) req.body.subscriptionRef = null;
+      if (req.body.loanRef === '' || req.body.loanRef === null) req.body.loanRef = null;
+      const allowed = ['category','subcategory','productName','productRef','subscriptionRef','loanRef','loanMeta','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
+      for (const k of allowed) if (req.body[k]!==undefined) tx[k]=req.body[k] || null;
     // if category changed, also learn vendor directory
     try{
       if (req.body.category && req.body.category!=='Other' && tx.recipientVendorRef){

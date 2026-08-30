@@ -3,6 +3,7 @@ const Transaction = require('../models/transaction.model');
 const SourceRecord = require('../models/sourcerecord.model');
 const { fingerprintCandidate, scoreCandidate, classifyConfidence } = require('./reconciliation.service');
 const { normalizeVendorKey, resolveCategory, upsertFromCategory, resolveProduct, predictCategoryForAmount } = require('./recipient.service');
+const { predictCategory } = require('./categoryEngine.service');
 
 function validateCandidate(c) {
   if (!c.amountPaise || c.amountPaise <= 0) throw Object.assign(new Error('amountPaise required'), { status: 400 });
@@ -77,30 +78,45 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     return { transaction: tx, sourceRecord: sr, pendingReview: true, candidateOf: best._id, level: bestLevel };
   }
 
-  // Smart auto-apply vendor category when candidate is Other — uses vendor history + product amount signature
+  // Smart auto-apply category via CategoryEngine (vendor primary → UPI handle BHIM-like → keyword → amount signature)
   try {
     if (!candidate.category || candidate.category === 'Other') {
       const vk = normalizeVendorKey(candidate.recipient?.name || candidate.recipient?.label || '', candidate.upiId || candidate.recipient?.upiId);
       const upiForLookup = candidate.upiId || candidate.recipient?.upiId;
-      if (vk || upiForLookup) {
-        // Try direct category, then amount-based product prediction
-        let resolved = await resolveCategory({ familyId, vendorKey: vk, upiId: upiForLookup });
-        if (!resolved || resolved==='Other') {
-          resolved = await predictCategoryForAmount({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
-        }
-        if (resolved && resolved !== 'Other') {
-          candidate.category = resolved;
-          candidate.metadata = { ...(candidate.metadata||{}), vendorResolved: true, vendorKey: vk, resolvedCategory: resolved };
+      const description = candidate.recipient?.name || candidate.recipient?.label || '';
+      if (vk || upiForLookup || description) {
+        const pred = await predictCategory({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise, description });
+        if (pred.category && pred.category !== 'Other') {
+          candidate.category = pred.category;
+          if (pred.subcategory) candidate.subcategory = pred.subcategory;
+          candidate.metadata = { ...(candidate.metadata||{}), vendorResolved: true, vendorKey: vk, resolvedCategory: pred.category, categoryConfidence: pred.confidence, categoryRule: pred.rule, categoryTrace: pred.trace };
+          // also try to fill productName via amount signature if not already set
+          if (!candidate.productName && pred.rule.includes('amount')) {
+            const prod = await resolveProduct({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
+            if (prod) {
+              const pName = prod.name || prod.productName || prod.product?.name;
+              const pSub = prod.subcategory || prod.product?.subcategory;
+              if (pName) candidate.productName = pName;
+              if (pSub) candidate.subcategory = pSub;
+            }
+          }
         } else {
-          // try product signature as hint for subcategory/productName
-          const prod = await resolveProduct({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
-          if (prod){
-            const pName = prod.name || prod.productName || prod.product?.name;
-            const pCat = prod.category || prod.product?.category;
-            const pSub = prod.subcategory || prod.product?.subcategory;
-            if (pCat && pCat!=='Other'){ candidate.category = pCat; candidate.metadata = { ...(candidate.metadata||{}), vendorResolved:true, vendorKey:vk, productResolved:true, productName:pName }; }
-            if (pSub) candidate.subcategory = pSub;
-            if (pName) candidate.productName = pName;
+          // fallback to direct vendor resolve (for backward compat, also tries product)
+          let resolved = await resolveCategory({ familyId, vendorKey: vk, upiId: upiForLookup });
+          if (!resolved || resolved==='Other') resolved = await predictCategoryForAmount({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
+          if (resolved && resolved !== 'Other') {
+            candidate.category = resolved;
+            candidate.metadata = { ...(candidate.metadata||{}), vendorResolved: true, vendorKey: vk, resolvedCategory: resolved, categoryRule: 'fallback_vendor' };
+          } else {
+            const prod = await resolveProduct({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise });
+            if (prod){
+              const pName = prod.name || prod.productName || prod.product?.name;
+              const pCat = prod.category || prod.product?.category;
+              const pSub = prod.subcategory || prod.product?.subcategory;
+              if (pCat && pCat!=='Other'){ candidate.category = pCat; candidate.metadata = { ...(candidate.metadata||{}), vendorResolved:true, vendorKey:vk, productResolved:true, productName:pName }; }
+              if (pSub) candidate.subcategory = pSub;
+              if (pName) candidate.productName = pName;
+            }
           }
         }
       }

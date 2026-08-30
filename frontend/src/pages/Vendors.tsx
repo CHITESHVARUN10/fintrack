@@ -22,7 +22,7 @@ type Vendor = {
   status?:string
 }
 
-const FALLBACK_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
+const FALLBACK_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
 const MODES = ['UPI','BANK','CASH','CARD','OTHER'] as const
 
 export function Vendors(){

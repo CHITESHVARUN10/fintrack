@@ -347,13 +347,21 @@ export interface TaxEstimate {
 }
 
 // Shape returned by GET /api/dashboard (real aggregate from the backend).
+// Expenses (AdHocExpense) is deprecated — dashboard now uses Transaction ledger for individual.
+// adHocSpendThisMonth kept for backward compat (mirrors transactionSpendThisMonth).
 export interface DashboardSummary {
   monthlyIncome: number
   monthlyObligations: number
   netMonthlyFlow: number
   investmentPortfolioValue: { totalInvested: number; totalCurrentValue: number }
   adHocSpendThisMonth: number
+  transactionSpendThisMonth: number
+  transactionCountThisMonth: number
   monthlyBurnBreakdown: Record<string, number>
+  transactionCategoryBreakdown: Record<string, number>
+  transactionVendorBreakdown: Record<string, number>
+  transactionCategoryEntries: { label: string; value: number }[]
+  transactionVendorEntries: { label: string; value: number }[]
   upcomingPayments: UpcomingPayment[]
   taxEstimate: {
     taxableIncome: number

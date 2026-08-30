@@ -1,4 +1,4 @@
-const FLAT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other'];
+const FLAT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other'];
 
 const CATEGORY_TAXONOMY = {
   Groceries: ['Staples','Vegetables','Fruits','Dairy','Bakery','Household'],
@@ -12,6 +12,9 @@ const CATEGORY_TAXONOMY = {
   Entertainment: ['Movies','OTT','Gaming','Events'],
   Bills: ['Mobile','Internet','Water','Gas','Society'],
   Household: ['Cleaning','Cook','Maid','Repairs','Utility'],
+  Proxy: ['Family Purchase','Errand','Reimbursement','Advance'],
+  Family: ['Support','Gift','Loan','Reimbursement','Proxy Purchase'],
+  'Internal Transfer': ['Family Transfer','Account Transfer','Cash Movement'],
   Other: [],
 };
 

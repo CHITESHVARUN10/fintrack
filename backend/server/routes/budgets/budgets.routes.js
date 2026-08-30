@@ -13,14 +13,16 @@ router.get('/', async (req,res,next)=>{
   try{
     if(!requireFamily(req,res)) return;
     const items = await Budget.find({ familyId: req.user.familyAccountId }).sort({ createdAt:-1 });
-    // compute spent for current period
+    // compute spent for current period — PRIVATE is invisible to others even in aggregates
     const now = new Date();
     for(const b of items){
       const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const filter={ familyId: req.user.familyAccountId, status:{$ne:'VOIDED'}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from } };
+      const filter={ familyId: req.user.familyAccountId, status:{$ne:'VOIDED'}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from }, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
       if(b.scope==='CATEGORY' && b.category) filter.category=b.category;
       if(b.scope==='MEMBER' && b.memberId) filter.createdBy=b.memberId;
+      // for MEMBER scope, if filtering other member's budget, respect their PRIVATE? already via $or above
       const txs = await Transaction.find(filter).lean();
+      // if MEMBER scope and viewer is not that member and not admin, hide other's PRIVATE already filtered; for FAMILY scope, private of others excluded via $or
       b.spentPaise = txs.reduce((s,t)=> s+(t.amountPaise||0),0);
     }
     res.json({ items });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -10,6 +11,8 @@ import { Field, Input, Select, Textarea } from '../components/ui/Field'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { formatCurrency, formatDate, formatDay } from '../lib/format'
 import type { EMILoan, LoanType } from '../types'
+import { EMICalculatorModal } from '../components/loans/EMICalculatorModal'
+import { calcEMI } from '../lib/loanCalc'
 
 const LOAN_TYPES: LoanType[] = ['Home', 'Car', 'Personal', 'Education', 'Gold', 'Other']
 const STATUSES = ['Active', 'Closed', 'Prepaid']
@@ -60,12 +63,13 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
   const [tenureMonths, setTenureMonths] = useState(
     initial ? String(initial.tenureMonths) : '',
   )
-  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
-  const [endDate, setEndDate] = useState(initial?.endDate ?? '')
+  const [startDate, setStartDate] = useState(initial?.startDate ? String(initial.startDate).slice(0,10) : '')
+  const [endDate, setEndDate] = useState(initial?.endDate ? String(initial.endDate).slice(0,10) : '')
   const [status, setStatus] = useState<EMILoan['status']>(initial?.status ?? 'Active')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [calcHint, setCalcHint] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -211,7 +215,8 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
         <Field label="Interest Rate (%)">
           <Input
             type="number"
-            placeholder="0"
+            placeholder="8.5"
+            step={0.1}
             value={interestRate}
             onChange={(e) => setInterestRate(e.target.value)}
           />
@@ -219,11 +224,21 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
         <Field label="Tenure (Months)">
           <Input
             type="number"
-            placeholder="0"
+            placeholder="240"
             value={tenureMonths}
             onChange={(e) => setTenureMonths(e.target.value)}
           />
         </Field>
+      </div>
+      {/* Calculate EMI helper — uses same reducing-balance formula as calculator */}
+      <div className="flex items-center gap-sm">
+        <button type="button" onClick={()=>{
+          const P = Number(principalAmount)||0
+          const R = Number(interestRate)||0
+          const N = Number(tenureMonths)||0
+          if(P>0 && R>=0 && N>0){ const { emi } = calcEMI(P,R,N); setEmiAmount(String(emi)); setCalcHint(`EMI = ${formatCurrency(emi)} (P ${formatCurrency(P)} @${R}% × ${N}mo)`); setTimeout(()=> setCalcHint(null), 4000) }
+        }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Calculate EMI</button>
+        {calcHint && <span className="text-xs font-bold">{calcHint}</span>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Start Date">
@@ -249,11 +264,14 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
 }
 
 export function Loans() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<EMILoan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<EMILoan | null>(null)
+  const [calcOpen, setCalcOpen] = useState(false)
+  const [prefill, setPrefill] = useState<{ principal: number; rate: number; tenure: number; emi: number } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -302,10 +320,16 @@ export function Loans() {
         title="EMI & Loans"
         subtitle="Track principal, interest and monthly EMIs."
         action={
-          <Button variant="yellow" onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-xl" />
-            Add Loan
-          </Button>
+          <div className="flex gap-sm">
+            <Button variant="white" onClick={() => setCalcOpen(true)}>
+              <Icon name="calculate" className="text-xl" />
+              EMI Calculator
+            </Button>
+            <Button variant="yellow" onClick={() => setOpen(true)}>
+              <Icon name="add" className="text-xl" />
+              Add Loan
+            </Button>
+          </div>
         }
       />
 
@@ -316,12 +340,12 @@ export function Loans() {
             key: 'loanName',
             header: 'Loan',
             render: (l) => (
-              <div className="flex flex-col">
-                <span className="font-bold">{l.loanName}</span>
+              <button onClick={()=> navigate(`/loans/${l.id}`)} className="flex flex-col text-left hover:bg-brand-yellow px-xs py-xs">
+                <span className="font-bold underline decoration-2">{l.loanName}</span>
                 <span className="text-xs text-on-surface-variant">
                   {l.lender} · {l.loanType}
                 </span>
-              </div>
+              </button>
             ),
           },
           { key: 'principalAmount', header: 'Principal', align: 'right', render: (l) => formatCurrency(l.principalAmount) },
@@ -381,6 +405,13 @@ export function Loans() {
             render: (l) => (
               <div className="flex gap-2 justify-center">
                 <button
+                  onClick={() => navigate(`/loans/${l.id}`)}
+                  className="bg-brand-yellow p-2 brutal-thin hover:bg-white active:translate-x-[2px] active:translate-y-[2px]"
+                  title="View details & prepay check"
+                >
+                  <Icon name="visibility" className="text-sm" />
+                </button>
+                <button
                   onClick={() => setEditing(l)}
                   className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
                   title="Edit"
@@ -429,22 +460,27 @@ export function Loans() {
         onClose={() => {
           setOpen(false)
           setEditing(null)
+          setPrefill(null)
         }}
         title={editing ? 'Edit Loan' : 'Add Loan'}
       >
         <LoanForm
-          initial={editing}
+          initial={editing || (prefill ? { id: '', memberId: '', loanName: '', loanType: 'Home', lender: '', principalAmount: prefill.principal, outstandingAmount: prefill.principal, emiAmount: prefill.emi, emiDate: 5, interestRate: prefill.rate, tenureMonths: prefill.tenure, startDate: new Date().toISOString().slice(0,10), endDate: '', status: 'Active' } as any : null)}
           onSaved={() => {
             setOpen(false)
             setEditing(null)
+            setPrefill(null)
             load()
           }}
           onCancel={() => {
             setOpen(false)
             setEditing(null)
+            setPrefill(null)
           }}
         />
       </Modal>
+
+      <EMICalculatorModal open={calcOpen} onClose={()=> setCalcOpen(false)} onUse={(v)=> { setPrefill(v); setOpen(true) }} />
     </div>
   )
 }
