@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { navItems } from './nav'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 import { initials } from '../../lib/format'
 import { Icon } from '../ui/Icon'
 import { cn } from '../../lib/cn'
@@ -8,12 +9,13 @@ import { motion } from 'framer-motion'
 
 export function Sidebar() {
   const { user, logout } = useAuth()
+  const { theme, toggle } = useTheme()
 
   return (
-    <aside className="w-[240px] h-screen fixed left-0 top-0 bg-white border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col">
+    <aside className="w-[240px] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
       {/* Logo */}
-      <div className="h-[60px] border-b-[3px] border-on-surface flex items-center px-md shrink-0 bg-white">
-        <h1 className="font-bold text-2xl text-on-surface uppercase tracking-tighter">
+      <div className="h-[60px] border-b-[3px] border-on-surface flex items-center px-md shrink-0" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
+        <h1 className="font-bold text-2xl uppercase tracking-tighter" style={{ color: 'var(--text-primary)' }}>
           FinStack
         </h1>
       </div>
@@ -29,10 +31,11 @@ export function Sidebar() {
               cn(
                 'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
                 isActive
-                  ? 'bg-brand-yellow text-on-surface border-on-surface'
-                  : 'text-on-surface-variant border-transparent hover:bg-surface-container-high hover:border-on-surface',
+                  ? 'border-on-surface'
+                  : 'border-transparent hover:bg-surface-container-high hover:border-on-surface hover:text-on-surface text-on-surface-variant',
               )
             }
+            style={({ isActive }) => isActive ? { background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--accent)' } : { color: 'var(--text-secondary)' } as React.CSSProperties}
           >
             {({ isActive }) => (
               <>
@@ -48,25 +51,37 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t-[3px] border-on-surface p-sm bg-surface-container-low shrink-0 flex flex-col gap-sm">
+      <div className="border-t-[3px] border-on-surface p-sm shrink-0 flex flex-col gap-sm" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-xs">
-          <div className="w-10 h-10 bg-brand-yellow border-2 border-on-surface flex items-center justify-center font-bold shrink-0">
+          <div className="w-10 h-10 bg-brand-yellow border-2 border-on-surface flex items-center justify-center font-bold shrink-0 text-on-surface" style={{ borderColor: 'var(--border-strong)' }}>
             {initials(user?.name ?? '')}
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="font-bold truncate">{user?.name}</span>
-            <span className="font-bold text-[11px] text-on-surface-variant bg-white border border-on-surface px-1 w-fit uppercase">
+            <span className="font-bold truncate" style={{ color: 'var(--text-primary)' }}>{user?.name}</span>
+            <span className="font-bold text-[11px] border px-1 w-fit uppercase" style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }}>
               {user?.role}
             </span>
           </div>
         </div>
-        <button
-          onClick={logout}
-          className="w-full py-1 bg-white border-2 border-on-surface font-bold text-xs uppercase hover:bg-brand-yellow hover:translate-x-[1px] hover:translate-y-[1px] shadow-brutal-sm hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center justify-center gap-1"
-        >
-          <Icon name="logout" className="text-base" />
-          Logout
-        </button>
+        <div className="flex gap-xs">
+          <button
+            onClick={toggle}
+            className="flex-1 py-1 border-2 font-bold text-xs uppercase flex items-center justify-center gap-1"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} className="text-base" />
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </button>
+          <button
+            onClick={logout}
+            className="flex-1 py-1 border-2 font-bold text-xs uppercase hover:bg-brand-yellow hover:text-on-surface flex items-center justify-center gap-1"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+          >
+            <Icon name="logout" className="text-base" />
+            Logout
+          </button>
+        </div>
       </div>
     </aside>
   )

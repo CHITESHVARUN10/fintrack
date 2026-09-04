@@ -153,10 +153,19 @@ async function buildDashboard(userId) {
     transactionCategoryBreakdown = byCat;
     transactionVendorBreakdown = byVendor;
     transactionCategoryEntries = Object.entries(byCat).map(([label, value]) => ({ label, value }));
-    transactionVendorEntries = Object.entries(byVendor)
+    // Vendor: keep top 8 + Other bucket so distribution is complete and percentages sum to 100 of total spend
+    const allVendorEntries = Object.entries(byVendor)
       .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8);
+      .sort((a, b) => b.value - a.value);
+    const totalVendorAmount = allVendorEntries.reduce((s, e) => s + e.value, 0);
+    const topVendors = allVendorEntries.slice(0, 8);
+    const topSum = topVendors.reduce((s, e) => s + e.value, 0);
+    const otherAmount = totalVendorAmount - topSum;
+    if (otherAmount > 0.005) {
+      // Only add Other if meaningful (> half paisa)
+      topVendors.push({ label: 'Other', value: Math.round(otherAmount * 100) / 100 });
+    }
+    transactionVendorEntries = topVendors;
   }
 
   return {

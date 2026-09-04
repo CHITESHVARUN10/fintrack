@@ -8,7 +8,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianG
 type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: any[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: any }
 
 const ALL_CATS = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
-const CAT_COLORS = ['#FFE500','#1e1c10','#00fcfb','#FF6B6B','#9b5de5','#00bbf9','#f72585','#43aa8b','#FFD500','#6b6a5e','#ffbe0b','#3a86ff']
+const CAT_COLORS = ['#FFE500','#2EC4B6','#E8487F','#7B61FF','#FF7A45','#FFB347','#6BCB77','#4D96FF','#FFD500','#6b6a5e','#ffbe0b','#3a86ff']
 
 export function VendorDetail(){
   const { id } = useParams()
@@ -237,11 +237,11 @@ export function VendorDetail(){
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={monthlyData}>
-                    <CartesianGrid stroke="#1e1c10" vertical={false} strokeDasharray="0"/>
-                    <XAxis dataKey="month" tick={{fontSize:10, fontWeight:700}} />
-                    <YAxis tick={{fontSize:10, fontWeight:700}}/>
-                    <Tooltip contentStyle={{border:'3px solid #1e1c10', borderRadius:0}} />
-                    <Area type="monotone" dataKey="spend" stroke="#1e1c10" strokeWidth={2} fill="#FFE500" />
+                    <CartesianGrid stroke="var(--chart-grid)" vertical={false} strokeDasharray="3 3"/>
+                    <XAxis dataKey="month" tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} axisLine={{stroke:'var(--border)'}} tickLine={{stroke:'var(--border)'}} />
+                    <YAxis tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} axisLine={{stroke:'var(--border)'}} />
+                    <Tooltip contentStyle={{background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:0, boxShadow:'0 4px 16px rgba(0,0,0,0.3)', color:'var(--text-primary)'}} />
+                    <Area type="monotone" dataKey="spend" stroke="var(--border)" strokeWidth={2} fill="var(--chart-1)" fillOpacity={0.22} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -253,8 +253,8 @@ export function VendorDetail(){
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({name, value})=> `${name} ₹${value}`}>
-                      {byCategoryData.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} stroke="#1e1c10" strokeWidth={2}/>)}
+                    <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(props:any)=> { const total = byCategoryData.reduce((s:any,v:any)=>s+v.value,0); const pct = total? props.payload.value/total*100:0; return pct<5? null : `${props.payload.name} ${pct.toFixed(0)}%`; }}>
+                      {byCategoryData.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} stroke="var(--border)" strokeWidth={1.5}/>)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -268,11 +268,11 @@ export function VendorDetail(){
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byProductData.slice(0,6)} layout="vertical" margin={{ left: 40 }}>
-                    <CartesianGrid stroke="#1e1c10" strokeDasharray="0"/>
-                    <XAxis type="number" tick={{fontSize:10}}/>
-                    <YAxis type="category" dataKey="name" tick={{fontSize:10, fontWeight:700}} width={70}/>
+                    <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3"/>
+                    <XAxis type="number" tick={{fill:'var(--chart-axis-text)', fontSize:10}} axisLine={{stroke:'var(--border)'}} />
+                    <YAxis type="category" dataKey="name" tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} width={90} axisLine={{stroke:'var(--border)'}} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#1e1c10">
+                    <Bar dataKey="value" fill="var(--chart-1)" stroke="var(--border)" strokeWidth={1}>
                       {byProductData.slice(0,6).map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                     </Bar>
                   </BarChart>

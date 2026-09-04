@@ -113,7 +113,7 @@ variables from `backend/.env` via `dotenv`.
 ```bash
 # Backend (auto-restarts with --watch)
 cd backend && npm run dev
-# → http://localhost:5000
+# → http://localhost:3000
 
 # Frontend (Vite dev server)
 cd frontend && npm run dev
@@ -143,7 +143,7 @@ The backend loads these from `backend/.env`. A template is provided in
 | Variable          | Required | Default                              | Description                                              |
 | ----------------- | -------- | ------------------------------------ | -------------------------------------------------------- |
 | `MONGODB_URI`     | Yes      | `mongodb://localhost:27017/fintrack` | MongoDB connection string. `mongo_uri` is also accepted. |
-| `PORT`            | No       | `5000`                               | Port the API listens on.                                 |
+| `PORT`            | No       | `3000`                               | Port the API listens on.                                 |
 | `SESSION_SECRET`  | Yes      | —                                    | Secret used to sign session cookies.                     |
 | `GEMINI_API_KEY`  | Yes*     | —                                    | Google Gemini API key for Form 16 extraction & advice.  |
 | `CORS_ORIGIN`     | No       | `*` (reflects request origin)       | Comma-separated allowed origins (e.g. `http://localhost:5173`). |

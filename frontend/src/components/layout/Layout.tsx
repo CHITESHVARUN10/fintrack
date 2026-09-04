@@ -21,15 +21,15 @@ export function Layout() {
   const needsFamily = !user?.familyAccountId
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex" style={{ background: 'var(--bg-page)' }}>
       <Sidebar />
-      <div className="flex-grow ml-[240px] flex flex-col h-screen overflow-hidden">
+      <div className="flex-grow ml-[240px] flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)' }}>
         <Header title={title} />
         {needsFamily && pathname !== '/family/create-join' && (
           <div className="mx-md md:mx-xl mt-md border-[3px] border-on-surface bg-brand-yellow p-sm flex flex-wrap items-center justify-between gap-sm shadow-brutal-sm">
             <div className="flex items-center gap-sm">
               <Icon name="group_add" className="text-xl" />
-              <span className="font-bold text-sm">
+              <span className="font-bold text-sm text-on-surface">
                 You’re not in a family yet — create a new family or join with an invite code to unlock Import, Transactions & Budgets.
               </span>
             </div>
@@ -41,7 +41,7 @@ export function Layout() {
             </Link>
           </div>
         )}
-        <main className="flex-grow overflow-y-auto p-md md:p-xl bg-background">
+        <main className="flex-grow overflow-y-auto p-md md:p-xl" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
           <Outlet />
         </main>
         <Footer />

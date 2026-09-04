@@ -6,7 +6,7 @@ require('./services/cronJobs');
 // Scheduled jobs (cron) are imported here once available (Phase 11).
 // require('./services/cron.service');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 connectDB()
   .then(() => {

@@ -37,7 +37,7 @@ export function DownloadButton({
   const isLarge = size === 'large'
   const padding = isLarge ? 'px-5 py-2.5' : 'px-3 py-1.5'
   const fontSize = isLarge ? 'text-sm tracking-wide' : 'text-xs'
-  const shadow = isLarge ? 'shadow-[4px_4px_0px_0px_#1e1c10]' : 'shadow-[2px_2px_0px_0px_#1e1c10]'
+  const shadow = isLarge ? 'shadow-brutal' : 'shadow-brutal-sm'
 
   const isDisabled = disabled || loading
 
@@ -55,8 +55,8 @@ export function DownloadButton({
           !isDisabled &&
           `hover:translate-x-[2px] hover:translate-y-[2px] ${
             isLarge
-              ? 'hover:shadow-[2px_2px_0px_0px_#1e1c10]'
-              : 'hover:shadow-[1px_1px_0px_0px_#1e1c10]'
+              ? 'hover:shadow-brutal-sm'
+              : 'hover:shadow-none'
           } active:translate-x-[4px] active:translate-y-[4px] active:shadow-none`
         }
         ${!isDisabled && !className.includes('shadow') ? shadow : ''}

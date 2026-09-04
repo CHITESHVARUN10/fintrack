@@ -7,7 +7,7 @@ import {
 } from 'react'
 import type { FamilyMember, User } from '../types'
 import { apiClient } from '../services/apiClient'
-import { memberService } from '../services/api'
+import { memberService, normalizeMember } from '../services/api'
 
 interface AuthContextValue {
   user: User | null
@@ -51,7 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activeMemberId, setActiveMemberId] = useState<string>('')
 
   // Check the session once on mount via GET /api/auth/me, then load the
-  // family member list (admin only; non-admins just see themselves).
+  // family member list for ANY member of a family (not admin-only) via /families/:id/members
+  // so non-admin can also see the full household.
   useEffect(() => {
     let cancelled = false
     apiClient
@@ -62,7 +63,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u)
         if (u) {
           setActiveMemberId(u.id)
-          if (u.role === 'admin') {
+          if (u.familyAccountId) {
+            // Prefer family-scoped members endpoint which is allowed for any ACTIVE member
+            apiClient
+              .get(`/families/${u.familyAccountId}/members`)
+              .then((r2) => {
+                if (cancelled) return
+                const raw = r2.data?.members || []
+                const normalized = raw.map((m: Record<string, unknown>) => normalizeMember(m))
+                setMembers(normalized.length ? normalized : [u as FamilyMember])
+              })
+              .catch(() => {
+                // Fallback: admin-only /members or just self
+                if (u.role === 'admin') {
+                  memberService
+                    .list()
+                    .then((list) => {
+                      if (!cancelled) setMembers(list)
+                    })
+                    .catch(() => {
+                      if (!cancelled) setMembers([u as FamilyMember])
+                    })
+                } else {
+                  if (!cancelled) setMembers([u as FamilyMember])
+                }
+              })
+          } else if (u.role === 'admin') {
             memberService
               .list()
               .then((list) => {
@@ -93,7 +119,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u)
     if (u) {
       setActiveMemberId(u.id)
-      if (u.role === 'admin') {
+      if (u.familyAccountId) {
+        try {
+          const r2 = await apiClient.get(`/families/${u.familyAccountId}/members`)
+          const raw = (r2.data as { members?: Record<string, unknown>[] })?.members || []
+          const normalized = raw.map((m) => normalizeMember(m))
+          setMembers(normalized.length ? normalized : [u as FamilyMember])
+        } catch {
+          if (u.role === 'admin') {
+            const list = await memberService.list().catch(() => [u as FamilyMember])
+            setMembers(list)
+          } else {
+            setMembers([u as FamilyMember])
+          }
+        }
+      } else if (u.role === 'admin') {
         const list = await memberService.list().catch(() => [u as FamilyMember])
         setMembers(list)
       } else {

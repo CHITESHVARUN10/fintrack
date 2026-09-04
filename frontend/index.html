@@ -15,6 +15,13 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
       rel="stylesheet"
     />
+    <script>
+      try {
+        var t = localStorage.getItem('fintrack-theme');
+        var m = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (t === 'dark' || (!t && m)) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

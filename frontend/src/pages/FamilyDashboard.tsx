@@ -8,16 +8,26 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell, PieChart, Pie,
 } from 'recharts'
 
-const CAT_COLORS = ['#FFE500','#1e1c10','#00fcfb','#FF6B6B','#9b5de5','#00bbf9','#f72585','#43aa8b']
+const CAT_COLORS = ['#FFE500','#2EC4B6','#E8487F','#7B61FF','#FF7A45','#FFB347','#6BCB77','#4D96FF']
 
 function brutalTooltipStyle(): any {
   return {
-    border: '3px solid #1e1c10',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border)',
     borderRadius: 0,
-    boxShadow: '4px 4px 0 0 #1e1c10',
+    boxShadow: '4px 4px 0 0 var(--shadow)',
     fontFamily: 'Space Grotesk',
     fontWeight: 700,
+    color: 'var(--text-primary)',
   }
+}
+// Only show outer label for slices >=5% to avoid collision; small slices rely on legend/tooltip
+function pieLabelThreshold(props: any, threshold = 5) {
+  const pct = props.payload?.sharePct ?? (props.percent != null ? props.percent * 100 : 0)
+  if (pct < threshold) return null
+  const name = props.name ?? props.payload?.name ?? props.category ?? props.vendor ?? props.mode ?? ''
+  const label = String(name).slice(0, 14)
+  return `${label} ${pct.toFixed(0)}%`
 }
 
 export function FamilyDashboard(){
@@ -30,7 +40,16 @@ export function FamilyDashboard(){
   const [selModes, setSelModes] = useState<string[]>([])
 
   useEffect(()=>{
-    apiClient.get('/families/me').then(r=> r.data?.family?._id ? familyService.members(r.data.family._id).then((d:any)=> setMembers(d.members||[])) : null).catch(()=>{})
+    apiClient.get('/families/me').then(r=> {
+      const fid = r.data?.family?._id
+      if (!fid) return null
+      return familyService.members(fid).then((d:any)=> {
+        const raw = d.members||[]
+        // Normalize _id -> id so selection logic doesn't break (both buttons sharing undefined id was the bug)
+        const normalized = raw.map((m:any)=> ({ ...m, id: String(m.id ?? m._id ?? ''), _id: String(m._id ?? m.id ?? '') }))
+        setMembers(normalized)
+      })
+    }).catch(()=>{})
   },[])
 
   function load(){
@@ -88,7 +107,7 @@ export function FamilyDashboard(){
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({name, sharePct}:any)=> `${name} ${sharePct.toFixed(0)}%`}>
+                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
                         {data.byMemberShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
                       <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.name]} />
@@ -104,7 +123,7 @@ export function FamilyDashboard(){
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({category, sharePct}:any)=> `${category} ${sharePct.toFixed(0)}%`}>
+                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
                         {data.byCategoryShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
                       <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.category]} />
@@ -119,7 +138,7 @@ export function FamilyDashboard(){
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({vendor, sharePct}:any)=> `${String(vendor).slice(0,12)} ${sharePct.toFixed(0)}%`}>
+                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
                         {data.byVendorShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
                       <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.vendor]} />
@@ -136,13 +155,13 @@ export function FamilyDashboard(){
               <div className="h-[260px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={data.monthlyArea} margin={{ top:8, right:8, left:-8, bottom:0 }}>
-                    <CartesianGrid strokeDasharray="0" stroke="#1e1c10" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
-                    <YAxis tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
+                    <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
                     <Tooltip contentStyle={brutalTooltipStyle()} />
                     <Legend wrapperStyle={{ fontWeight:700, fontSize:12 }} />
-                    <Area type="monotone" dataKey="expense" name="Expense ₹" stroke="#1e1c10" strokeWidth={3} fill="#FFE500" />
-                    <Area type="monotone" dataKey="income" name="Income ₹" stroke="#1e1c10" strokeWidth={3} fill="#00fcfb" />
+                    <Area type="monotone" dataKey="expense" name="Expense ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-1)" fillOpacity={0.22} />
+                    <Area type="monotone" dataKey="income" name="Income ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-2)" fillOpacity={0.22} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -156,11 +175,11 @@ export function FamilyDashboard(){
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data.timeSeries} margin={{ top:8, right:8, left:-8, bottom:0 }}>
-                      <CartesianGrid strokeDasharray="0" stroke="#1e1c10" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} tickLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
-                      <YAxis tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} tickLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} tickLine={{ stroke:'var(--border)', strokeWidth:3 }} />
+                      <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} tickLine={{ stroke:'var(--border)', strokeWidth:3 }} />
                       <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Area type="monotone" dataKey="spend" name="Spend ₹" stroke="#1e1c10" strokeWidth={3} fill="#FFE500" />
+                      <Area type="monotone" dataKey="spend" name="Spend ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-1)" fillOpacity={0.22} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -172,11 +191,11 @@ export function FamilyDashboard(){
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data.byCategory} layout="vertical" margin={{ left: 40, right: 8 }}>
-                      <CartesianGrid strokeDasharray="0" stroke="#1e1c10" />
-                      <XAxis type="number" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
-                      <YAxis type="category" dataKey="category" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} width={90} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                      <CartesianGrid strokeDasharray="0" stroke="var(--border)" />
+                      <XAxis type="number" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
+                      <YAxis type="category" dataKey="category" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} width={90} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
                       <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Bar dataKey="spend" name="Spend ₹" stroke="#1e1c10" strokeWidth={2}>
+                      <Bar dataKey="spend" name="Spend ₹" stroke="var(--border)" strokeWidth={2}>
                         {data.byCategory.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                       </Bar>
                     </BarChart>
@@ -190,12 +209,12 @@ export function FamilyDashboard(){
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data.byMember}>
-                      <CartesianGrid strokeDasharray="0" stroke="#1e1c10" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
-                      <YAxis tick={{ fill:'#1e1c10', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'#1e1c10', strokeWidth:3 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
+                      <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
                       <Tooltip contentStyle={brutalTooltipStyle()} />
                       <Legend wrapperStyle={{ fontWeight:700, fontSize:12 }} />
-                      <Bar dataKey="spend" name="Spend ₹" fill="#FFE500" stroke="#1e1c10" strokeWidth={3} />
+                      <Bar dataKey="spend" name="Spend ₹" fill="var(--chart-1)" stroke="var(--border)" strokeWidth={3} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -223,7 +242,7 @@ export function FamilyDashboard(){
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="#1e1c10" strokeWidth={2} label={({mode, sharePct}:any)=> `${mode} ${sharePct?.toFixed(0) ?? ''}%`}>
+                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
                         {(data.byModeShare||data.byMode).map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
                       <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any,_n:any,p:any)=> [`${formatCurrency(v)}${p.payload.sharePct? ` (${p.payload.sharePct.toFixed(1)}%)`:''}`, p.payload.mode]} />

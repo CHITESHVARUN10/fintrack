@@ -5,6 +5,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Legacy light tokens (kept for backward compat)
         'brand-yellow': '#FFE500',
         'on-surface': '#1e1c10',
         'on-surface-variant': '#4b4731',
@@ -26,6 +27,21 @@ export default {
         'error-container': '#ffdad6',
         'on-error-container': '#93000a',
         'outline-variant': '#cec7aa',
+        // New semantic design tokens — CSS variables switch with .dark
+        'token-page': 'var(--bg-page)',
+        'token-sidebar': 'var(--bg-sidebar)',
+        'token-surface': 'var(--bg-surface)',
+        'token-card': 'var(--bg-card)',
+        'token-input': 'var(--bg-input)',
+        'token-header': 'var(--bg-header)',
+        'token-elevated': 'var(--bg-elevated)',
+        'token-primary': 'var(--text-primary)',
+        'token-secondary': 'var(--text-secondary)',
+        'token-muted': 'var(--text-muted)',
+        'token-border': 'var(--border)',
+        'token-border-strong': 'var(--border-strong)',
+        'token-accent': 'var(--accent)',
+        'token-accent-hover': 'var(--accent-hover)',
       },
       fontFamily: {
         sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],

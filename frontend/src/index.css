@@ -2,9 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ================================================================
+   Design Tokens — single source of truth for light + dark
+   ================================================================ */
 @layer base {
   :root {
+    /* Light — existing FinStack light (neubrutalist) */
+    --bg-page: #ffffff;
+    --bg-sidebar: #ffffff;
+    --bg-header: #ffffff;
+    --bg-surface: #ffffff;           /* cards / panels */
+    --bg-card: #ffffff;
+    --bg-input: #ffffff;
+    --bg-table-header: #1e1c10;
+    --bg-table-row: #ffffff;
+    --bg-table-row-alt: #faf3df;
+    --bg-elevated: #f4eeda;
+    --text-primary: #1e1c10;
+    --text-secondary: #4b4731;
+    --text-muted: #7a7868;
+    --text-placeholder: #9b9a8e;
+    --border: #1e1c10;
+    --border-subtle: rgba(30,28,16,0.18);
+    --border-strong: #1e1c10;
+    --accent: #FFE500;
+    --accent-hover: #E6CE00;
+    --accent-text: #1e1c10;
+    --chart-1: #FFE500;
+    --chart-2: #00fcfb;
+    --chart-3: #1e1c10;
+    --chart-4: #FF6B6B;
+    --chart-5: #9b5de5;
+    --chart-6: #00bbf9;
+    --chart-grid: rgba(30,28,16,0.10);
+    --chart-axis: #1e1c10;
+    --nb-yellow: #FFE500;
+    --nb-flash-from: #1e1c10;
     color-scheme: light;
+  }
+
+  /* Strict dark hierarchy — per latest brutalism spec: near-black bg, off-white structure, accent shadow */
+  .dark {
+    --bg-page: #0D0D0D;
+    --bg-sidebar: #1F1F19;
+    --bg-header: #1F1F19;
+    --bg-surface: #0e0e0e;         /* chart canvas — very-near-black, not pure #000 */
+    --bg-card: #24231C;
+    --bg-input: #1B1B16;
+    --bg-table-header: #2A2920;
+    --bg-table-row: #1B1B16;
+    --bg-table-row-alt: #21201A;
+    --bg-elevated: #2D2C22;
+    --bg-hover: #2D2C22;
+    --text-primary: #f5f5f0;       /* off-white — stark, 15:1 on #0e0e0e */
+    --text-secondary: #AAA99A;
+    --text-muted: #b5b5ad;         /* must hit 4.5:1 against --surface */
+    --text-placeholder: #b5b5ad;
+    --border: #f5f5f0;             /* off-white structure — not black */
+    --border-subtle: rgba(245,245,240,0.18);
+    --border-strong: #f5f5f0;
+    --shadow: #FFE000;             /* accent shadow — not black */
+    --accent: #FFE500;
+    --accent-hover: #E6CE00;
+    --accent-text: #0D0D0D;
+    /* Chart — boosted for dark (sat/light +10-15%) */
+    --chart-1: #FFE500;
+    --chart-2: #2EC4B6;
+    --chart-3: #E8487F;
+    --chart-4: #7B61FF;
+    --chart-5: #FF7A45;
+    --chart-6: #FFB347;
+    --chart-grid: rgba(255, 255, 255, 0.10);
+    --chart-axis: #d8d8d0;         /* axis text — 4.5:1 */
+    --chart-axis-text: #d8d8d0;
+    --nb-yellow: #FFE500;
+    --nb-flash-from: #1F1F19;
+    color-scheme: dark;
+  }
+  /* Support data-theme attribute as alias for .dark (for explicit light/dark toggling) */
+  :root[data-theme="dark"] {
+    --bg-page: #0D0D0D;
+    --bg-sidebar: #1F1F19;
+    --bg-header: #1F1F19;
+    --bg-surface: #0e0e0e;
+    --bg-card: #24231C;
+    --bg-input: #1B1B16;
+    --bg-table-header: #2A2920;
+    --bg-table-row: #1B1B16;
+    --bg-table-row-alt: #21201A;
+    --bg-elevated: #2D2C22;
+    --bg-hover: #2D2C22;
+    --text-primary: #f5f5f0;
+    --text-secondary: #AAA99A;
+    --text-muted: #b5b5ad;
+    --text-placeholder: #b5b5ad;
+    --border: #f5f5f0;
+    --border-subtle: rgba(245,245,240,0.18);
+    --border-strong: #f5f5f0;
+    --shadow: #FFE000;
+    --accent: #FFE500;
+    --accent-hover: #E6CE00;
+    --accent-text: #0D0D0D;
+    --chart-grid: rgba(255, 255, 255, 0.10);
+    --chart-axis: #d8d8d0;
+    --chart-axis-text: #d8d8d0;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg-page: #ffffff;
+    --bg-sidebar: #ffffff;
+    --bg-header: #ffffff;
+    --bg-surface: #ffffff;
+    --bg-card: #ffffff;
+    --bg-input: #ffffff;
+    --bg-table-header: #1e1c10;
+    --bg-table-row: #ffffff;
+    --bg-table-row-alt: #faf3df;
+    --bg-elevated: #f4eeda;
+    --text-primary: #1e1c10;
+    --text-secondary: #4b4731;
+    --text-muted: #4a4a4a;
+    --text-placeholder: #9b9a8e;
+    --border: #000000;
+    --border-subtle: rgba(0,0,0,0.12);
+    --border-strong: #000000;
+    --shadow: #000000;
+    --accent: #FFE500;
+    --accent-hover: #E6CE00;
+    --accent-text: #1e1c10;
+    --chart-grid: rgba(0, 0, 0, 0.12);
+    --chart-axis: #333333;
+    --chart-axis-text: #333333;
   }
 
   html,
@@ -17,13 +145,13 @@
     margin: 0;
     font-family: 'Space Grotesk', system-ui, sans-serif;
     font-weight: 500;
-    color: #1e1c10;
-    background: #ffffff;
+    color: var(--text-primary);
+    background: var(--bg-page);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* Material Symbols icon styling to match the design */
   .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
     font-weight: normal;
@@ -41,26 +169,45 @@
 }
 
 @layer components {
-  /* Neubrutalist border + hard shadow */
+  /* Neubrutalist — light: black border+shadow; dark: off-white border + accent shadow (inverted) */
   .brutal {
-    border: 4px solid #1e1c10;
-    box-shadow: 4px 4px 0px 0px #1e1c10;
+    border: 3px solid var(--border);
+    box-shadow: 4px 4px 0px 0px var(--shadow);
+  }
+  .dark .brutal,
+  :root[data-theme="dark"] .brutal {
+    border: 3px solid var(--border);
+    box-shadow: 4px 4px 0px 0px var(--shadow);
   }
   .brutal-3 {
-    border: 3px solid #1e1c10;
+    border: 3px solid var(--border);
   }
+  .dark .brutal-3,
+  :root[data-theme="dark"] .brutal-3 {
+    border: 3px solid var(--border);
+  }
+  /* brutal-thin is for inputs/controls — subtle in dark, not stark */
   .brutal-thin {
-    border: 2px solid #1e1c10;
+    border: 1.5px solid var(--border);
+  }
+  .dark .brutal-thin,
+  :root[data-theme="dark"] .brutal-thin {
+    border: 1px solid var(--border-subtle);
   }
   .brutal-sm {
-    border: 2px solid #1e1c10;
-    box-shadow: 2px 2px 0px 0px #1e1c10;
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0px 0px var(--shadow);
+  }
+  .dark .brutal-sm,
+  :root[data-theme="dark"] .brutal-sm {
+    border: 2px solid var(--border);
+    box-shadow: 2px 2px 0px 0px var(--shadow);
   }
   .brutal-hover {
     transition: all 0.15s ease-in-out;
   }
   .brutal-hover:hover {
-    box-shadow: 2px 2px 0px 0px #1e1c10;
+    box-shadow: 2px 2px 0px 0px var(--shadow);
     transform: translate(1px, 1px);
   }
   .brutal-sm-hover {
@@ -71,58 +218,53 @@
     transform: translate(2px, 2px);
   }
 
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  /* Subtle grid backdrop used on the processing / loading screens */
   .bg-grid-pattern {
     background-image:
-      linear-gradient(to right, #e2e2e2 1px, transparent 1px),
-      linear-gradient(to bottom, #e2e2e2 1px, transparent 1px);
+      linear-gradient(to right, rgba(30,28,16,0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(30,28,16,0.08) 1px, transparent 1px);
     background-size: 24px 24px;
+  }
+  .dark .bg-grid-pattern {
+    background-image:
+      linear-gradient(to right, rgba(242,240,223,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(242,240,223,0.04) 1px, transparent 1px);
   }
 }
 
 button {
-  transition: transform 100ms ease, box-shadow 100ms ease, background-color 100ms ease, color 100ms ease;
+  transition: transform 100ms ease, box-shadow 100ms ease, background-color 100ms ease, color 100ms ease, border-color 100ms ease;
 }
 button:not(:disabled):active {
-  transform: translate(3px, 3px) !important;
-  box-shadow: none !important;
+  transform: translate(1px, 1px);
 }
-button:disabled {
-  cursor: not-allowed;
+.dark button:not(:disabled):active {
+  transform: translate(1px, 1px);
 }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
 
-/* Custom scrollbar for sidebar / scroll areas */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scrollbar — uses tokens */
+.custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #1e1c10;
-  border: 2px solid #f4eeda;
+  background: var(--border-strong);
+  border: 2px solid var(--bg-surface);
+  border-radius: 4px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(216,213,189,0.22);
+  border-color: var(--bg-surface);
 }
 
 /* ---------------------------------------------------------------------------
-   Neubrutalism motion system — bold, chunky, snappy. No soft easing.
+   Neubrutalism motion system
    --------------------------------------------------------------------------- */
 :root {
-  --text-primary: #1e1c10;
-  --text-secondary: #6b6a5e;
-  --nb-yellow: #ffe500;
-  --nb-flash-from: #1e1c10;
+  --text-primary-motion: var(--text-primary);
+  --text-secondary-motion: var(--text-secondary);
 }
-
-/* Cards stamp in with a fast stepped slide-up — no soft easing. */
 .nb-card-enter {
   animation: nb-card-enter 0.25s steps(5, end) both;
   animation-delay: var(--nb-stagger, 0ms);
@@ -131,150 +273,228 @@ button:disabled {
   from { transform: translateY(18px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
-
-/* Cards lift + grow their hard shadow on hover — instant snap, no smooth. */
-.nb-card-hover {
-  transition: box-shadow 0s linear, transform 0s linear;
-}
+.nb-card-hover { transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease; }
 .nb-card-hover:hover {
-  transform: translate(-3px, -3px);
-  box-shadow: 7px 7px 0 0 #1e1c10;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
-.nb-card-hover:active {
-  transform: translate(1px, 1px);
-  box-shadow: 1px 1px 0 0 #1e1c10;
+.dark .nb-card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  border-color: var(--border-strong);
 }
+.nb-card-hover:active { transform: translateY(0); }
 
-/* Progress / repayment fills grow in 20 chunky steps, then flash yellow. */
 .nb-progress-fill {
   transform-origin: left center;
   animation:
     nb-progress-grow 0.6s steps(20) forwards,
     nb-yellow-flash 0.15s steps(2) 0.6s;
 }
-@keyframes nb-progress-grow {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-
-/* Status / category / regime badges stamp in. */
-.nb-badge-pop {
-  animation: nb-badge-pop 0.2s steps(2) both;
-}
+@keyframes nb-progress-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.nb-badge-pop { animation: nb-badge-pop 0.2s steps(2) both; }
 @keyframes nb-badge-pop {
   0% { transform: scale(0.5); }
   60% { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
-
-/* Sidebar active fill slides in from the left edge. */
 .nb-sidebar-fill {
   position: absolute;
   inset: 0;
-  background: var(--nb-yellow);
+  background: var(--accent);
   transform-origin: left center;
   transform: scaleX(0);
   pointer-events: none;
 }
-.nb-sidebar-fill.is-active {
-  animation: nb-sidebar-fill 0.15s steps(6) forwards;
-}
-@keyframes nb-sidebar-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
-}
-
-/* Notification count badge — mechanical blink while unread. */
-.nb-notification-badge {
-  animation: nb-notification-pulse 2s steps(2) infinite;
-}
-@keyframes nb-notification-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.2); }
-}
-
-/* Hard mechanical rattle for invalid fields / wrong credentials. */
-.nb-shake {
-  animation: nb-shake 0.4s steps(1) both;
-}
+.nb-sidebar-fill.is-active { animation: nb-sidebar-fill 0.15s steps(6) forwards; }
+@keyframes nb-sidebar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.nb-notification-badge { animation: nb-notification-pulse 2s steps(2) infinite; }
+@keyframes nb-notification-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+.nb-shake { animation: nb-shake 0.4s steps(1) both; }
 @keyframes nb-shake {
-  0% { transform: translateX(0); }
-  15% { transform: translateX(-6px); }
-  30% { transform: translateX(6px); }
-  45% { transform: translateX(-4px); }
-  60% { transform: translateX(4px); }
-  75% { transform: translateX(-2px); }
-  90% { transform: translateX(2px); }
-  100% { transform: translateX(0); }
+  0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(6px); }
+  45% { transform: translateX(-4px); } 60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); } 90% { transform: translateX(2px); } 100% { transform: translateX(0); }
 }
-
-/* Yellow flash for Save / Login buttons on success. */
-.nb-yellow-flash {
-  animation: nb-yellow-flash 0.15s steps(2) 1;
-}
+.nb-yellow-flash { animation: nb-yellow-flash 0.15s steps(2) 1; }
 @keyframes nb-yellow-flash {
-  0% { background: var(--nb-flash-from, #1e1c10); }
+  0% { background: var(--nb-flash-from, var(--border-strong)); }
   50% { background: var(--nb-yellow); }
-  100% { background: var(--nb-flash-from, #1e1c10); }
+  100% { background: var(--nb-flash-from, var(--border-strong)); }
 }
-
-/* Construction-zone hazard stripes for AI processing bars / in-progress steps. */
 .nb-hazard {
-  background-image: repeating-linear-gradient(
-    45deg,
-    #1e1c10 0,
-    #1e1c10 12px,
-    #ffe500 12px,
-    #ffe500 24px
-  );
+  background-image: repeating-linear-gradient(45deg, var(--border-strong) 0, var(--border-strong) 12px, var(--accent) 12px, var(--accent) 24px);
   background-size: 48px 48px;
   animation: nb-hazard-move 1s linear infinite;
 }
-@keyframes nb-hazard-move {
-  from { background-position: 0 0; }
-  to { background-position: -48px 0; }
-}
-
-/* Pending step box: slow border-color flash between black and grey. */
-.nb-step-pending {
-  animation: nb-step-pending 1s steps(2) infinite;
-}
-@keyframes nb-step-pending {
-  0%, 100% { border-color: #1e1c10; }
-  50% { border-color: #9b9a8e; }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-
+@keyframes nb-hazard-move { from { background-position: 0 0; } to { background-position: -48px 0; } }
+.nb-step-pending { animation: nb-step-pending 1s steps(2) infinite; }
+@keyframes nb-step-pending { 0%,100% { border-color: var(--border-strong); } 50% { border-color: var(--border); } }
+@keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
 .nb-skeleton {
-  background: linear-gradient(90deg, #f4eeda 25%, #e9e2cf 50%, #f4eeda 75%);
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-surface) 50%, var(--bg-elevated) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.8s infinite ease-in-out;
 }
-
 .nb-skeleton-card {
-  border: 3px solid #1e1c10;
-  box-shadow: 4px 4px 0 #1e1c10;
-  background: #f4eeda;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
 }
-
 .nb-indeterminate {
   overflow: hidden;
-  background: #f4eeda;
-  border: 2px solid #1e1c10;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
 }
 .nb-indeterminate::after {
   content: '';
   display: block;
   height: 100%;
   width: 35%;
-  background: #ffe500;
+  background: var(--accent);
   animation: nb-indeterminate 1s linear infinite;
 }
-@keyframes nb-indeterminate {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(320%); }
+@keyframes nb-indeterminate { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
+
+/* ================================================================
+   DARK — subtle overrides using tokens (no !important rain, real hierarchy)
+   ================================================================ */
+.dark body { color: var(--text-primary); background: var(--bg-page); }
+.dark #root { background: var(--bg-page); }
+
+/* Map legacy Tailwind surfaces to token surfaces — subtle, not bright */
+.dark .bg-white,
+.dark .bg-surface,
+.dark .bg-surface-container-lowest { background-color: var(--bg-card) !important; color: var(--text-primary); }
+.dark .bg-surface-container-low { background-color: var(--bg-input) !important; color: var(--text-primary); }
+.dark .bg-surface-container { background-color: var(--bg-surface) !important; }
+.dark .bg-surface-container-high { background-color: var(--bg-elevated) !important; }
+.dark .bg-surface-container-highest,
+.dark .bg-surface-variant { background-color: var(--bg-elevated) !important; }
+.dark .bg-background { background-color: var(--bg-page) !important; }
+
+/* Text tokens — preserve warm hierarchy, not pure white */
+.dark .text-on-surface { color: var(--text-primary) !important; }
+.dark .text-on-surface-variant { color: var(--text-secondary) !important; }
+.dark .text-white { color: var(--text-primary) !important; }
+.dark .text-on-surface-variant\/60,
+.dark .opacity-60 { color: var(--text-secondary); }
+.dark ::placeholder { color: var(--text-placeholder) !important; }
+
+/* Borders — brutal = stark off-white + accent shadow; subtle dividers = 1px rgba */
+.dark .border-on-surface { border-color: var(--border) !important; }
+.dark .border-outline-variant { border-color: var(--border-subtle) !important; }
+.dark .divide-on-surface\/10 > * + * { border-color: var(--border-subtle) !important; }
+.dark .divide-on-surface\/20 > * + * { border-color: var(--border-subtle) !important; }
+/* Keep 3px brutal width in dark — stark structure, not 1px */
+.dark .border-\[3px\],
+.dark .border-b-\[3px\],
+.dark .border-t-\[3px\],
+.dark .border-r-\[3px\],
+.dark .border-l-\[3px\] {
+  border-width: 3px !important;
+  border-color: var(--border) !important;
 }
+.dark .border-b-2,
+.dark .border-t-2 { border-color: var(--border-subtle) !important; }
+
+/* Accent stays yellow but only where semantic */
+.dark .bg-brand-yellow {
+  background-color: var(--accent) !important;
+  color: var(--accent-text) !important;
+  border-color: var(--accent) !important;
+}
+.dark .bg-brand-yellow .text-on-surface,
+.dark .bg-brand-yellow * { color: var(--accent-text); }
+.dark .hover\:bg-brand-yellow:hover {
+  background-color: var(--accent-hover) !important;
+  color: var(--accent-text) !important;
+}
+.dark .hover\:text-on-surface:hover { color: var(--text-primary) !important; }
+.dark .hover\:text-token-primary:hover { color: var(--text-primary) !important; }
+
+/* Tertiary/accent variants — muted in dark to not compete */
+.dark .bg-tertiary-container {
+  background-color: rgba(46,196,182,0.12) !important;
+  color: #7EDDD6 !important;
+  border-color: rgba(46,196,182,0.20) !important;
+}
+.dark .bg-error-container {
+  background-color: rgba(232,72,127,0.12) !important;
+  color: #F2A0B8 !important;
+  border-color: rgba(232,72,127,0.20) !important;
+}
+
+/* Inputs — use #1B1B16, placeholder secondary for WCAG */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: var(--text-secondary) !important; opacity: 0.9; }
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: var(--border-strong) !important;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(216,213,189,0.08);
+}
+
+/* Tables — header distinct, rows subtle */
+.dark thead.bg-on-surface { background: var(--bg-table-header) !important; }
+.dark thead.bg-on-surface th { color: var(--text-secondary) !important; font-weight: 700; letter-spacing: 0.04em; }
+.dark tbody tr { border-color: var(--border-subtle) !important; }
+.dark tbody tr:nth-child(odd) { background: var(--bg-table-row) !important; }
+.dark tbody tr:nth-child(even) { background: var(--bg-table-row-alt) !important; }
+.dark tbody tr:hover { background: var(--bg-hover) !important; }
+
+/* Cards — one surface, spacing + 1px border */
+.dark .brutal.bg-white,
+.dark [class*="Card"] .bg-white { background: var(--bg-card) !important; }
+
+/* Scrollbar dark */
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(216,213,189,0.18);
+  border-color: var(--bg-surface);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(216,213,189,0.28);
+}
+
+/* Skeletons dark */
+.dark .nb-skeleton {
+  background: linear-gradient(90deg, var(--bg-input) 25%, var(--bg-surface) 50%, var(--bg-input) 75%);
+  background-size: 200% 100%;
+}
+.dark .nb-skeleton-card { border-color: var(--border); background: var(--bg-surface); }
+.dark .nb-indeterminate { background: var(--bg-input); border-color: var(--border); }
+
+/* Yellow flash stays */
+.dark .nb-sidebar-fill { background: var(--accent); }
+.dark ::selection { background: var(--accent); color: var(--accent-text); }
+
+/* Focus yellow should not dominate in dark — keep input surface */
+.dark .focus\:bg-brand-yellow:focus { background: var(--bg-elevated) !important; color: var(--text-primary) !important; }
+/* Borders subtler in dark — 2px → 1px */
+.dark .border-2 { border-width: 1px !important; }
+/* General bg-on-surface (black in light) becomes high-contrast light in dark for bars/progress */
+.dark .bg-on-surface:not(thead):not(th) { background: var(--text-primary) !important; color: var(--bg-page) !important; }
+
+/* Legacy hardcoded dark colors → map to strict token hierarchy */
+.dark .bg-\[\#23231a\] { background: var(--bg-card) !important; }
+.dark .bg-\[\#2a2a1e\] { background: var(--bg-elevated) !important; }
+.dark .bg-\[\#1e1e16\] { background: var(--bg-input) !important; }
+.dark .bg-\[\#1a1a14\] { background: var(--bg-sidebar) !important; }
+.dark .bg-\[\#121212\] { background: var(--bg-page) !important; }
+.dark .bg-\[\#2f2f22\] { background: var(--bg-elevated) !important; }
+.dark .bg-\[\#0f0f0f\] { background: var(--bg-page) !important; }
+.dark .bg-\[\#332f00\] { background: rgba(255,229,0,0.07) !important; color: var(--text-secondary) !important; border-color: var(--border) !important; }
+.dark .bg-\[\#FFD600\] { background: var(--accent-hover) !important; }
+.dark .border-\[\#f5f0da\] { border-color: var(--border) !important; }
+.dark .text-\[\#f5f0da\] { color: var(--text-primary) !important; }
+.dark .text-\[\#b8b5a0\] { color: var(--text-secondary) !important; }
+.dark .text-\[\#9a998d\] { color: var(--text-muted) !important; }
+.dark .shadow-\[4px_4px_0_\#000\],
+.dark .shadow-\[4px_0_0_\#000\] { box-shadow: 0 1px 8px rgba(0,0,0,0.5) !important; }

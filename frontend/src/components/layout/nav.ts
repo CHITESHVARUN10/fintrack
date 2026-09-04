@@ -46,4 +46,7 @@ export const routeTitles: Record<string, string> = {
   '/import': 'Import',
   '/budgets': 'Budgets',
   '/settings': 'Settings',
+  '/privacy': 'Privacy Policy',
+  '/docs': 'Documentation',
+  '/terms': 'Privacy Policy',
 }

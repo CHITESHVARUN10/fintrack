@@ -213,7 +213,12 @@ export const familyService = {
   create: (payload: { name: string }) => apiClient.post('/families', payload).then((r) => r.data),
   me: () => apiClient.get('/families/me').then((r) => r.data),
   join: (inviteCode: string) => apiClient.post('/families/join', { inviteCode }).then((r) => r.data),
-  members: (familyId: string) => apiClient.get(`/families/${familyId}/members`).then((r) => r.data),
+  members: (familyId: string) =>
+    apiClient.get(`/families/${familyId}/members`).then((r) => {
+      const data = r.data as { family?: unknown; members?: Record<string, unknown>[] }
+      if (data?.members) data.members = data.members.map((m) => normalizeMember(m)) as unknown as typeof data.members
+      return r.data
+    }),
   requests: (familyId: string) => apiClient.get(`/families/${familyId}/requests`).then((r) => r.data),
   review: (familyId: string, membershipId: string, action: 'accept' | 'reject') =>
     apiClient.patch(`/families/${familyId}/requests/${membershipId}`, { action }).then((r) => r.data),

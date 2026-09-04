@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { transactionService, familyService, loanService } from '../services/api'
 import { apiClient } from '../services/apiClient'
@@ -28,19 +29,20 @@ function fmtDate(iso: string) { try { return new Date(iso).toLocaleString('en-IN
 
 export function Transactions() {
   const { isAdmin } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [familyView, setFamilyView] = useState(false)
   const [items, setItems] = useState<Tx[]>([])
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
   const [summary, setSummary] = useState<any>(null)
   const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '', visibility: 'FAMILY' })
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(() => searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [modeFilter, setModeFilter] = useState('')
-  const [vendorFilter, setVendorFilter] = useState('')
+  const [vendorFilter, setVendorFilter] = useState(() => searchParams.get('vendor') || searchParams.get('q') || '')
   const [memberFilter, setMemberFilter] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -79,6 +81,27 @@ export function Transactions() {
     transactionService.list(params as any).then((d: any) => { setItems(d.items || d || []); setSummary(d.summary || null) }).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
+  // keep q/vendor in sync with URL ?q= and ?highlight=
+  useEffect(() => {
+    const urlQ = searchParams.get('q')
+    const highlight = searchParams.get('highlight')
+    if (urlQ !== null && urlQ !== q) setQ(urlQ)
+    if (urlQ && urlQ !== vendorFilter) setVendorFilter(urlQ)
+    if (highlight && highlight !== detailId) setDetailId(highlight)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  // reflect detail drawer in URL so back button works
+  useEffect(() => {
+    const current = searchParams.get('highlight') || ''
+    const next = detailId || ''
+    if (current === next) return
+    const p = new URLSearchParams(searchParams)
+    if (next) p.set('highlight', next)
+    else p.delete('highlight')
+    setSearchParams(p, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId])
   useEffect(() => { apiClient.get('/families/me').then((r) => r.data?.family?._id ? familyService.members(r.data.family._id).then((d: any) => setMembers((d.members || []).map((m: any) => ({ id: m.id, name: m.name })))).catch(() => {}) : null).catch(() => {}) }, [])
 
   useEffect(() => {
@@ -159,6 +182,33 @@ export function Transactions() {
         <div className="ml-auto flex gap-sm items-center">
           <input type="date" value={fromDate} onChange={(e)=> setFromDate(e.target.value)} className="brutal-thin px-sm py-xs text-sm" title="From" />
           <input type="date" value={toDate} onChange={(e)=> setToDate(e.target.value)} className="brutal-thin px-sm py-xs text-sm" title="To" />
+          <button
+            type="button"
+            onClick={() => {
+              const now = new Date()
+              const y = now.getFullYear()
+              const m = now.getMonth()
+              const first = new Date(y, m, 1)
+              const last = new Date(y, m + 1, 0)
+              const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+              setFromDate(fmt(first))
+              setToDate(fmt(last))
+            }}
+            title="Set date range to current month (1st to 28/29/30/31st)"
+            className="brutal-thin px-sm py-xs text-xs font-bold uppercase bg-white hover:bg-brand-yellow whitespace-nowrap"
+          >
+            This Month
+          </button>
+          {(fromDate || toDate) && (
+            <button
+              type="button"
+              onClick={() => { setFromDate(''); setToDate('') }}
+              title="Clear date range"
+              className="brutal-thin px-xs py-xs text-xs font-bold uppercase bg-white hover:bg-surface-container-high"
+            >
+              ✕
+            </button>
+          )}
           <input value={vendorFilter} onChange={(e)=> setVendorFilter(e.target.value)} placeholder="Vendor" className="brutal-thin px-sm py-xs text-sm w-28" />
           <select value={modeFilter} onChange={(e)=> setModeFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm"><option value="">All modes</option><option value="UPI">UPI</option><option value="BANK">BANK</option><option value="CASH">CASH</option><option value="CARD">CARD</option><option value="OTHER">OTHER</option></select>
           {familyView && <select value={memberFilter} onChange={(e)=> setMemberFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm"><option value="">All members</option>{members.map((m:any)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select>}

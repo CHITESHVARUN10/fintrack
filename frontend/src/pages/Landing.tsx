@@ -25,12 +25,12 @@ export function Landing() {
           <a className="hover:underline underline-offset-4 decoration-[3px]" href="#features">
             Features
           </a>
-          <a className="hover:underline underline-offset-4 decoration-[3px]" href="#">
-            Pricing
-          </a>
-          <a className="hover:underline underline-offset-4 decoration-[3px]" href="#">
-            About
-          </a>
+          <Link to="/docs" className="hover:underline underline-offset-4 decoration-[3px]">
+            Docs
+          </Link>
+          <Link to="/privacy" className="hover:underline underline-offset-4 decoration-[3px]">
+            Privacy
+          </Link>
         </div>
         <Link to="/login">
           <button className="bg-brand-yellow border-4 border-on-surface px-md py-1 font-bold shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all">
@@ -143,8 +143,9 @@ export function Landing() {
         </div>
         <div className="flex flex-col gap-1">
           <div className="font-bold mb-xs uppercase">Legal</div>
-          <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Privacy Policy</a>
-          <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Terms of Service</a>
+          <Link to="/privacy" className="hover:bg-brand-yellow px-1 w-fit">Privacy Policy</Link>
+          <Link to="/docs" className="hover:bg-brand-yellow px-1 w-fit">Docs & Tutorials</Link>
+          <Link to="/terms" className="hover:bg-brand-yellow px-1 w-fit">Terms of Service</Link>
           <p className="text-xs mt-sm text-on-surface-variant">© 2026 FinStack Inc.</p>
         </div>
       </motion.footer>

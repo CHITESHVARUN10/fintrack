@@ -22,34 +22,38 @@ export function BarChartCard({
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="0" stroke="#1e1c10" vertical={false} />
+      <BarChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
         <XAxis
           dataKey="month"
-          tick={{ fill: '#1e1c10', fontWeight: 700, fontSize: 12 }}
-          axisLine={{ stroke: '#1e1c10', strokeWidth: 3 }}
-          tickLine={{ stroke: '#1e1c10', strokeWidth: 3 }}
+          tick={{ fill: 'var(--chart-axis)', fontWeight: 600, fontSize: 11 }}
+          axisLine={{ stroke: 'var(--border)', strokeWidth: 1 }}
+          tickLine={{ stroke: 'var(--border)', strokeWidth: 1 }}
         />
         <YAxis
-          tick={{ fill: '#1e1c10', fontWeight: 700, fontSize: 12 }}
-          axisLine={{ stroke: '#1e1c10', strokeWidth: 3 }}
-          tickLine={{ stroke: '#1e1c10', strokeWidth: 3 }}
+          tick={{ fill: 'var(--chart-axis)', fontWeight: 600, fontSize: 11 }}
+          axisLine={{ stroke: 'var(--border)', strokeWidth: 1 }}
+          tickLine={{ stroke: 'var(--border)', strokeWidth: 1 }}
         />
         <Tooltip
-          cursor={{ fill: 'rgba(30,28,16,0.06)' }}
+          cursor={{ fill: 'var(--border-subtle)' }}
           contentStyle={{
-            border: '3px solid #1e1c10',
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
             borderRadius: 0,
-            boxShadow: '4px 4px 0 0 #1e1c10',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             fontFamily: 'Space Grotesk',
             fontWeight: 700,
+            color: 'var(--text-primary)',
           }}
+          labelStyle={{ color: 'var(--text-secondary)' }}
+          itemStyle={{ color: 'var(--text-primary)' }}
         />
         <Legend
-          wrapperStyle={{ fontWeight: 700, fontSize: 12 }}
+          wrapperStyle={{ fontWeight: 700, fontSize: 12, color: 'var(--text-secondary)' }}
         />
-        <Bar dataKey={incomeKey} name="Income" fill="#FFE500" stroke="#1e1c10" strokeWidth={3} />
-        <Bar dataKey={expenseKey} name="Expense" fill="#1e1c10" stroke="#1e1c10" strokeWidth={3} />
+        <Bar dataKey={incomeKey} name="Income" fill="var(--chart-1)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} />
+        <Bar dataKey={expenseKey} name="Expense" fill="var(--chart-2)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} />
       </BarChart>
     </ResponsiveContainer>
   )

@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Field, Input } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
@@ -34,6 +35,7 @@ function Toggle({ label, desc, defaultOn = false }: { label: string; desc: strin
 
 export function Settings() {
   const { user } = useAuth()
+  const { theme, toggle, setTheme } = useTheme()
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwFlash, setPwFlash] = useState(false)
@@ -74,9 +76,44 @@ export function Settings() {
         </div>
       </section>
 
+      {/* Appearance */}
+      <section className="border-b-[3px] border-on-surface dark:border-[#f5f0da] pb-lg">
+        <h2 className="text-2xl font-bold uppercase mb-lg dark:text-[#f5f0da]">Appearance</h2>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-white dark:bg-[#23231a] border-[3px] border-on-surface dark:border-[#f5f0da] shadow-brutal">
+            <div>
+              <p className="font-bold dark:text-[#f5f0da]">Dark Mode</p>
+              <p className="font-medium text-on-surface-variant dark:text-[#b8b5a0] text-sm mt-1">Toggle between light and dark theme. Saved for next visit.</p>
+              <p className="text-[11px] opacity-60 dark:text-[#b8b5a0] mt-1">Shortcut: theme persists + respects system preference.</p>
+            </div>
+            <div className="flex items-center gap-sm ml-md shrink-0">
+              <button
+                onClick={() => setTheme('light')}
+                className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${theme === 'light' ? 'bg-brand-yellow' : 'bg-white dark:bg-[#2a2a1e] dark:text-[#f5f0da]'}`}
+              >
+                <Icon name="light_mode" className="text-base mr-1" />Light
+              </button>
+              <button
+                onClick={() => setTheme('dark')}
+                className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${theme === 'dark' ? 'bg-brand-yellow text-on-surface' : 'bg-white dark:bg-[#2a2a1e] dark:text-[#f5f0da]'}`}
+              >
+                <Icon name="dark_mode" className="text-base mr-1" />Dark
+              </button>
+              <button
+                onClick={toggle}
+                className="brutal bg-white dark:bg-[#2a2a1e] dark:text-[#f5f0da] border-2 border-on-surface dark:border-[#f5f0da] p-2"
+                title="Toggle"
+              >
+                <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Notifications */}
-      <section className="border-b-[3px] border-on-surface pb-lg">
-        <h2 className="text-2xl font-bold uppercase mb-lg">Notifications</h2>
+      <section className="border-b-[3px] border-on-surface dark:border-[#f5f0da] pb-lg">
+        <h2 className="text-2xl font-bold uppercase mb-lg dark:text-[#f5f0da]">Notifications</h2>
         <div className="space-y-4">
           <Toggle
             label="Push Notifications"

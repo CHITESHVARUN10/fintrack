@@ -96,6 +96,8 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
           if (off.category && off.category !== 'Other') consider(off.category, 40, 'vendor_offering');
         }
       }
+      // Family shared amount→product mapping: same guy + same rupees => exact product across family
+      // This is familyId-scoped priceMap, so any member's teaching benefits all members
       if (amountPaise && vendor.priceMap && vendor.priceMap.length) {
         const tolerance = Math.max(100, amountPaise * 0.05);
         let bestPm = null;
@@ -108,8 +110,13 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
         }
         if (bestPm) {
           const prod = (vendor.products || []).find((p) => String(p._id) === String(bestPm.productRef));
-          if (prod && prod.category && prod.category !== 'Other') consider(prod.category, 60, 'vendor_amount_product');
-          else if (prod) consider(vendor.primaryCategory, 30, 'vendor_amount_fallback');
+          if (prod && prod.category && prod.category !== 'Other') {
+            // Boosted confidence for family-shared same-amount product (hits>2 => 85, else 75) — can beat generic vendor_primary 70
+            const conf = (bestPm.hits || prod.hits || 1) > 2 ? 85 : 75;
+            consider(prod.category, conf, 'family_amount_product', prod.subcategory, {});
+            // Also consider subcategory for precise product
+            if (prod.subcategory) consider(prod.category, conf, 'family_amount_product_sub', prod.subcategory);
+          } else if (prod) consider(vendor.primaryCategory, 30, 'vendor_amount_fallback');
         }
       }
       if (upiId && vendor.primaryCategory) {

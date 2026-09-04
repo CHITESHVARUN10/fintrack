@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { AnimatePresence, motion } from 'framer-motion'
 import { AuthProvider } from './context/AuthContext'
 import { TaxpayerProvider } from './context/TaxpayerContext'
+import { ThemeProvider } from './context/ThemeContext'
 import { AuthGuard } from './components/layout/AuthGuard'
 import { Layout } from './components/layout/Layout'
 import { Landing } from './pages/Landing'
@@ -37,6 +38,8 @@ import { Form16Review } from './pages/Form16Review'
 import { TaxRecommendation } from './pages/TaxRecommendation'
 import { RecommendationLoading } from './pages/RecommendationLoading'
 import { AcceptInvite } from './pages/AcceptInvite'
+import { PrivacyPolicy } from './pages/PrivacyPolicy'
+import { Docs } from './pages/Docs'
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -55,6 +58,9 @@ function AnimatedRoutes() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/accept-invite/:token" element={<AcceptInvite />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/docs" element={<Docs />} />
+          <Route path="/terms" element={<PrivacyPolicy />} />
 
           {/* Transactional Form 16 screens — centered, no app shell but still protected */}
           <Route
@@ -127,12 +133,14 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <TaxpayerProvider>
-        <BrowserRouter>
-          <AnimatedRoutes />
-        </BrowserRouter>
-      </TaxpayerProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <TaxpayerProvider>
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
+        </TaxpayerProvider>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

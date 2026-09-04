@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
 
@@ -27,8 +27,9 @@ const MODES = ['UPI','BANK','CASH','CARD','OTHER'] as const
 
 export function Vendors(){
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const [items, setItems] = useState<Vendor[]>([])
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(() => searchParams.get('q') || '')
   const [catFilter, setCatFilter] = useState('')
   const [cats, setCats] = useState<string[]>(FALLBACK_CATEGORIES)
   const [loading, setLoading] = useState(true)
@@ -85,7 +86,7 @@ export function Vendors(){
       load('','')
     } finally { setBackfilling(false) }
   }
-  useEffect(()=>{ load('','') }, [])
+  useEffect(()=>{ const urlQ = searchParams.get('q'); if(urlQ) { setQ(urlQ); load(urlQ, catFilter) } else load('','') }, [searchParams])
   useEffect(()=>{
     apiClient.get('/recipients/categories').then((r:any)=>{
       if(r.data?.categories?.length) setCats(r.data.categories)

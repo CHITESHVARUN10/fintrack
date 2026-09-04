@@ -8,7 +8,40 @@ import { DonutChart, type DonutDatum } from '../components/ui/DonutChart'
 import { LoadingBlock } from '../components/ui/PageHeader'
 import { formatCurrency, formatDate } from '../lib/format'
 
-const BURN_COLORS = ['#FFE500', '#00fcfb', '#1e1c10', '#FF6B6B', '#9b5de5', '#00bbf9']
+const BURN_COLORS = ['#FFE500', '#2EC4B6', '#E8487F', '#7B61FF', '#FF7A45', '#FFB347', '#6BCB77', '#4D96FF']
+
+/**
+ * Largest-remainder (Hamilton) normalization so rounded percentages sum to exactly 100.
+ * Keeps underlying unrounded values for calculations; rounding only for presentation.
+ * Preserves original order for display.
+ */
+function normalizeTo100(entries: { label: string; value: number }[], total: number): { label: string; value: number; percent: number; raw: number }[] {
+  if (!entries.length || total <= 0) return entries.map(e => ({ ...e, percent: 0, raw: 0 }))
+  const raws = entries.map(e => ({ label: e.label, value: e.value, raw: (e.value / total) * 100 }))
+  const floors = raws.map(r => Math.floor(r.raw))
+  const remainders = raws.map((r, i) => ({ idx: i, frac: r.raw - floors[i] }))
+  let sumFloors = floors.reduce((a, b) => a + b, 0)
+  let remaining = 100 - sumFloors
+  // Sort by fractional part descending to distribute remaining points
+  remainders.sort((a, b) => b.frac - a.frac)
+  const resultPercents = [...floors]
+  // Distribute one point at a time to largest remainders; if remaining negative (should not happen with floor) borrow from smallest remainders
+  if (remaining > 0) {
+    for (let i = 0; i < remaining && i < remainders.length; i++) {
+      resultPercents[remainders[i].idx] += 1
+    }
+  } else if (remaining < 0) {
+    // In case of floating weirdness, remove from smallest remainders
+    remainders.sort((a, b) => a.frac - b.frac)
+    for (let i = 0; i < Math.abs(remaining) && i < remainders.length; i++) {
+      if (resultPercents[remainders[i].idx] > 0) resultPercents[remainders[i].idx] -= 1
+    }
+  }
+  // Edge: if we have many entries and some floors are 0 but we still want to avoid 0% for non-zero values when possible,
+  // largest remainder already handles it — the smallest non-zero will get 0 only if there are >100 categories or very tiny share.
+  // For display, keep 0% but legend will still show the row with its amount; tooltip shows raw.
+  return raws.map((r, i) => ({ label: r.label, value: r.value, raw: r.raw, percent: resultPercents[i] }))
+}
 
 const TYPE_META: Record<string, { icon: string; bg: string }> = {
   subscription: { icon: 'subscriptions', bg: 'bg-brand-yellow' },
@@ -43,17 +76,21 @@ export function Dashboard() {
   const burnTotal = burnEntries.reduce((s, [, v]) => s + v, 0)
   const maxBurn = Math.max(...burnEntries.map(([, v]) => v), 1)
 
-  const donut: DonutDatum[] = burnEntries.map(([label, value], i) => ({
-    label,
-    value: burnTotal ? Math.round((value / burnTotal) * 100) : 0,
+  // Normalized percentages — ensures sum is exactly 100, center never shows 101%
+  const normalizedCategories = normalizeTo100(burnEntries.map(([label, value]) => ({ label, value })), burnTotal)
+  const donut: DonutDatum[] = normalizedCategories.map((e, i) => ({
+    label: e.label,
+    value: e.percent,
     color: BURN_COLORS[i % BURN_COLORS.length],
+    // keep raw for tooltip if needed
   }))
 
   const vendorEntries: { label: string; value: number }[] = data.transactionVendorEntries || []
   const vendorTotal = vendorEntries.reduce((s, e) => s + e.value, 0)
-  const vendorDonut: DonutDatum[] = vendorEntries.map((e, i) => ({
+  const normalizedVendors = normalizeTo100(vendorEntries.map(e => ({ label: e.label, value: e.value })), vendorTotal)
+  const vendorDonut: DonutDatum[] = normalizedVendors.map((e, i) => ({
     label: e.label,
-    value: vendorTotal ? Math.round((e.value / vendorTotal) * 100) : 0,
+    value: e.percent,
     color: BURN_COLORS[i % BURN_COLORS.length],
   }))
 
@@ -149,49 +186,86 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card color="surface" className="min-h-[420px] flex flex-col overflow-hidden">
-          <h3 className="font-bold text-lg uppercase mb-2">Category Breakdown</h3>
-          <p className="text-xs font-bold text-on-surface-variant">Your spend by category (transactions)</p>
+        <Card color="white" className="h-[500px] flex flex-col overflow-hidden">
+          <h3 className="font-bold text-lg uppercase leading-none">Category Breakdown</h3>
+          <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your spend by category (transactions)</p>
           {donut.length === 0 ? (
-            <p className="font-bold text-on-surface-variant mt-md">No data.</p>
+            <p className="font-bold mt-md" style={{ color: 'var(--text-secondary)' }}>No data.</p>
           ) : (
             <>
-              <DonutChart data={donut} centerLabel="Total" />
-              <div className="grid grid-cols-2 gap-xs mt-2">
-                {donut.map((d) => (
-                  <div
-                    key={d.label}
-                    className="flex items-center gap-xs p-xs bg-white brutal-thin"
-                  >
+              {/* Donut — fixed vertical region */}
+              <div className="shrink-0 mt-2">
+                <DonutChart data={donut} centerLabel="Total" height={200} />
+              </div>
+              {/* Legend — independent rows, scrolls internally, never overlaps */}
+              <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col" style={{ borderColor: 'var(--border)' }}>
+                <div className="grid grid-cols-2 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 flex-1 min-h-0">
+                  {normalizedCategories.map((d, i) => (
                     <div
-                      className="w-4 h-4 brutal-thin"
-                      style={{ background: d.color }}
-                    />
-                    <span className="font-bold text-xs">
-                      {d.label} ({d.value}%)
-                    </span>
-                  </div>
-                ))}
+                      key={`${d.label}-${i}`}
+                      className="flex items-center gap-2 min-h-[38px] px-2 py-1.5 brutal-thin overflow-hidden"
+                      style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}
+                      title={`${d.label}: ${d.percent}% (₹${d.value.toLocaleString('en-IN')})`}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 shrink-0 border rounded-[2px]"
+                        style={{ background: BURN_COLORS[i % BURN_COLORS.length], borderColor: 'var(--border)' }}
+                      />
+                      <span className="flex-1 min-w-0 truncate font-bold text-xs" style={{ color: 'var(--text-primary)' }}>
+                        {d.label}
+                      </span>
+                      <span className="shrink-0 font-bold text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {d.percent}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}
         </Card>
 
-        <Card color="white" className="min-h-[420px] flex flex-col overflow-hidden">
-          <h3 className="font-bold text-lg uppercase mb-2">Vendor Breakdown</h3>
-          <p className="text-xs font-bold text-on-surface-variant">Your top vendors this month</p>
+        <Card color="white" className="h-[500px] flex flex-col overflow-hidden">
+          <h3 className="font-bold text-lg uppercase leading-none">Vendor Breakdown</h3>
+          <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your top vendors this month</p>
           {vendorDonut.length === 0 ? (
-            <p className="font-bold text-on-surface-variant mt-md">No vendor spend yet.</p>
+            <p className="font-bold mt-md" style={{ color: 'var(--text-secondary)' }}>No vendor spend yet.</p>
           ) : (
             <>
-              <DonutChart data={vendorDonut} centerLabel="Vendors" />
-              <div className="flex flex-col gap-xs mt-2 max-h-[140px] overflow-y-auto">
-                {vendorEntries.map((e) => (
-                  <div key={e.label} className="flex justify-between items-center bg-surface-variant brutal-thin px-2 py-1">
-                    <span className="font-bold text-xs truncate pr-2">{e.label}</span>
-                    <span className="font-bold text-xs">{formatCurrency(e.value)}</span>
-                  </div>
-                ))}
+              <div className="shrink-0 mt-2">
+                <DonutChart data={vendorDonut} centerLabel="Total" height={200} />
+              </div>
+              <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 flex flex-col gap-2">
+                  {normalizedVendors.map((e, i) => {
+                    const isUpi = /upi|@|UPI/.test(e.label)
+                    const display = e.label.length > 28 ? `${e.label.slice(0, 20)}…${e.label.slice(-6)}` : e.label
+                    return (
+                      <div
+                        key={`${e.label}-${i}`}
+                        className="flex items-center gap-2 min-h-[44px] px-2 py-2 brutal-thin overflow-hidden"
+                        style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}
+                        title={`${e.label} — ${formatCurrency(e.value)} (${e.percent}%)`}
+                      >
+                        <span
+                          className="w-3 h-3 shrink-0 rounded-[2px] border"
+                          style={{ background: BURN_COLORS[i % BURN_COLORS.length], borderColor: 'var(--border)' }}
+                        />
+                        <span className="flex-1 min-w-0 font-bold text-xs leading-tight overflow-hidden">
+                          <span className="block truncate" style={{ color: 'var(--text-primary)' }} title={e.label}>
+                            {isUpi ? display : e.label}
+                          </span>
+                          <span className="block text-[10px] font-medium truncate" style={{ color: 'var(--text-muted)' }}>
+                            {e.percent}% · {formatCurrency(e.value)}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-bold text-xs whitespace-nowrap text-right min-w-[70px]" style={{ color: 'var(--text-primary)' }}>
+                          {formatCurrency(e.value)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </>
           )}

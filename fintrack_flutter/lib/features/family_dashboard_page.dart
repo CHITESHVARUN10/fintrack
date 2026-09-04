@@ -10,17 +10,44 @@ class FamilyDashboardPage extends StatefulWidget {
   State<FamilyDashboardPage> createState() => _FamilyDashboardPageState();
 }
 
+/// Safe substring helpers — fl_chart calls title builders with fractional
+/// values and backend labels/dates can be shorter than expected.
+String _safeTrunc(String s, int n) => s.length <= n ? s : s.substring(0, n);
+String _safeRange(String s, int start, [int? end]) {
+  if (s.length <= start) return s;
+  final e = end ?? s.length;
+  return s.substring(start, e > s.length ? s.length : e);
+}
+
 class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   Map? data;
   bool loading = true;
   DateTime? from = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime? to = DateTime.now();
+  List members = [];
+  List<String> selMembers = [];
+  List<String> selModes = [];
+  static const modes = ['UPI', 'BANK', 'CASH', 'CARD', 'OTHER'];
 
   @override
   void initState() {
     super.initState();
+    fetchMembers();
     load();
   }
+
+  Future<void> fetchMembers() async {
+    try {
+      final me = await ApiClient.dio.get('/families/me');
+      final fid = me.data['family']?['_id'];
+      if (fid == null) return;
+      final res = await ApiClient.dio.get('/families/$fid/members');
+      if (!mounted) return;
+      setState(() => members = (res.data['members'] as List?) ?? []);
+    } catch (_) {}
+  }
+
+  String _mid(Map m) => '${m['id'] ?? m['_id'] ?? ''}';
 
   Future<void> load() async {
     setState(() => loading = true);
@@ -28,15 +55,23 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
       final qp = <String, dynamic>{};
       if (from != null) qp['from'] = from!.toIso8601String().substring(0, 10);
       if (to != null) qp['to'] = to!.toIso8601String().substring(0, 10);
+      if (selMembers.isNotEmpty) qp['members'] = selMembers.join(',');
+      if (selModes.isNotEmpty) qp['modes'] = selModes.join(',');
       final res = await ApiClient.dio.get(
         '/analytics/family',
         queryParameters: qp,
       );
+      if (!mounted) return;
       setState(() => data = res.data);
     } catch (_) {
     } finally {
-      setState(() => loading = false);
+      if (mounted) setState(() => loading = false);
     }
+  }
+
+  Future<void> clearFilters() async {
+    setState(() { selMembers = []; selModes = []; });
+    await load();
   }
 
   @override
@@ -107,6 +142,64 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                   BrutalButton(label: 'Apply', onPressed: load),
                 ],
               ),
+              const SizedBox(height: 8),
+              const Text('MEMBERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              if (members.isEmpty)
+                const Text('No family members found.', style: TextStyle(fontSize: 11))
+              else
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: members.map((m) {
+                    final id = _mid(Map<String, dynamic>.from(m as Map));
+                    final name = '${m['name'] ?? m['email'] ?? '?'}';
+                    final active = selMembers.contains(id);
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        active ? selMembers.remove(id) : selMembers.add(id);
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: active ? FinStackColors.brandYellow : Colors.white,
+                          border: Border.all(width: 2, color: FinStackColors.onSurface),
+                        ),
+                        child: Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 8),
+              const Text('MODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: modes.map((m) {
+                  final active = selModes.contains(m);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      active ? selModes.remove(m) : selModes.add(m);
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: active ? FinStackColors.brandYellow : Colors.white,
+                        border: Border.all(width: 2, color: FinStackColors.onSurface),
+                      ),
+                      child: Text(m, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              if (selMembers.isNotEmpty || selModes.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: BrutalButton(label: 'Clear filters', onPressed: clearFilters),
+                ),
+              ],
             ],
           ),
         ),
@@ -178,15 +271,14 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                     sideTitles: SideTitles(
                                       showTitles: true,
                                       reservedSize: 24,
+                                      interval: 1,
                                       getTitlesWidget: (v, meta) {
                                         final i = v.toInt();
-                                        if (i < 0 || i >= timeSeries.length) {
+                                        if (v != i.toDouble() || i < 0 || i >= timeSeries.length) {
                                           return const SizedBox();
                                         }
                                         return Text(
-                                          timeSeries[i]['date']
-                                              .toString()
-                                              .substring(5, 10),
+                                          _safeRange(timeSeries[i]['date'].toString(), 5, 10),
                                           style: const TextStyle(fontSize: 8),
                                         );
                                       },
@@ -236,17 +328,16 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                               bottomTitles: AxisTitles(
                                 sideTitles: SideTitles(
                                   showTitles: true,
+                                  interval: 1,
                                   getTitlesWidget: (v, meta) {
                                     final i = v.toInt();
-                                    if (i < 0 || i >= byCategory.length) {
+                                    if (v != i.toDouble() || i < 0 || i >= byCategory.length) {
                                       return const SizedBox();
                                     }
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 4),
                                       child: Text(
-                                        byCategory[i]['category']
-                                            .toString()
-                                            .substring(0, 6),
+                                        _safeTrunc(byCategory[i]['category'].toString(), 6),
                                         style: const TextStyle(fontSize: 8),
                                       ),
                                     );
@@ -405,7 +496,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                       ),
                       child: Center(
                         child: Text(
-                          h['date'].toString().substring(5, 10),
+                          _safeRange(h['date'].toString(), 5, 10),
                           style: TextStyle(
                             fontSize: 7,
                             color: fg,
