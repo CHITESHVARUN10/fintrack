@@ -4,8 +4,15 @@
 
 import axios from 'axios'
 
+// Local dev: relative '/api' goes through the Vite proxy (see vite.config.ts).
+// Hosted (Vercel): set VITE_API_URL to the backend origin, e.g.
+// https://fintrack-viqo.onrender.com — calls then go to '<origin>/api'.
+const apiBase = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
+  : '/api'
+
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: apiBase,
   withCredentials: true,
 })
 

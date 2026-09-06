@@ -71,8 +71,17 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-// ---- Health check ----
+// ---- Health checks ----
+// /api/health is the Render healthCheckPath. /health is the human-friendly
+// one — open it in a browser to manually verify the server is up.
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/health', (req, res) =>
+  res.json({
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+  }),
+);
 
 // ---- Route groups (mounted under /api) ----
 app.use('/api/auth', require('./routes/auth/auth.routes'));
