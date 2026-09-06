@@ -10,6 +10,18 @@ import 'import_page.dart';
 import 'budgets_page.dart';
 import 'family_dashboard_page.dart';
 import 'profile_page.dart';
+import 'vendors_page.dart';
+import 'subscriptions_page.dart';
+import 'recurring_page.dart';
+import 'investments_page.dart';
+import 'loans_page.dart';
+import 'insurance_page.dart';
+import 'education_page.dart';
+import 'tax_page.dart';
+import 'form16_page.dart';
+import 'reports_page.dart';
+import 'notifications_page.dart';
+import 'settings_page.dart';
 
 class _Dest {
   final String label;
@@ -26,7 +38,19 @@ const _dests = [
   _Dest('Members', Icons.group, FamilyPage()),
   _Dest('Import', Icons.upload_file, ImportPageWidget()),
   _Dest('Budgets', Icons.savings, BudgetsPage()),
+  _Dest('Vendors', Icons.store, VendorsPage()),
+  _Dest('Subscriptions', Icons.autorenew, SubscriptionsPage()),
+  _Dest('Recurring', Icons.event_repeat, RecurringPage()),
+  _Dest('Investments', Icons.trending_up, InvestmentsPage()),
+  _Dest('Loans', Icons.account_balance, LoansPage()),
+  _Dest('Insurance', Icons.health_and_safety, InsurancePage()),
+  _Dest('Education', Icons.school, EducationPage()),
+  _Dest('Tax', Icons.calculate, TaxPage()),
+  _Dest('Form 16', Icons.description, Form16Page()),
+  _Dest('Reports', Icons.bar_chart, ReportsPage()),
+  _Dest('Notifications', Icons.notifications, NotificationsPage()),
   _Dest('Profile', Icons.person, ProfilePage()),
+  _Dest('Settings', Icons.settings, SettingsPage()),
 ];
 
 /// Real mobile-app navigation: hamburger (☰) opens a retractable drawer

@@ -5,33 +5,34 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiClient {
   static const _baseUrlKey = 'fintrack_base_url';
-  static const defaultBaseUrl = 'http://192.168.1.213:3000/api';
+  static const defaultBaseUrl = 'https://fintrack-viqo.onrender.com/api';
   static const _storage = FlutterSecureStorage();
 
   static final CookieJar _jar = CookieJar();
   static final Dio dio = Dio(BaseOptions(
     baseUrl: defaultBaseUrl,
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
+    // Generous timeouts: Render free tier cold-starts can take ~30-60s.
+    connectTimeout: const Duration(seconds: 45),
+    receiveTimeout: const Duration(seconds: 45),
   ))
     ..interceptors.add(CookieManager(_jar));
 
-  /// Load persisted server URL (for physical iPhone localhost != Mac).
+  /// Load persisted server URL (Settings screen override).
   /// Call once at startup before first /auth/me check.
-  /// Auto-migrates old :5000 URLs to :3000.
+  /// One-time migration: old local/LAN URLs move to the hosted backend.
   static Future<String> init() async {
     try {
       final saved = await _storage.read(key: _baseUrlKey);
       if (saved != null && saved.trim().isNotEmpty) {
         var url = saved.trim();
-        // Migrate backend move 5000 -> 3000
-        if (url.contains(':5000')) {
-          url = url.replaceAll(':5000', ':3000');
-          await _storage.write(key: _baseUrlKey, value: url);
-        }
-        // Migrate stale Mac IP after WiFi change (.136 no longer exists)
-        if (url.contains('192.168.1.136')) {
-          url = url.replaceAll('192.168.1.136', '192.168.1.213');
+        // Migrate local/LAN dev URLs to the hosted backend
+        if (url.contains('localhost') ||
+            url.contains('127.0.0.1') ||
+            url.contains('192.168.') ||
+            url.contains('10.0.') ||
+            url.contains(':5000') ||
+            url.contains(':3000')) {
+          url = defaultBaseUrl;
           await _storage.write(key: _baseUrlKey, value: url);
         }
         // Ensure /api suffix (old default missed it)
