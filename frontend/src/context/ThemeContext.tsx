@@ -11,10 +11,11 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
 function getInitialTheme(): Theme {
+  // Default is always light. Only an explicit stored user choice selects dark —
+  // the OS color-scheme preference is deliberately ignored.
   try {
     const stored = localStorage.getItem('fintrack-theme') as Theme | null
     if (stored === 'light' || stored === 'dark') return stored
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark'
   } catch {}
   return 'light'
 }
@@ -46,20 +47,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // also set color-scheme for native controls
     root.style.colorScheme = theme
   }, [theme])
-
-  // listen to system preference if no manual override stored
-  useEffect(() => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e: MediaQueryListEvent) => {
-      try {
-        const stored = localStorage.getItem('fintrack-theme')
-        if (stored) return // user picked manually, don't follow system
-        setThemeState(e.matches ? 'dark' : 'light')
-      } catch {}
-    }
-    mql.addEventListener?.('change', handler)
-    return () => mql.removeEventListener?.('change', handler)
-  }, [])
 
   return (
     <ThemeContext.Provider value={{ theme, toggle, setTheme }}>

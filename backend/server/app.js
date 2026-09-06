@@ -15,7 +15,7 @@ const app = express();
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173', // local Vite dev
   'http://localhost:3000', // local alt / previews
-  'https://fintrack.vercel.app', // hosted web frontend
+  'https://fintrack-rust-theta.vercel.app', // hosted web frontend
 ];
 const extraOrigins =
   process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== '*'

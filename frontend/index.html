@@ -18,8 +18,7 @@
     <script>
       try {
         var t = localStorage.getItem('fintrack-theme');
-        var m = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (t === 'dark' || (!t && m)) document.documentElement.classList.add('dark');
+        if (t === 'dark') document.documentElement.classList.add('dark');
       } catch (e) {}
     </script>
   </head>
