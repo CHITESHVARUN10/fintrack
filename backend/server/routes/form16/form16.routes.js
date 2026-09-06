@@ -9,6 +9,7 @@ const Insurance = require('../../models/insurance.model');
 const EMILoan = require('../../models/loan.model');
 const EducationPayment = require('../../models/education.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
+const { geminiRateLimiter } = require('../../middleware/rateLimiter.middleware');
 const { extractForm16, generateRecommendation, normalizeForm16 } = require('../../services/gemini.service');
 const { annualize, aggregateDeductions } = require('../../services/tax.service');
 const { fromForm16 } = require('../../services/taxEngine.service');
@@ -81,7 +82,11 @@ router.get('/:id/deductions-preview', async (req, res, next) => {
 });
 
 // POST /api/form16/upload — PDF -> Gemini extraction.
-router.post('/upload', upload.single('pdf'), async (req, res, next) => {
+router.post(
+  '/upload',
+  geminiRateLimiter,
+  upload.single('pdf'),
+  async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'A PDF file is required' });
     const b64 = req.file.buffer.toString('base64');
@@ -112,7 +117,8 @@ router.post('/upload', upload.single('pdf'), async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  },
+);
 
 // POST /api/form16/manual — manual entry.
 router.post('/manual', async (req, res, next) => {
@@ -151,7 +157,8 @@ router.post('/:id/duplicate', async (req, res, next) => {
 });
 
 // GET /api/form16/:id/recommendation (cached + stale-aware)
-router.get('/:id/recommendation', async (req, res, next) => {
+// Gemini-backed when the cache is stale/missing, so it shares the AI quota.
+router.get('/:id/recommendation', geminiRateLimiter, async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Not found' });

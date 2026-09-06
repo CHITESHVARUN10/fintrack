@@ -7,12 +7,26 @@ const passport = require('./config/passport.config');
 const app = express();
 
 // ---- Core middleware ----
+// Browsers calling the API from the hosted web frontend need an explicit
+// origin allowlist. Native mobile apps send no Origin header, so CORS
+// never applies to them — no entry needed for Flutter.
+// CORS_ORIGIN (comma-separated) only ADDS origins later; the built-ins
+// below always apply, so Render works with zero CORS env vars set.
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173', // local Vite dev
+  'http://localhost:3000', // local alt / previews
+  'https://fintrack.vercel.app', // hosted web frontend
+];
+const extraOrigins =
+  process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== '*'
+    ? process.env.CORS_ORIGIN.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+const allowedOrigins = [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...extraOrigins])];
 app.use(
   cors({
-    origin:
-      process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== '*'
-        ? process.env.CORS_ORIGIN.split(',')
-        : true,
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
