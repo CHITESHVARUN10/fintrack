@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const URI =
   process.env.MONGODB_URI ||
+  process.env.mongo_uri_production ||
   process.env.mongo_uri ||
   'mongodb://localhost:27017/fintrack';
 

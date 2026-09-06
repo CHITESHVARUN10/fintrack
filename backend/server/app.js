@@ -20,8 +20,16 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ---- Sessions (stored in MongoDB, 7-day TTL) ----
+const isProd = process.env.NODE_ENV === 'production';
+// Behind Render/Heroku-style proxies TLS terminates at the proxy.
+// Without trust proxy, express-session sees http and refuses to set
+// Secure cookies, which silently breaks login in production.
+if (isProd) app.set('trust proxy', 1);
 const sessionStore = new MongoStore({
-  mongoUrl: process.env.MONGODB_URI || process.env.mongo_uri,
+  mongoUrl:
+    process.env.MONGODB_URI ||
+    process.env.mongo_uri_production ||
+    process.env.mongo_uri,
   collectionName: 'sessions',
   ttl: 7 * 24 * 60 * 60, // 7 days
   autoRemove: 'native',
@@ -36,8 +44,10 @@ app.use(
     store: sessionStore,
     cookie: {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      // Cross-origin frontend (e.g. Vercel) needs SameSite=None + Secure.
+      // Same-origin / local dev keeps Lax.
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }),
