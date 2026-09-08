@@ -55,7 +55,7 @@ export function Form16Processing() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <main className="w-full max-w-xl bg-white brutal p-xl flex flex-col gap-lg items-center text-center">
+        <main className="w-full max-w-xl max-w-[calc(100vw-2rem)] bg-white brutal p-lg sm:p-xl flex flex-col gap-lg items-center text-center min-w-0">
           <Icon name="error" className="text-5xl text-error" filled />
           <h1 className="font-bold text-2xl uppercase">Upload failed</h1>
           <p className="font-medium text-on-surface-variant">{error}</p>
@@ -69,9 +69,9 @@ export function Form16Processing() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative bg-white">
+    <div className="min-h-screen flex items-center justify-center p-4 relative bg-white overflow-x-hidden">
       <AuthBackground />
-      <div className="relative z-10 w-full flex justify-center">
+      <div className="relative z-10 w-full max-w-[calc(100vw-2rem)] flex justify-center min-w-0 px-0">
         <RetroLoader steps={STEPS.map((s) => s.label)} step={step} title="Processing Form 16" />
       </div>
     </div>

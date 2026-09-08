@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
@@ -19,12 +20,18 @@ export function Layout() {
   const title = resolveTitle(pathname)
   const { user } = useAuth()
   const needsFamily = !user?.familyAccountId
+  const [navOpen, setNavOpen] = useState(false)
+
+  // Close the mobile drawer on every route change
+  useEffect(() => {
+    setNavOpen(false)
+  }, [pathname])
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-page)' }}>
-      <Sidebar />
-      <div className="flex-grow ml-[240px] flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)' }}>
-        <Header title={title} />
+      <Sidebar mobileOpen={navOpen} onClose={() => setNavOpen(false)} />
+      <div className="flex-grow ml-0 lg:ml-[240px] flex flex-col h-screen overflow-hidden min-w-0" style={{ background: 'var(--bg-page)' }}>
+        <Header title={title} onMenu={() => setNavOpen(true)} />
         {needsFamily && pathname !== '/family/create-join' && (
           <div className="mx-md md:mx-xl mt-md border-[3px] border-on-surface bg-brand-yellow p-sm flex flex-wrap items-center justify-between gap-sm shadow-brutal-sm">
             <div className="flex items-center gap-sm">

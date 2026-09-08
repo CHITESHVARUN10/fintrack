@@ -150,7 +150,7 @@ export function SubscriptionDetail() {
   const cadence = subscription.frequency === 'monthly' ? 'mo' : 'yr'
 
   return (
-    <div className="flex flex-col gap-lg pb-xl">
+    <div className="flex flex-col gap-lg pb-xl min-w-0">
       {/* Header & Back Navigation */}
       <div>
         <button
@@ -196,9 +196,9 @@ export function SubscriptionDetail() {
       </div>
 
       {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
         {/* Cost */}
-        <div className="brutal bg-brand-yellow p-md flex flex-col justify-between">
+        <div className="brutal bg-brand-yellow p-md flex flex-col justify-between min-w-0">
           <div>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
@@ -217,7 +217,7 @@ export function SubscriptionDetail() {
         </div>
 
         {/* Total Spent */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Total Spent to Date
@@ -232,7 +232,7 @@ export function SubscriptionDetail() {
         </div>
 
         {/* Status & Auto-Renew */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
@@ -252,7 +252,7 @@ export function SubscriptionDetail() {
         </div>
 
         {/* Payment Details */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Payment Method
@@ -268,7 +268,7 @@ export function SubscriptionDetail() {
       </div>
 
       {/* Linked Transactions Section */}
-      <div className="brutal bg-white p-md flex flex-col gap-md">
+      <div className="brutal bg-white p-md flex flex-col gap-md min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-sm border-b-2 border-on-surface pb-sm">
           <div>
             <h3 className="font-bold uppercase tracking-tight text-lg">
@@ -300,9 +300,9 @@ export function SubscriptionDetail() {
                 return (
                   <div
                     key={s._id}
-                    className="brutal-thin bg-white p-xs flex items-center justify-between text-xs"
+                    className="brutal-thin bg-white p-xs flex flex-col sm:flex-row sm:items-center gap-xs sm:justify-between text-xs min-w-0"
                   >
-                    <span>
+                    <span className="break-words min-w-0">
                       {formatDate(s.occurredAt)} · <strong>{formatCurrency(sAmt)}</strong> ·{' '}
                       {s.recipient?.name || s.productName || s.mode}
                     </span>
@@ -326,17 +326,17 @@ export function SubscriptionDetail() {
             No transactions currently linked to this subscription. Click “Link / Record Payment” or link transactions from the Transactions page to view billing history here.
           </div>
         ) : (
-          <div className="overflow-auto max-h-96">
-            <table className="w-full text-xs">
+          <div className="overflow-x-auto max-h-96">
+            <table className="w-full min-w-[720px] text-xs">
               <thead className="bg-surface-container-high border-b border-on-surface/20">
                 <tr>
-                  <th className="px-sm py-xs text-left">Date</th>
-                  <th className="px-sm py-xs text-right">Amount Paid</th>
-                  <th className="px-sm py-xs text-left">Payment Mode</th>
-                  <th className="px-sm py-xs text-left">Recipient / Merchant</th>
-                  <th className="px-sm py-xs text-left">Made by</th>
-                  <th className="px-sm py-xs text-left">Reference / Notes</th>
-                  <th className="px-sm py-xs text-center">Action</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Date</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Amount Paid</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Payment Mode</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Recipient / Merchant</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Made by</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Reference / Notes</th>
+                  <th className="px-sm py-xs text-center whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
@@ -346,11 +346,11 @@ export function SubscriptionDetail() {
                   return (
                     <tr key={t._id} className="hover:bg-surface-container-low/60">
                       <td className="px-sm py-xs whitespace-nowrap font-medium">{formatDate(t.occurredAt)}</td>
-                      <td className="px-sm py-xs text-right font-bold text-on-surface">
+                      <td className="px-sm py-xs text-right font-bold whitespace-nowrap text-on-surface">
                         {formatCurrency(amt)}
                       </td>
-                      <td className="px-sm py-xs">{t.mode}</td>
-                      <td className="px-sm py-xs opacity-80">{t.recipient?.name || t.productName || '—'}</td>
+                      <td className="px-sm py-xs whitespace-nowrap">{t.mode}</td>
+                      <td className="px-sm py-xs opacity-80 break-words">{t.recipient?.name || t.productName || '—'}</td>
                       <td className="px-sm py-xs opacity-80">{madeBy}</td>
                       <td className="px-sm py-xs opacity-70 truncate max-w-xs">{t.notes || t.utr || '—'}</td>
                       <td className="px-sm py-xs text-center">
@@ -498,7 +498,7 @@ function EditSubscriptionForm({
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -581,7 +581,7 @@ function EditSubscriptionForm({
           onChange={(e) => setNotes(e.target.value)}
         />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-wrap justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>

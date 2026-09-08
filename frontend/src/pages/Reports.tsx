@@ -78,7 +78,7 @@ export function Reports() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Reports"
         subtitle="Generate and download financial insights."
@@ -91,21 +91,21 @@ export function Reports() {
         </div>
       )}
 
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-md">
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-md min-w-0">
         {/* Controls */}
-        <div className="lg:col-span-4 flex flex-col gap-md">
+        <div className="lg:col-span-4 flex flex-col gap-md min-w-0">
           <Card color="surface">
             <h3 className="font-bold uppercase border-b-2 border-on-surface pb-2 mb-2">Date Range</h3>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 min-w-0">
               <input
-                className="w-full bg-white border-[3px] border-on-surface p-2 font-bold focus:shadow-brutal-sm outline-none"
+                className="w-full min-w-0 max-w-full bg-white border-[3px] border-on-surface p-2 font-bold focus:shadow-brutal-sm outline-none"
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
               />
               <span className="font-bold text-on-surface-variant uppercase text-xs">to</span>
               <input
-                className="w-full bg-white border-[3px] border-on-surface p-2 font-bold focus:shadow-brutal-sm outline-none"
+                className="w-full min-w-0 max-w-full bg-white border-[3px] border-on-surface p-2 font-bold focus:shadow-brutal-sm outline-none"
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
@@ -121,7 +121,7 @@ export function Reports() {
             <h3 className="font-bold uppercase border-b-2 border-on-surface pb-2 mb-2">
               Output Format
             </h3>
-            <div className="flex gap-2 mt-2">
+            <div className="flex flex-wrap gap-2 mt-2 min-w-0">
               <button
                 onClick={() => setFormat('PDF')}
                 disabled={kind === 'tax'}
@@ -163,11 +163,11 @@ export function Reports() {
         </div>
 
         {/* Report type grid */}
-        <div className="lg:col-span-8 flex flex-col gap-sm">
+        <div className="lg:col-span-8 flex flex-col gap-sm min-w-0">
           <h3 className="font-bold uppercase border-b-[3px] border-on-surface pb-2">
             Select Report Type
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-md mt-2 min-w-0">
             {reportTypes.map((t, i) => (
               <button
                 key={t.title}
@@ -192,7 +192,7 @@ export function Reports() {
         <h3 className="text-2xl font-bold uppercase border-b-[3px] border-on-surface pb-sm mb-md">
           Recent History
         </h3>
-        <div className="border-[3px] border-on-surface bg-white shadow-brutal p-xl flex items-center gap-md">
+        <div className="border-[3px] border-on-surface bg-white shadow-brutal p-xl flex flex-col sm:flex-row sm:items-center gap-md min-w-0">
           <Icon name="info" className="text-4xl" filled />
           <p className="font-medium text-on-surface-variant">
             Reports are generated on demand from your live data and are not stored. Pick a

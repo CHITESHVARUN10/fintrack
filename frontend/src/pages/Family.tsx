@@ -37,17 +37,17 @@ export function Family() {
 
   if (hasNoFamily) {
     return (
-      <div>
+      <div className="min-w-0">
         <PageHeader
           title="Family Members"
           subtitle="You’re not in a family yet — create one or join with an invite code."
         />
-        <div className="brutal bg-white p-xl flex flex-col gap-md max-w-2xl">
+        <div className="brutal bg-white p-lg sm:p-xl flex flex-col gap-md max-w-2xl max-w-full min-w-0">
           <div className="flex items-center gap-sm text-sm font-bold bg-brand-yellow border-[3px] border-on-surface p-sm">
             <Icon name="info" />
             Create a new family to become admin and invite members, or join an existing family with a code from your admin.
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
             <a
               href="/family/create-join"
               className="brutal bg-brand-yellow p-lg flex flex-col items-center justify-center gap-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] transition-all text-center"
@@ -74,7 +74,7 @@ export function Family() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Family Members"
         subtitle="Manage access, roles, and view spending for your household."
@@ -92,9 +92,9 @@ export function Family() {
       />
 
       {family?.inviteCode && (
-        <div className="brutal bg-brand-yellow p-sm flex items-center justify-between mb-md">
-          <div><span className="text-xs font-bold uppercase tracking-wider">Invite Code</span><span className="ml-sm font-mono font-bold text-lg tracking-widest">{family.inviteCode}</span></div>
-          <div className="flex gap-xs">
+        <div className="brutal bg-brand-yellow p-sm flex flex-col sm:flex-row flex-wrap sm:items-center justify-between gap-2 mb-md min-w-0">
+          <div className="min-w-0 break-words"><span className="text-xs font-bold uppercase tracking-wider">Invite Code</span><span className="ml-sm font-mono font-bold text-lg tracking-widest break-all">{family.inviteCode}</span></div>
+          <div className="flex flex-wrap gap-xs">
             <button onClick={() => navigator.clipboard.writeText(family.inviteCode!)} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Copy</button>
             {isAdmin && <button onClick={async () => { const r = await familyService.rotateCode(family._id); setFamily(r.family) }} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Rotate</button>}
           </div>
@@ -105,9 +105,9 @@ export function Family() {
         <div className="brutal bg-white p-md mb-md">
           <h3 className="font-bold uppercase tracking-tight mb-sm">Join Requests</h3>
           {requests.map((rq) => (
-            <div key={rq._id} className="flex items-center justify-between brutal-thin p-sm mb-xs">
-              <span className="text-sm font-medium">{rq.userId?.name || rq.userId?.email}</span>
-              <div className="flex gap-xs">
+            <div key={rq._id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 brutal-thin p-sm mb-xs min-w-0">
+              <span className="text-sm font-medium break-words min-w-0">{rq.userId?.name || rq.userId?.email}</span>
+              <div className="flex flex-wrap gap-xs">
                 <button onClick={() => handleReview(rq._id, 'accept')} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Accept</button>
                 <button onClick={() => handleReview(rq._id, 'reject')} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Reject</button>
               </div>
@@ -116,18 +116,18 @@ export function Family() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
         {members.map((m: FamilyMember, i: number) => (
-          <article key={m.id} className="bg-white brutal p-md flex flex-col gap-md nb-card-enter nb-card-hover">
-            <div className="flex justify-between items-start border-b-[3px] border-on-surface pb-md">
-              <div className="flex items-center gap-sm">
+          <article key={m.id} className="bg-white brutal p-md flex flex-col gap-md nb-card-enter nb-card-hover min-w-0 max-w-full">
+            <div className="flex flex-wrap justify-between items-start gap-2 border-b-[3px] border-on-surface pb-md min-w-0">
+              <div className="flex items-center gap-sm min-w-0">
                 <div
                   className={`w-16 h-16 border-[3px] border-on-surface flex items-center justify-center font-bold text-2xl ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}
                 >
                   {initials(m.name)}
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold leading-none">{m.name}</h2>
+                  <h2 className="text-xl font-bold leading-none break-words">{m.name}</h2>
                   <div
                     className={`mt-1 inline-block px-2 py-0.5 border-2 border-on-surface font-bold text-xs uppercase ${
                       m.role === 'admin' ? 'bg-on-surface text-white' : 'bg-white'
@@ -138,7 +138,7 @@ export function Family() {
                 </div>
               </div>
             </div>
-            <div className="flex justify-between items-end pt-xs">
+            <div className="flex flex-col sm:flex-row flex-wrap justify-between sm:items-end gap-3 pt-xs min-w-0">
               <div>
                 <p className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
                   Monthly Spend

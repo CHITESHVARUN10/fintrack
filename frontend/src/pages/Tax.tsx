@@ -9,7 +9,7 @@ import type { TaxRegimeResult } from '../types'
 function RegimeCard({ r, recommended }: { r: TaxRegimeResult; recommended: boolean }) {
   return (
     <div
-      className={`brutal flex flex-col ${
+      className={`brutal flex flex-col min-w-0 max-w-full ${
         recommended ? 'bg-brand-yellow' : 'bg-white'
       }`}
     >
@@ -36,9 +36,9 @@ function RegimeCard({ r, recommended }: { r: TaxRegimeResult; recommended: boole
             {formatCurrency(r.taxableIncome)}
           </span>
         </div>
-        <div className="border-t-[3px] border-on-surface p-md text-center mt-auto">
+        <div className="border-t-[3px] border-on-surface p-md text-center mt-auto min-w-0">
           <span className="font-bold uppercase text-xs block mb-1">Total Tax Payable</span>
-          <div className={`text-4xl font-bold ${recommended ? '' : 'text-error'}`}>
+          <div className={`text-3xl sm:text-4xl font-bold break-words ${recommended ? '' : 'text-error'}`}>
             {formatCurrency(r.totalTax)}
           </div>
           <span className="text-xs font-bold text-on-surface-variant">
@@ -56,7 +56,7 @@ export function Tax() {
   if (loading || !data) return <LoadingBlock label="Calculating tax…" />
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Tax Calculator"
         subtitle="Compare Old vs New regimes for FY 2025-26."
@@ -70,17 +70,17 @@ export function Tax() {
         }
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-lg mb-xl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg mb-xl min-w-0">
         <RegimeCard r={data.oldRegime} recommended={data.recommended === 'Old'} />
         <RegimeCard r={data.newRegime} recommended={data.recommended === 'New'} />
       </div>
 
       <div className="bg-on-surface text-white py-6 px-6 brutal mb-xl">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
           <span className="text-lg font-bold uppercase tracking-wider">
             Recommended: <span className="text-brand-yellow">{data.recommended} Regime</span>
           </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
+          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
             Save {formatCurrency(data.savings)}
           </span>
         </div>
@@ -90,7 +90,7 @@ export function Tax() {
         <span className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
           Deductions Claimed (annual)
         </span>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-sm min-w-0">
           <div className="brutal-thin bg-surface-container-high p-sm">
             <span className="block text-xs font-bold uppercase">80C</span>
             <span className="font-bold">{formatCurrency(data.deductions.section80C)}</span>
@@ -125,7 +125,7 @@ export function Tax() {
           suggestions.
         </p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
           {data.tips.map((tip, i) => (
             <div key={i} className="bg-white brutal p-md flex flex-col gap-2 nb-card-enter nb-card-hover">
               <div className="flex items-center gap-xs">

@@ -219,8 +219,8 @@ export function Vendors(){
     <div>
       <PageHeader title="Vendors" subtitle="Teach FinStack what each vendor offers — dairy guy, Amazon Pay, fruit stall. Future payments inherit the default category. Add standalone vendors with UPI/mode." />
       {notice && <div className="brutal-thin bg-brand-yellow p-sm mb-md text-sm font-bold flex items-center gap-xs"><span className="w-6 h-6 flex items-center justify-center bg-white border-2 border-on-surface text-xs">✓</span>{notice}</div>}
-      <div className="flex flex-wrap gap-sm mb-md">
-        <input value={q} onChange={e=> setQ(e.target.value)} onKeyDown={e=> e.key==='Enter' && load()} placeholder="Search vendors, UPI, alias…" className="brutal-thin px-sm py-xs text-sm flex-1 bg-white" />
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-sm mb-md">
+        <input value={q} onChange={e=> setQ(e.target.value)} onKeyDown={e=> e.key==='Enter' && load()} placeholder="Search vendors, UPI, alias…" className="brutal-thin px-sm py-xs text-sm flex-1 min-w-0 max-w-full bg-white" />
         <select value={catFilter} onChange={e=>{ setCatFilter(e.target.value); load(q, e.target.value)}} className="brutal-thin px-sm py-xs text-sm bg-white">
           <option value="">All categories</option>
           {cats.map(c=> <option key={c} value={c}>{c}</option>)}
@@ -233,7 +233,7 @@ export function Vendors(){
       {showCreate && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-md">
           <div className="absolute inset-0 bg-on-surface/40" onClick={()=> setShowCreate(false)} />
-          <div className="relative w-full max-w-xl brutal bg-white p-md flex flex-col gap-sm max-h-[90vh] overflow-auto">
+          <div className="relative w-full max-w-xl max-w-[calc(100vw-2rem)] brutal bg-white p-md flex flex-col gap-sm max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold uppercase">New Vendor</h3>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">Label* <input value={cLabel} onChange={e=> setCLabel(e.target.value)} placeholder="e.g. Dairy Guy" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID (or leave blank if using mode) <input value={cUpi} onChange={e=> setCUpi(e.target.value)} placeholder="dairyguy@upi" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
@@ -241,15 +241,15 @@ export function Vendors(){
             <div className="flex flex-col gap-sm">
               <span className="text-xs font-bold uppercase">Categories* (check all that apply)</span>
               <div className="flex flex-wrap gap-xs">{cats.filter(c=> c!=='Other').map(c=> <button key={c} onClick={()=> toggleCreate(c)} className={`brutal-thin px-xs py-xs text-xs font-bold uppercase ${cCats.includes(c)? 'bg-brand-yellow':'bg-white'}`}>{c}</button>)}</div>
-              <div className="flex gap-xs">
-                <input value={cCustom} onChange={e=> setCCustom(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCreateCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 bg-white" />
+              <div className="flex flex-col sm:flex-row gap-xs">
+                <input value={cCustom} onChange={e=> setCCustom(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCreateCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
                 <button onClick={addCreateCustom} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">+ Add</button>
               </div>
             </div>
             <div className="brutal-thin bg-surface-container-low p-sm flex flex-col gap-sm">
               <span className="text-xs font-bold uppercase">What does this vendor sell? (products — free form, optional)</span>
-              <div className="flex gap-xs">
-                <input value={cProdName} onChange={e=> setCProdName(e.target.value)} placeholder="e.g. paneer" className="brutal-thin px-sm py-xs text-xs flex-1 bg-white" />
+              <div className="flex flex-col sm:flex-row gap-xs">
+                <input value={cProdName} onChange={e=> setCProdName(e.target.value)} placeholder="e.g. paneer" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
                 <input value={cProdAmt} onChange={e=> setCProdAmt(e.target.value)} placeholder="₹ typical (e.g. 40)" className="brutal-thin px-sm py-xs text-xs w-28 bg-white" type="number" />
                 <select value={cProducts.length? cProducts[cProducts.length-1]?.category||cCats[0]||'Food' : cCats[0]||'Food'} onChange={()=>{}} className="hidden" />
                 <button onClick={()=>{
@@ -262,7 +262,7 @@ export function Vendors(){
               {cProducts.length>0 && <div className="flex flex-wrap gap-xs">{cProducts.map((pr,i)=> <span key={i} className="brutal-thin bg-white px-xs py-0.5 text-xs flex items-center gap-xs">{pr.name} {pr.typicalAmountPaise? `₹${(pr.typicalAmountPaise/100).toFixed(0)}` : ''} <button onClick={()=> setCProducts(p=> p.filter((_,idx)=> idx!==i))} className="ml-xs font-bold">×</button></span> )}</div>}
               <span className="text-[11px] opacity-60">e.g. 40 → paneer helps future suggestion when amount matches. Leave empty if not needed.</span>
             </div>
-            <div className="flex gap-sm">
+            <div className="flex flex-col sm:flex-row gap-sm">
               <button onClick={createVendor} disabled={busy} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm">{busy?'Saving…':'Create'}</button>
               <button onClick={()=> setShowCreate(false)} className="brutal bg-white px-md py-xs font-bold uppercase text-sm">Cancel</button>
             </div>
@@ -274,8 +274,8 @@ export function Vendors(){
       {mergeSource && (
         <div className="brutal bg-brand-yellow/20 p-sm mb-md flex flex-col gap-sm">
           <span className="text-xs font-bold uppercase">Merge {items.find(x=> x._id===mergeSource)?.label} into:</span>
-          <div className="flex gap-sm">
-            <select value={mergeTarget} onChange={e=> setMergeTarget(e.target.value)} className="brutal-thin px-sm py-xs text-sm flex-1 bg-white">
+          <div className="flex flex-col sm:flex-row gap-sm">
+            <select value={mergeTarget} onChange={e=> setMergeTarget(e.target.value)} className="brutal-thin px-sm py-xs text-sm flex-1 min-w-0 max-w-full bg-white">
               <option value="">Select target vendor</option>
               {items.filter(x=> x._id!==mergeSource).map(v=> <option key={v._id} value={v._id}>{v.label} ({v.vendorKey})</option>)}
             </select>
@@ -291,9 +291,9 @@ export function Vendors(){
           {items.map(v=> {
             const isEditing = editId===v._id
             return (
-              <div key={v._id} onClick={()=> !isEditing && nav(`/vendors/${v._id}`)} className="brutal bg-white p-md flex flex-col gap-sm cursor-pointer hover:bg-brand-yellow/10">
-                <div className="flex flex-wrap gap-sm items-center">
-                  <span className="font-bold">{v.label}</span>
+              <div key={v._id} onClick={()=> !isEditing && nav(`/vendors/${v._id}`)} className="brutal bg-white p-md flex flex-col gap-sm min-w-0 cursor-pointer hover:bg-brand-yellow/10">
+                <div className="flex flex-wrap gap-sm items-center min-w-0">
+                  <span className="font-bold break-words min-w-0">{v.label}</span>
                   <span className="text-xs opacity-60 brutal-thin px-xs py-0.5 bg-surface-container-low">{v.vendorKey}</span>
                   {v.upiId && <span className="text-xs brutal-thin px-xs py-0.5 bg-white">{v.upiId}</span>}
                   {v.contact?.preferredMode && <span className="text-xs brutal-thin px-xs py-0.5 bg-white">{v.contact.preferredMode}</span>}
@@ -313,11 +313,11 @@ export function Vendors(){
                    <button onClick={(e)=>{ e.stopPropagation(); apply(v._id)}} disabled={busy} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Apply to Other</button>
                    <button onClick={(e)=>{ e.stopPropagation(); setMergeSource(v._id)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Merge</button>
                    <button onClick={(e)=>{ e.stopPropagation(); archive(v._id)}} disabled={busy} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Archive</button>
-                   <button onClick={(e)=>{ e.stopPropagation(); nav(`/vendors/${v._id}`)}} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase ml-auto">View →</button>
+                    <button onClick={(e)=>{ e.stopPropagation(); nav(`/vendors/${v._id}`)}} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase w-full sm:w-auto sm:ml-auto">View →</button>
                  </div>
                 ) : (
                   <div className="brutal-thin bg-brand-yellow/20 p-sm flex flex-col gap-sm" onClick={e=> e.stopPropagation()}>
-                    <div className="grid md:grid-cols-2 gap-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
                       <label className="flex flex-col text-xs font-bold uppercase gap-1">Label <input value={editLabel} onChange={e=> setEditLabel(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
                       <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID <input value={editUpi} onChange={e=> setEditUpi(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
                       <label className="flex flex-col text-xs font-bold uppercase gap-1">Phone <input value={editPhone} onChange={e=> setEditPhone(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
@@ -327,11 +327,11 @@ export function Vendors(){
                     <label className="flex flex-col text-xs font-bold uppercase gap-1">Notes <input value={editNotes} onChange={e=> setEditNotes(e.target.value)} placeholder="Private notes" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
                     <span className="text-xs font-bold uppercase">What does {editLabel||v.label} offer? (check all that apply)</span>
                     <div className="flex flex-wrap gap-xs">{cats.filter(c=> c!=='Other').map(c=> <button key={c} onClick={()=> toggle(c)} className={`brutal-thin px-xs py-xs text-xs font-bold uppercase ${editCats.includes(c)? 'bg-brand-yellow':'bg-white'}`}>{c}</button>)}</div>
-                    <div className="flex gap-xs">
-                      <input value={customCat} onChange={e=> setCustomCat(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 bg-white" />
+                    <div className="flex flex-col sm:flex-row gap-xs">
+                      <input value={customCat} onChange={e=> setCustomCat(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
                       <button onClick={(e)=>{ e.stopPropagation(); addCustom()}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">+ Add</button>
                     </div>
-                    <div className="flex gap-sm">
+                    <div className="flex flex-col sm:flex-row gap-sm">
                       <button onClick={(e)=>{ e.stopPropagation(); save()}} disabled={busy} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">{busy?'Saving…':'Save'}</button>
                       <button onClick={(e)=>{ e.stopPropagation(); setEditId(null)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Cancel</button>
                     </div>

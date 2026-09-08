@@ -231,7 +231,7 @@ export function Docs(): React.ReactElement {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
-      <nav className="w-full border-b-[3px] flex justify-between items-center px-md py-sm sticky top-0 z-40" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
+      <nav className="w-full border-b-[3px] flex flex-wrap justify-between items-center gap-2 px-md py-sm sticky top-0 z-40" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
         <Link to="/" className="font-bold text-2xl uppercase tracking-tighter" style={{ color: 'var(--text-primary)' }}>
           FinStack
         </Link>
@@ -266,7 +266,7 @@ export function Docs(): React.ReactElement {
 
       <div className="flex-1 w-full max-w-6xl mx-auto flex flex-col md:flex-row gap-xl p-md md:p-xl">
         {/* Sidebar */}
-        <aside className={`${openMobileNav ? 'flex' : 'hidden'} md:flex md:w-[280px] shrink-0 flex-col gap-sm md:sticky md:top-[68px] md:h-fit`}>
+        <aside className={`${openMobileNav ? 'flex' : 'hidden'} md:flex w-full md:w-[280px] shrink-0 flex-col gap-sm md:sticky md:top-[68px] md:h-fit min-w-0`}>
           <div className="brutal p-sm" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             <div className="font-bold uppercase text-xs tracking-wider mb-sm flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
               <span>Contents</span>
@@ -312,7 +312,7 @@ export function Docs(): React.ReactElement {
         <article className="flex-1 min-w-0 flex flex-col gap-lg">
           {current ? (
             <div className="brutal p-md md:p-lg" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-              <div className="flex flex-wrap items-start justify-between gap-sm">
+              <div className="flex flex-wrap items-start justify-between gap-sm min-w-0">
                 <div>
                   <div className="inline-flex items-center gap-2 brutal-thin px-2 py-1 text-xs font-bold uppercase mb-sm" style={{ background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--border)' }}>
                     <Icon name={current.icon} className="text-base" />
@@ -359,7 +359,7 @@ export function Docs(): React.ReactElement {
                 </div>
               )}
 
-              <div className="mt-lg flex flex-wrap gap-sm">
+              <div className="mt-lg flex flex-col sm:flex-row flex-wrap gap-sm">
                 <button
                   onClick={() => {
                     const idx = SECTIONS.findIndex((s) => s.id === current.id)
@@ -396,7 +396,7 @@ export function Docs(): React.ReactElement {
 
           {/* Overview grid when on Getting Started */}
           {active === 'start' && (
-            <div className="grid md:grid-cols-2 gap-md">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
               {SECTIONS.slice(1, 5).map((s) => (
                 <button
                   key={`card-${s.id}`}

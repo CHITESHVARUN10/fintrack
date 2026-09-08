@@ -27,7 +27,7 @@ export function PrivacyPolicy(): React.ReactElement {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
       {/* Top nav */}
-      <nav className="w-full border-b-[3px] flex justify-between items-center px-md py-sm sticky top-0 z-40" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
+      <nav className="w-full border-b-[3px] flex flex-wrap justify-between items-center gap-2 px-md py-sm sticky top-0 z-40" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
         <Link to="/" className="font-bold text-2xl uppercase tracking-tighter" style={{ color: 'var(--text-primary)' }}>FinStack</Link>
         <div className="flex gap-sm">
           <Link to="/docs" className="brutal-thin px-sm py-xs text-xs font-bold uppercase hidden md:inline-flex items-center gap-1" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
@@ -43,7 +43,7 @@ export function PrivacyPolicy(): React.ReactElement {
           <div className="inline-flex items-center gap-2 brutal-thin px-sm py-xs text-xs font-bold uppercase mb-md" style={{ background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--border)' }}>
             <Icon name="lock" className="text-base" /> Legal · Privacy Policy
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold uppercase tracking-tight leading-none">Privacy Policy</h1>
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold uppercase tracking-tight leading-none break-words">Privacy Policy</h1>
           <p className="mt-sm text-sm font-medium max-w-2xl" style={{ color: 'var(--text-secondary)' }}>
             How FinStack collects, stores, uses, and protects your data — and where our responsibility ends. Last updated: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>August 30, 2026</span> · Effective: August 30, 2026 · Version 1.1
           </p>
@@ -55,9 +55,9 @@ export function PrivacyPolicy(): React.ReactElement {
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col md:flex-row gap-xl p-md md:p-xl">
+      <div className="flex-1 w-full max-w-5xl mx-auto flex flex-col md:flex-row gap-xl p-md md:p-xl min-w-0">
         {/* TOC */}
-        <aside className="md:w-[240px] shrink-0 md:sticky md:top-[68px] md:h-fit">
+        <aside className="w-full md:w-[240px] shrink-0 md:sticky md:top-[68px] md:h-fit min-w-0">
           <div className="brutal p-sm" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
             <div className="font-bold uppercase text-xs tracking-wider mb-sm" style={{ color: 'var(--text-secondary)' }}>On this page</div>
             <nav className="flex flex-col gap-1">
@@ -99,13 +99,13 @@ export function PrivacyPolicy(): React.ReactElement {
 
             <h3 className="font-bold uppercase mt-md text-xs tracking-wider" style={{ color: 'var(--text-secondary)' }}>A. Account & Identity</h3>
             <div className="mt-xs overflow-x-auto">
-              <table className="w-full text-xs border brutal-thin" style={{ borderColor: 'var(--border)' }}>
-                <thead style={{ background: 'var(--bg-elevated)' }}><tr className="text-left"><th className="px-2 py-1.5">Field</th><th className="px-2 py-1.5">Purpose</th><th className="px-2 py-1.5">Required</th></tr></thead>
+              <table className="w-full min-w-[600px] text-xs border brutal-thin" style={{ borderColor: 'var(--border)' }}>
+                <thead style={{ background: 'var(--bg-elevated)' }}><tr className="text-left"><th className="px-2 py-1.5 whitespace-nowrap">Field</th><th className="px-2 py-1.5 whitespace-nowrap">Purpose</th><th className="px-2 py-1.5 whitespace-nowrap">Required</th></tr></thead>
                 <tbody>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold">Name, email</td><td className="px-2 py-1">Auth, invites, member display</td><td className="px-2 py-1">Yes</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold">Password hash (bcrypt)</td><td className="px-2 py-1">Login — we never store plain password</td><td className="px-2 py-1">Yes</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold">FamilyAccount, role</td><td className="px-2 py-1">Multi-member scoping: admin vs member</td><td className="px-2 py-1">Auto</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold">Invite token / expiry</td><td className="px-2 py-1">Family join flow</td><td className="px-2 py-1">If invited</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold whitespace-nowrap">Name, email</td><td className="px-2 py-1">Auth, invites, member display</td><td className="px-2 py-1">Yes</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold whitespace-nowrap">Password hash (bcrypt)</td><td className="px-2 py-1">Login — we never store plain password</td><td className="px-2 py-1">Yes</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold whitespace-nowrap">FamilyAccount, role</td><td className="px-2 py-1">Multi-member scoping: admin vs member</td><td className="px-2 py-1">Auto</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1 font-bold whitespace-nowrap">Invite token / expiry</td><td className="px-2 py-1">Family join flow</td><td className="px-2 py-1">If invited</td></tr>
                 </tbody>
               </table>
             </div>
@@ -173,14 +173,14 @@ export function PrivacyPolicy(): React.ReactElement {
             <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2"><Icon name="share" /> 6. Sharing & Third-Party Processors</h2>
             <p className="mt-sm font-bold">We never sell your data. We share only with processors needed to run FinStack:</p>
             <div className="mt-sm overflow-x-auto">
-              <table className="w-full text-xs border" style={{ borderColor: 'var(--border)' }}>
-                <thead style={{ background: 'var(--bg-elevated)' }}><tr className="text-left"><th className="px-2 py-1.5">Processor</th><th className="px-2 py-1.5">What we send</th><th className="px-2 py-1.5">Why</th><th className="px-2 py-1.5">Safeguards</th></tr></thead>
+              <table className="w-full min-w-[600px] text-xs border" style={{ borderColor: 'var(--border)' }}>
+                <thead style={{ background: 'var(--bg-elevated)' }}><tr className="text-left"><th className="px-2 py-1.5 whitespace-nowrap">Processor</th><th className="px-2 py-1.5 whitespace-nowrap">What we send</th><th className="px-2 py-1.5 whitespace-nowrap">Why</th><th className="px-2 py-1.5 whitespace-nowrap">Safeguards</th></tr></thead>
                 <tbody>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold">Google Gemini API (googleapis.com)</td><td className="px-2 py-1.5">Form 16 PDF bytes + financial summary JSON (only when you click Extract / Recommendation)</td><td className="px-2 py-1.5">Document AI & tax advice</td><td className="px-2 py-1.5">TLS, data not used for ads per Google; we strip markdown fences before parsing</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold">MongoDB Atlas</td><td className="px-2 py-1.5">All stored records</td><td className="px-2 py-1.5">Primary DB + session store</td><td className="px-2 py-1.5">At-rest encryption, network isolation</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold">SMTP / Nodemailer provider</td><td className="px-2 py-1.5">Recipient email, invite token, notification email</td><td className="px-2 py-1.5">Invite & alert emails</td><td className="px-2 py-1.5">TLS, credentials in env</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold">Hosting (Vercel/Render/your VPS)</td><td className="px-2 py-1.5">All API traffic</td><td className="px-2 py-1.5">Run the app</td><td className="px-2 py-1.5">HTTPS, env isolation</td></tr>
-                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold">Recharts / Tailwind (frontend libs)</td><td className="px-2 py-1.5">Nothing (client-side)</td><td className="px-2 py-1.5">Charts & styling</td><td className="px-2 py-1.5">No data leaves browser</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold whitespace-nowrap">Google Gemini API (googleapis.com)</td><td className="px-2 py-1.5">Form 16 PDF bytes + financial summary JSON (only when you click Extract / Recommendation)</td><td className="px-2 py-1.5">Document AI & tax advice</td><td className="px-2 py-1.5">TLS, data not used for ads per Google; we strip markdown fences before parsing</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold whitespace-nowrap">MongoDB Atlas</td><td className="px-2 py-1.5">All stored records</td><td className="px-2 py-1.5">Primary DB + session store</td><td className="px-2 py-1.5">At-rest encryption, network isolation</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold whitespace-nowrap">SMTP / Nodemailer provider</td><td className="px-2 py-1.5">Recipient email, invite token, notification email</td><td className="px-2 py-1.5">Invite & alert emails</td><td className="px-2 py-1.5">TLS, credentials in env</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold whitespace-nowrap">Hosting (Vercel/Render/your VPS)</td><td className="px-2 py-1.5">All API traffic</td><td className="px-2 py-1.5">Run the app</td><td className="px-2 py-1.5">HTTPS, env isolation</td></tr>
+                  <tr className="border-t" style={{ borderColor: 'var(--border)' }}><td className="px-2 py-1.5 font-bold whitespace-nowrap">Recharts / Tailwind (frontend libs)</td><td className="px-2 py-1.5">Nothing (client-side)</td><td className="px-2 py-1.5">Charts & styling</td><td className="px-2 py-1.5">No data leaves browser</td></tr>
                 </tbody>
               </table>
             </div>
@@ -253,7 +253,7 @@ export function PrivacyPolicy(): React.ReactElement {
             <p className="mt-sm" style={{ color: 'var(--text-secondary)' }}>
               We may update this policy when we add features (e.g., budget alerts) or when law changes. We will bump the “Last updated” date and, for material changes, show an in-app notice. Continued use after the effective date is acceptance.
             </p>
-            <div className="mt-sm grid md:grid-cols-2 gap-sm text-xs">
+            <div className="mt-sm grid grid-cols-1 sm:grid-cols-2 gap-sm text-xs min-w-0">
               <div className="brutal-thin p-sm" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
                 <div className="font-bold uppercase">Data Protection Officer</div>
                 <div>FinStack Inc.</div>
@@ -269,7 +269,7 @@ export function PrivacyPolicy(): React.ReactElement {
             <p className="mt-sm text-xs" style={{ color: 'var(--text-secondary)' }}>
               This document was drafted with reference to the PRD v1.0 (July 16, 2026) and the actual codebase routes (`/api/auth`, `/api/form16`, `/api/dashboard`, etc.). It is not legal advice — have counsel review before public launch.
             </p>
-            <div className="mt-md flex gap-sm">
+            <div className="mt-md flex flex-col sm:flex-row flex-wrap gap-sm">
               <Link to="/docs" className="brutal bg-white px-md py-xs font-bold uppercase text-xs" style={{ borderColor: 'var(--border)' }}>Read Docs →</Link>
               <Link to="/" className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-xs" style={{ borderColor: 'var(--border)' }}>Back to Home</Link>
             </div>

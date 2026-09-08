@@ -98,7 +98,7 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
           required
         />
       </Field>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Amount">
           <div className="flex">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
@@ -125,7 +125,7 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
           </Select>
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg items-end">
         <Field label="Credit Date (Day of Month)">
           <Input
             type="number"
@@ -163,7 +163,7 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
           onChange={(e) => setNotes(e.target.value)}
         />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -223,7 +223,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   const total = items.reduce((s, i) => s + i.amount, 0)
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Income Sources"
         subtitle="All recurring monthly income streams."
@@ -235,15 +235,15 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md lg:gap-8 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md lg:gap-8 mb-8 min-w-0">
         {items.map((inc) => (
           <div
             key={inc.id}
-            className="bg-white brutal p-md flex flex-col gap-4 relative group nb-card-enter nb-card-hover"
+            className="bg-white brutal p-md flex flex-col gap-4 relative group nb-card-enter nb-card-hover min-w-0 max-w-full"
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-xl font-bold">{inc.title}</h2>
+            <div className="flex flex-wrap justify-between items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold break-words">{inc.title}</h2>
                 <Badge color={inc.taxable ? 'yellow' : 'surface'}>
                   {inc.category}
                 </Badge>
@@ -265,8 +265,8 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
                 </button>
               </div>
             </div>
-            <div>
-              <p className="text-3xl font-bold">{formatCurrency(inc.amount)}</p>
+            <div className="min-w-0">
+              <p className="text-3xl font-bold break-words">{formatCurrency(inc.amount)}</p>
               <div className="flex items-center gap-2 mt-2 font-bold text-sm">
                 <Icon name="calendar_today" className="text-sm" />
                 Credits on {formatDay(inc.creditDate)}
@@ -292,12 +292,12 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
         </p>
       )}
 
-      <div className="w-full bg-on-surface text-white py-6 px-6 brutal mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <span className="text-lg font-bold uppercase tracking-wider">
+      <div className="w-full max-w-full bg-on-surface text-white py-6 px-6 brutal mb-8 min-w-0">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
+          <span className="text-lg font-bold uppercase tracking-wider text-center sm:text-left break-words">
             Total Monthly Income
           </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
+          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
             {formatCurrency(total)}
           </span>
         </div>
@@ -305,6 +305,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
 
       <Modal
         open={open || !!editing}
+        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
         onClose={() => {
           setOpen(false)
           setEditing(null)

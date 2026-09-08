@@ -54,8 +54,8 @@ function AppliedDeductionRow({ d }: { d: { section: string; subtype: string | nu
   const is24b = d.section.startsWith('24')
   return (
     <div className="px-4 py-3 border-b border-on-surface/20 last:border-0">
-      <div className="flex justify-between items-start gap-3">
-        <div className="flex-1">
+      <div className="flex flex-wrap justify-between items-start gap-3">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">{d.section}</span>
             <SourceBadge source={d.source} />
@@ -97,8 +97,8 @@ function EditableField({
 }) {
   const value = (form[formKey] as string | number | undefined) ?? ''
   return (
-    <div className="space-y-2">
-      <label className="font-bold text-sm uppercase flex justify-between items-center gap-2">
+    <div className="space-y-2 min-w-0">
+      <label className="font-bold text-sm uppercase flex flex-wrap justify-between items-center gap-2 min-w-0">
         <span>{label}</span>
         <Tag kind={modified ? 'modified' : tagKind} />
       </label>
@@ -115,7 +115,7 @@ function EditableField({
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="bg-white brutal p-lg">
+    <section className="bg-white brutal p-lg min-w-0 max-w-full">
       <h2 className="font-bold text-xl uppercase mb-4 border-b-[3px] border-on-surface pb-2">
         {title}
       </h2>
@@ -228,7 +228,7 @@ function ReviewForm({ record }: { record: Form16 }) {
   }
 
   return (
-    <div>
+    <div className="min-w-0 max-w-full">
       <PageHeader
         title="Review Form 16 Details"
         subtitle="Verify the extracted information before proceeding to tax recommendations."
@@ -240,10 +240,10 @@ function ReviewForm({ record }: { record: Form16 }) {
         }
       />
 
-      <div className="bg-brand-yellow brutal p-4 mb-lg flex items-start gap-3">
+      <div className="bg-brand-yellow brutal p-4 mb-lg flex items-start gap-3 min-w-0 max-w-full">
         <Icon name="auto_awesome" className="mt-1" />
         <div>
-          <p className="font-bold">AI has extracted the following fields.</p>
+          <p className="font-bold break-words">AI has extracted the following fields.</p>
           <p className="font-medium text-on-surface-variant">
             Please review carefully. Yellow tags indicate AI-filled data. Black tags indicate manually
             modified data.
@@ -253,16 +253,16 @@ function ReviewForm({ record }: { record: Form16 }) {
 
       <form
         onSubmit={(e) => e.preventDefault()}
-        className="flex flex-col gap-lg"
+        className="flex flex-col gap-lg min-w-0"
       >
         {/* Employee Details */}
         <Section title="Employee Details">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
             <EditableField formKey="employeePAN" label="PAN" form={form} setField={setField} modified={modified.has('employeePAN')} tagKind={aiExtracted ? 'ai' : 'none'} />
             <EditableField formKey="employeeName" label="Full Name" form={form} setField={setField} modified={modified.has('employeeName')} tagKind={aiExtracted ? 'ai' : 'none'} />
             <EditableField formKey="employeeDesignation" label="Designation" form={form} setField={setField} modified={modified.has('employeeDesignation')} tagKind={aiExtracted ? 'ai' : 'none'} />
             <EditableField formKey="employeeCode" label="Employee Code" form={form} setField={setField} modified={modified.has('employeeCode')} tagKind={aiExtracted ? 'ai' : 'none'} />
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2 min-w-0">
               <EditableField formKey="employeeAddress" label="Address" form={form} setField={setField} modified={modified.has('employeeAddress')} tagKind={aiExtracted ? 'ai' : 'none'} />
             </div>
           </div>
@@ -270,7 +270,7 @@ function ReviewForm({ record }: { record: Form16 }) {
 
         {/* Employer Details */}
         <Section title="Employer Details">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
             <EditableField formKey="employerTAN" label="TAN" form={form} setField={setField} modified={modified.has('employerTAN')} tagKind={aiExtracted ? 'ai' : 'none'} />
             <EditableField formKey="employerName" label="Employer Name" form={form} setField={setField} modified={modified.has('employerName')} tagKind={aiExtracted ? 'ai' : 'none'} />
             <EditableField formKey="employerPAN" label="Employer PAN" form={form} setField={setField} modified={modified.has('employerPAN')} tagKind={aiExtracted ? 'ai' : 'none'} />
@@ -280,14 +280,14 @@ function ReviewForm({ record }: { record: Form16 }) {
 
         {/* Salary Breakdown */}
         <Section title="Salary Breakdown">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
             <EditableField formKey="basicSalary" label="Basic Salary" form={form} setField={setField} modified={modified.has('basicSalary')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="hra" label="HRA" form={form} setField={setField} modified={modified.has('hra')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="specialAllowance" label="Special Allowance" form={form} setField={setField} modified={modified.has('specialAllowance')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="lta" label="LTA" form={form} setField={setField} modified={modified.has('lta')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="otherAllowances" label="Other Allowances" form={form} setField={setField} modified={modified.has('otherAllowances')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
           </div>
-          <div className="mt-lg p-4 bg-brand-yellow border-[3px] border-on-surface flex justify-between items-center">
+          <div className="mt-lg p-4 bg-brand-yellow border-[3px] border-on-surface flex flex-col sm:flex-row flex-wrap justify-between items-start sm:items-center gap-2 min-w-0">
             <span className="font-bold uppercase flex items-center gap-2">
               Gross Salary
               {grossSource && (
@@ -296,13 +296,13 @@ function ReviewForm({ record }: { record: Form16 }) {
                 </span>
               )}
             </span>
-            <span className="font-bold text-2xl">{formatCurrency(gross)}</span>
+            <span className="font-bold text-2xl break-words">{formatCurrency(gross)}</span>
           </div>
         </Section>
 
         {/* Deductions */}
         <Section title="Deductions">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
             <EditableField formKey="standardDeduction" label="Standard Deduction (16(ia))" form={form} setField={setField} modified={modified.has('standardDeduction')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="professionalTax" label="Professional Tax (16(iii))" form={form} setField={setField} modified={modified.has('professionalTax')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
             <EditableField formKey="section80C" label="Section 80C" form={form} setField={setField} modified={modified.has('section80C')} tagKind={aiExtracted ? 'ai' : 'none'} type="number" />
@@ -316,7 +316,7 @@ function ReviewForm({ record }: { record: Form16 }) {
               three-condition filter in computeRegimeResult identically. */}
           <div className="mt-lg space-y-4">
             {/* Source legend */}
-            <div className="flex items-center gap-3 text-[11px] text-on-surface-variant">
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-on-surface-variant min-w-0">
               <span className="font-bold uppercase">Source:</span>
               <SourceBadge source="FORM16_OCR" /><span>Form 16 PDF</span>
               <SourceBadge source="INVESTMENT_RECORD" /><span>Your financial records</span>
@@ -346,8 +346,8 @@ function ReviewForm({ record }: { record: Form16 }) {
               <p className="font-bold text-xs uppercase text-on-surface-variant mb-2">Standard Deduction (Available to salaried taxpayers)</p>
               <div className="bg-surface-container-low border-[3px] border-on-surface">
                 <div className="px-4 py-3 border-b border-on-surface/20">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1">
+                  <div className="flex flex-wrap justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">Old Regime Standard Deduction</span>
                         <SourceBadge source="SYSTEM_DEFAULT" />
@@ -358,8 +358,8 @@ function ReviewForm({ record }: { record: Form16 }) {
                   </div>
                 </div>
                 <div className="px-4 py-3">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="flex-1">
+                  <div className="flex flex-wrap justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium">New Regime Standard Deduction</span>
                         <SourceBadge source="SYSTEM_DEFAULT" />
@@ -373,7 +373,7 @@ function ReviewForm({ record }: { record: Form16 }) {
             </div>
 
             {/* Computed Summary Box */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
               <div className="bg-white border-[3px] border-on-surface p-4 flex flex-col justify-between">
                 <div>
                   <p className="font-bold uppercase text-sm mb-2">Old Regime</p>
@@ -412,8 +412,8 @@ function ReviewForm({ record }: { record: Form16 }) {
                 </p>
                 <div className="bg-error-container border-[3px] border-on-surface">
                   {split.excludedDeductions.map((d, i) => (
-                    <div key={i} className="flex justify-between items-start px-4 py-2 border-b border-on-surface/20 last:border-0">
-                      <div>
+                    <div key={i} className="flex flex-wrap justify-between items-start gap-2 px-4 py-2 border-b border-on-surface/20 last:border-0 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{d.section}</p>
                           <SourceBadge source={d.source} />
@@ -433,12 +433,12 @@ function ReviewForm({ record }: { record: Form16 }) {
 
             {/* Taxable income previews */}
             <p className="font-bold text-xs uppercase text-on-surface-variant">Taxable Income Preview</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="p-4 bg-white border-[3px] border-on-surface flex justify-between items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+              <div className="p-4 bg-white border-[3px] border-on-surface flex flex-wrap justify-between items-center gap-2 min-w-0">
                 <span className="font-bold uppercase">Old Regime Taxable Income</span>
                 <span className="font-bold text-xl">{formatCurrency(oldTaxable)}</span>
               </div>
-              <div className="p-4 bg-white border-[3px] border-on-surface flex justify-between items-center">
+              <div className="p-4 bg-white border-[3px] border-on-surface flex flex-wrap justify-between items-center gap-2 min-w-0">
                 <span className="font-bold uppercase">New Regime Taxable Income</span>
                 <span className="font-bold text-xl">{formatCurrency(newTaxable)}</span>
               </div>
@@ -449,7 +449,7 @@ function ReviewForm({ record }: { record: Form16 }) {
         {/* Regime Selector */}
         <section className="mt-lg pt-md">
           <h3 className="font-bold text-xl uppercase text-center mb-6">Select Recommended Regime</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 min-w-0">
             {(['Old', 'New'] as Form16Regime[]).map((r) => {
               const t = r === 'Old' ? oldT : newT
               const isRec = recommended === r
@@ -480,11 +480,11 @@ function ReviewForm({ record }: { record: Form16 }) {
                       </div>
                     </div>
                     <div className="space-y-2 mb-4 border-t-[3px] border-on-surface pt-4">
-                      <div className="flex justify-between font-mono-data">
+                      <div className="flex flex-wrap justify-between gap-2 font-mono-data min-w-0">
                         <span>Taxable Income</span>
                         <span>{formatCurrency(r === 'Old' ? oldTaxable : newTaxable)}</span>
                       </div>
-                      <div className="flex justify-between font-mono-data font-bold">
+                      <div className="flex flex-wrap justify-between gap-2 font-mono-data font-bold min-w-0">
                         <span>Estimated Tax</span>
                         <span>{formatCurrency(t.total)}</span>
                       </div>

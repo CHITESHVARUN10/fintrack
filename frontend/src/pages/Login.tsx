@@ -39,11 +39,11 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-md bg-white relative">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-md bg-white relative overflow-x-hidden">
       <AuthBackground />
       <div
         className={cn(
-          'w-full max-w-md bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10',
+          'w-full max-w-md max-w-[calc(100vw-2rem)] bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10 min-w-0',
           shake && 'nb-shake',
         )}
         style={flash ? ({ ['--nb-flash-from' as string]: '#ffffff' } as CSSProperties) : undefined}
@@ -77,7 +77,7 @@ export function Login() {
           </Field>
 
           <div>
-            <div className="flex justify-between items-center mb-1">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-1 min-w-0">
               <span className="font-bold text-sm uppercase tracking-wide text-on-surface">
                 Password
               </span>

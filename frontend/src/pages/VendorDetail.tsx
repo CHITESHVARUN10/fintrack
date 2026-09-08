@@ -167,7 +167,7 @@ export function VendorDetail(){
           ) : (
             <div className="flex flex-col gap-sm">
               <h3 className="font-bold uppercase">Edit Vendor</h3>
-              <div className="grid md:grid-cols-2 gap-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
                 <label className="flex flex-col text-xs font-bold uppercase gap-1">Label <input value={eLabel} onChange={e=> setELabel(e.target.value)} className="brutal-thin px-sm py-xs bg-white" /></label>
                 <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID <input value={eUpi} onChange={e=> setEUpi(e.target.value)} className="brutal-thin px-sm py-xs bg-white" /></label>
                 <label className="flex flex-col text-xs font-bold uppercase gap-1">Phone <input value={ePhone} onChange={e=> setEPhone(e.target.value)} className="brutal-thin px-sm py-xs bg-white" /></label>
@@ -179,12 +179,12 @@ export function VendorDetail(){
               <div className="flex flex-col gap-sm">
                 <span className="text-xs font-bold uppercase">Categories (what this vendor offers)</span>
                 <div className="flex flex-wrap gap-xs">{ALL_CATS.filter(c=> c!=='Other').map(c=> <button key={c} onClick={()=> setECats(p=> p.includes(c)? p.filter(x=> x!==c): [...p,c])} className={`brutal-thin px-xs py-xs text-xs font-bold uppercase ${eCats.includes(c)? 'bg-brand-yellow':'bg-white'}`}>{c}</button>)}</div>
-                <div className="flex gap-xs">
-                  <input value={eCustomCat} onChange={e=> setECustomCat(e.target.value)} onKeyDown={e=> e.key==='Enter' && (()=>{ const c=eCustomCat.trim(); if(!c) return; const n=c[0].toUpperCase()+c.slice(1).toLowerCase(); if(!eCats.includes(n)) setECats(p=> [...p,n]); setECustomCat('')} )()} placeholder="Custom category" className="brutal-thin px-sm py-xs text-xs flex-1 bg-white" />
+                <div className="flex flex-col sm:flex-row gap-xs">
+                  <input value={eCustomCat} onChange={e=> setECustomCat(e.target.value)} onKeyDown={e=> e.key==='Enter' && (()=>{ const c=eCustomCat.trim(); if(!c) return; const n=c[0].toUpperCase()+c.slice(1).toLowerCase(); if(!eCats.includes(n)) setECats(p=> [...p,n]); setECustomCat('')} )()} placeholder="Custom category" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
                   <button onClick={()=>{ const c=eCustomCat.trim(); if(!c) return; const n=c[0].toUpperCase()+c.slice(1).toLowerCase(); if(!eCats.includes(n)) setECats(p=> [...p,n]); setECustomCat('')}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">+ Add</button>
                 </div>
               </div>
-              <div className="flex gap-sm">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-sm">
                 <button onClick={saveVendor} disabled={saving} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm">{saving?'Saving…':'Save'}</button>
                 <button onClick={()=> setEditMode(false)} className="brutal bg-white px-md py-xs font-bold uppercase text-sm">Cancel</button>
               </div>
@@ -198,7 +198,7 @@ export function VendorDetail(){
         <div className="brutal bg-white p-md mb-md">
           <h3 className="font-bold uppercase mb-sm">What this vendor sells — products (free form)</h3>
           <div className="text-xs opacity-60 mb-sm">Add products with typical amount to enable amount → product suggestions, e.g. 40 → paneer. Keep category as transaction category.</div>
-          <div className="flex flex-wrap gap-sm mb-sm">
+          <div className="flex flex-wrap gap-sm mb-sm min-w-0">
             {(vendor.products||[]).length===0 ? <span className="text-sm opacity-60">No products yet — add below.</span> : vendor.products.map((p:any)=> (
               <span key={p._id} className="brutal-thin bg-surface-container-low px-sm py-xs text-xs flex items-center gap-sm">
                 <span className="font-bold">{p.name}</span>
@@ -209,7 +209,7 @@ export function VendorDetail(){
               </span>
             ))}
           </div>
-          <div className="flex flex-wrap gap-sm items-end">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-sm items-stretch sm:items-end min-w-0">
             <label className="flex flex-col text-xs font-bold uppercase gap-1">Name <input value={newProdName} onChange={e=> setNewProdName(e.target.value)} placeholder="paneer" className="brutal-thin px-sm py-xs bg-white" /></label>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">Category <select value={newProdCat} onChange={e=> setNewProdCat(e.target.value)} className="brutal-thin px-sm py-xs bg-white">{ALL_CATS.map(c=> <option key={c} value={c}>{c}</option>)}</select></label>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">Subcategory <input value={newProdSub} onChange={e=> setNewProdSub(e.target.value)} placeholder="Protein" className="brutal-thin px-sm py-xs bg-white" /></label>
@@ -220,21 +220,21 @@ export function VendorDetail(){
       )}
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-sm mb-md">
-          <div className="brutal bg-brand-yellow p-sm"><div className="text-xs uppercase font-bold">Transactions</div><div className="text-xl font-bold">{summary.count}</div><div className="text-xs opacity-60">{txs.length} on page</div></div>
-          <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold">Total spend</div><div className="text-xl font-bold">₹{(summary.totalPaise/100).toLocaleString('en-IN')}</div><div className="text-xs opacity-60">EXPENSE only</div></div>
-          <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold">Avg per txn</div><div className="text-xl font-bold">₹{summary.count? ((summary.totalPaise/100)/summary.count).toFixed(0):0}</div></div>
-          <div className="brutal bg-white p-sm md:col-span-1"><div className="text-xs uppercase font-bold">By member</div><div className="text-xs">{summary.byMember?.length? summary.byMember.map((m:any)=> `${m.name} ₹${m.spend.toFixed(0)} ×${m.count}`).join(' · ') : '—'}</div></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-sm mb-md">
+          <div className="brutal bg-brand-yellow p-sm min-w-0"><div className="text-xs uppercase font-bold">Transactions</div><div className="text-xl font-bold">{summary.count}</div><div className="text-xs opacity-60">{txs.length} on page</div></div>
+          <div className="brutal bg-white p-sm min-w-0"><div className="text-xs uppercase font-bold">Total spend</div><div className="text-xl font-bold break-words">₹{(summary.totalPaise/100).toLocaleString('en-IN')}</div><div className="text-xs opacity-60">EXPENSE only</div></div>
+          <div className="brutal bg-white p-sm min-w-0"><div className="text-xs uppercase font-bold">Avg per txn</div><div className="text-xl font-bold">₹{summary.count? ((summary.totalPaise/100)/summary.count).toFixed(0):0}</div></div>
+          <div className="brutal bg-white p-sm md:col-span-1 min-w-0"><div className="text-xs uppercase font-bold">By member</div><div className="text-xs break-words">{summary.byMember?.length? summary.byMember.map((m:any)=> `${m.name} ₹${m.spend.toFixed(0)} ×${m.count}`).join(' · ') : '—'}</div></div>
         </div>
       )}
 
       {/* Graphs */}
       {summary && (
-        <div className="grid lg:grid-cols-3 gap-md mb-md">
-          <div className="brutal bg-white p-md">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-md mb-md min-w-0">
+          <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">Spend Trend (monthly)</h3>
             {monthlyData.length===0 ? <div className="text-xs opacity-60">No trend.</div> : (
-              <div className="h-[200px]">
+              <div className="h-[200px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={monthlyData}>
                     <CartesianGrid stroke="var(--chart-grid)" vertical={false} strokeDasharray="3 3"/>
@@ -247,10 +247,10 @@ export function VendorDetail(){
               </div>
             )}
           </div>
-          <div className="brutal bg-white p-md">
+          <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">By Category</h3>
             {byCategoryData.length===0 ? <div className="text-xs opacity-60">No data.</div> : (
-              <div className="h-[200px]">
+              <div className="h-[200px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(props:any)=> { const total = byCategoryData.reduce((s:any,v:any)=>s+v.value,0); const pct = total? props.payload.value/total*100:0; return pct<5? null : `${props.payload.name} ${pct.toFixed(0)}%`; }}>
@@ -262,10 +262,10 @@ export function VendorDetail(){
               </div>
             )}
           </div>
-          <div className="brutal bg-white p-md">
+          <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">By Product</h3>
             {byProductData.length===0 ? <div className="text-xs opacity-60">No product spend — transactions have no productName yet.</div> : (
-              <div className="h-[200px]">
+              <div className="h-[200px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={byProductData.slice(0,6)} layout="vertical" margin={{ left: 40 }}>
                     <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3"/>
@@ -284,26 +284,27 @@ export function VendorDetail(){
       )}
 
       {/* Filters */}
-      <div className="brutal bg-white p-sm mb-md flex flex-wrap gap-sm items-end">
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">From <input type="date" value={from} onChange={e=> {setFrom(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs" /></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">To <input type="date" value={to} onChange={e=> {setTo(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs" /></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Member <select value={memberId} onChange={e=> {setMemberId(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white"><option value="">All members</option>{members.map((m:any)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Category <select value={filterCat} onChange={e=> {setFilterCat(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white"><option value="">All</option>{ALL_CATS.map(c=> <option key={c} value={c}>{c}</option>)}</select></label>
+      <div className="brutal bg-white p-sm mb-md flex flex-col sm:flex-row sm:flex-wrap gap-sm sm:items-end">
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">From <input type="date" value={from} onChange={e=> {setFrom(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs max-w-full" /></label>
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">To <input type="date" value={to} onChange={e=> {setTo(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs max-w-full" /></label>
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Member <select value={memberId} onChange={e=> {setMemberId(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white max-w-full"><option value="">All members</option>{members.map((m:any)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Category <select value={filterCat} onChange={e=> {setFilterCat(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white max-w-full"><option value="">All</option>{ALL_CATS.map(c=> <option key={c} value={c}>{c}</option>)}</select></label>
         <button onClick={()=> {setFrom(''); setTo(''); setMemberId(''); setFilterCat(''); setPage(0)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Clear</button>
-        <span className="text-xs opacity-60 ml-auto">{summary?.count||0} total · page {page+1}</span>
+        <span className="text-xs opacity-60 sm:ml-auto">{summary?.count||0} total · page {page+1}</span>
       </div>
 
       {loading ? <div className="brutal bg-white p-md text-sm">Loading…</div> : txs.length===0 ? <div className="brutal bg-white p-md text-sm">No transactions for this vendor with current filters. It fills once payments with matching name/UPI arrive from CSV/screenshots.</div> : (
         <div className="brutal bg-white overflow-hidden mb-md">
-          <table className="w-full text-sm">
-            <thead className="bg-on-surface text-white"><tr><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Product</th><th className="text-left px-sm py-xs">By</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Status</th><th className="text-left px-sm py-xs">Action</th></tr></thead>
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-on-surface text-white"><tr><th className="text-left px-sm py-xs whitespace-nowrap">Date</th><th className="text-left px-sm py-xs whitespace-nowrap">Amount</th><th className="text-left px-sm py-xs whitespace-nowrap">Category</th><th className="text-left px-sm py-xs whitespace-nowrap">Product</th><th className="text-left px-sm py-xs whitespace-nowrap">By</th><th className="text-left px-sm py-xs whitespace-nowrap">Mode</th><th className="text-left px-sm py-xs whitespace-nowrap">Status</th><th className="text-left px-sm py-xs whitespace-nowrap">Action</th></tr></thead>
             <tbody>
               {txs.map(t=> {
                 const madeBy = t.createdBy?.name || (typeof t.createdBy==='string'? t.createdBy.slice(0,8): '—')
                 return (
                 <tr key={t._id} className="border-t-2 border-on-surface/20">
                   <td className="px-sm py-xs whitespace-nowrap">{new Date(t.occurredAt).toLocaleString('en-IN')}</td>
-                  <td className="px-sm py-xs font-bold">₹{(t.amountPaise/100).toLocaleString('en-IN')}</td>
+                  <td className="px-sm py-xs font-bold whitespace-nowrap">₹{(t.amountPaise/100).toLocaleString('en-IN')}</td>
                   <td className="px-sm py-xs">
                     {catEditId===t._id ? (
                       <span className="flex flex-col gap-xs">
@@ -317,16 +318,17 @@ export function VendorDetail(){
                       </span>
                     ) : <button onClick={()=> { setCatEditId(t._id); setCatVal(t.category||'Other'); setSubVal(t.subcategory||''); setProdVal(t.productName||'')}} className="brutal-thin px-xs py-0.5 text-xs bg-white">{t.category||'Other'}{t.subcategory? `/${t.subcategory}`:''}</button>}
                   </td>
-                  <td className="px-sm py-xs text-xs">{t.productName || t.lineItems?.[0]?.productName || '—'}</td>
-                  <td className="px-sm py-xs text-xs">{madeBy}</td>
-                  <td className="px-sm py-xs text-xs">{t.mode}</td>
-                  <td className="px-sm py-xs text-xs">{t.status}</td>
-                  <td className="px-sm py-xs text-xs">{t.recipient?.name||'—'}</td>
+                  <td className="px-sm py-xs text-xs break-words">{t.productName || t.lineItems?.[0]?.productName || '—'}</td>
+                  <td className="px-sm py-xs text-xs whitespace-nowrap">{madeBy}</td>
+                  <td className="px-sm py-xs text-xs whitespace-nowrap">{t.mode}</td>
+                  <td className="px-sm py-xs text-xs whitespace-nowrap">{t.status}</td>
+                  <td className="px-sm py-xs text-xs break-words">{t.recipient?.name||'—'}</td>
                 </tr>
               )})}
             </tbody>
           </table>
-          <div className="flex justify-between p-sm border-t-2 border-on-surface/20">
+          </div>
+          <div className="flex flex-wrap gap-sm justify-between p-sm border-t-2 border-on-surface/20">
             <button disabled={page===0} onClick={()=> setPage(p=> Math.max(0,p-1))} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">Prev</button>
             <button disabled={txs.length<limit} onClick={()=> setPage(p=> p+1)} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">Next</button>
           </div>

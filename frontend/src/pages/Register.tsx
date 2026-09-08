@@ -70,8 +70,8 @@ export function Register() {
         </div>
 
         {/* Right form panel */}
-        <div className="w-full md:w-1/2 flex items-center justify-center p-md">
-          <div className="w-full max-w-md border-[3px] border-on-surface bg-white p-lg shadow-brutal flex flex-col gap-md relative z-10">
+        <div className="w-full md:w-1/2 min-w-0 flex items-center justify-center p-4 sm:p-md">
+          <div className="w-full max-w-md max-w-[calc(100vw-2rem)] border-[3px] border-on-surface bg-white p-lg shadow-brutal flex flex-col gap-md relative z-10 min-w-0">
             <h2 className="text-2xl font-bold uppercase tracking-tighter border-b-[3px] border-on-surface pb-xs">
               Register
             </h2>

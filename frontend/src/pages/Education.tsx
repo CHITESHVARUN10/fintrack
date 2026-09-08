@@ -120,7 +120,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
           required
         />
       </Field>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Institution">
           <Input
             placeholder="e.g. Delhi Public School"
@@ -136,7 +136,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
           />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Category">
           <Select
             value={category}
@@ -158,7 +158,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
           </Select>
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Amount">
           <div className="flex">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
@@ -178,7 +178,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
           <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Start Date">
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
@@ -189,7 +189,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -249,7 +249,7 @@ export function Education() {
   const total = items.reduce((s, e) => s + e.amount, 0)
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Education"
         subtitle="School, college, coaching & course fees."
@@ -261,6 +261,7 @@ export function Education() {
         }
       />
 
+      <div className="overflow-x-auto min-w-0">
       <Table<EducationPayment>
         rowKey={(e) => e.id}
         columns={[
@@ -268,8 +269,8 @@ export function Education() {
             key: 'title',
             header: 'Payment',
             render: (e) => (
-              <div className="flex flex-col">
-                <span className="font-bold">{e.title}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold break-words">{e.title}</span>
                 <span className="text-xs text-on-surface-variant">{e.institution}</span>
               </div>
             ),
@@ -315,6 +316,7 @@ export function Education() {
         ]}
         rows={items}
       />
+      </div>
 
       {items.length === 0 && (
         <p className="font-bold text-on-surface-variant mt-6">
@@ -322,12 +324,12 @@ export function Education() {
         </p>
       )}
 
-      <div className="w-full bg-on-surface text-white py-6 px-6 brutal mt-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="w-full max-w-full bg-on-surface text-white py-6 px-6 brutal mt-8 min-w-0">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
           <span className="text-lg font-bold uppercase tracking-wider">
             Total Education Outlay
           </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
+          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
             {formatCurrency(total)}
           </span>
         </div>
@@ -335,6 +337,7 @@ export function Education() {
 
       <Modal
         open={open || !!editing}
+        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
         onClose={() => {
           setOpen(false)
           setEditing(null)

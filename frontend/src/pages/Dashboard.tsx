@@ -95,18 +95,18 @@ export function Dashboard() {
   }))
 
   return (
-    <div className="flex flex-col gap-xl">
-      <div className="flex justify-between items-end">
+    <div className="flex flex-col gap-xl min-w-0">
+      <div className="flex flex-col sm:flex-row gap-sm sm:justify-between sm:items-end">
         <h2 className="text-4xl md:text-5xl font-bold uppercase tracking-tight text-on-surface">
           Overview
         </h2>
-        <div className="font-bold text-on-surface-variant bg-surface-container-high px-sm py-xs brutal-thin">
+        <div className="font-bold text-on-surface-variant bg-surface-container-high px-sm py-xs brutal-thin w-fit max-w-full">
           Last updated: Just now
         </div>
       </div>
 
       {/* Stat cards */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
         <StatCard
           label="Monthly Income"
           value={formatCurrency(data.monthlyIncome)}
@@ -142,8 +142,8 @@ export function Dashboard() {
       </section>
 
       {/* Charts — transaction based, individual */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-md lg:gap-xl">
-        <Card color="white" className="h-[420px] overflow-y-auto">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md lg:gap-xl min-w-0">
+        <Card color="white" className="h-[420px] overflow-y-auto min-w-0">
           <h3 className="font-bold text-lg uppercase">Monthly Spend Breakdown</h3>
           <p className="text-xs font-bold text-on-surface-variant">From your transactions this month (individual)</p>
           {burnEntries.length === 0 ? (
@@ -151,12 +151,12 @@ export function Dashboard() {
               No transactions this month — import or add one.
             </p>
           ) : (
-            <div className="flex flex-col gap-sm mt-md">
+            <div className="flex flex-col gap-sm mt-md min-w-0">
               {burnEntries.map(([label, value]) => (
-                <div key={label} className="flex flex-col gap-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-sm uppercase">{label}</span>
-                    <span className="font-bold text-sm">
+                <div key={label} className="flex flex-col gap-xs min-w-0">
+                  <div className="flex justify-between items-center gap-sm min-w-0">
+                    <span className="font-bold text-sm uppercase min-w-0 truncate">{label}</span>
+                    <span className="font-bold text-sm whitespace-nowrap shrink-0">
                       {formatCurrency(value)}
                     </span>
                   </div>
@@ -170,7 +170,7 @@ export function Dashboard() {
               ))}
             </div>
           )}
-          <div className="mt-lg pt-md border-t-[3px] border-on-surface flex justify-between items-center">
+          <div className="mt-lg pt-md border-t-[3px] border-on-surface flex flex-wrap justify-between items-center gap-sm">
             <span className="font-bold text-xs uppercase text-on-surface-variant">
               Actual Spend (Transactions) this month
             </span>
@@ -186,7 +186,7 @@ export function Dashboard() {
           </div>
         </Card>
 
-        <Card color="white" className="h-[500px] flex flex-col overflow-hidden">
+        <Card color="white" className="h-[500px] flex flex-col overflow-hidden min-w-0">
           <h3 className="font-bold text-lg uppercase leading-none">Category Breakdown</h3>
           <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your spend by category (transactions)</p>
           {donut.length === 0 ? (
@@ -199,7 +199,7 @@ export function Dashboard() {
               </div>
               {/* Legend — independent rows, scrolls internally, never overlaps */}
               <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col" style={{ borderColor: 'var(--border)' }}>
-                <div className="grid grid-cols-2 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 flex-1 min-h-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 flex-1 min-h-0">
                   {normalizedCategories.map((d, i) => (
                     <div
                       key={`${d.label}-${i}`}
@@ -225,7 +225,7 @@ export function Dashboard() {
           )}
         </Card>
 
-        <Card color="white" className="h-[500px] flex flex-col overflow-hidden">
+        <Card color="white" className="h-[500px] flex flex-col overflow-hidden min-w-0">
           <h3 className="font-bold text-lg uppercase leading-none">Vendor Breakdown</h3>
           <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your top vendors this month</p>
           {vendorDonut.length === 0 ? (

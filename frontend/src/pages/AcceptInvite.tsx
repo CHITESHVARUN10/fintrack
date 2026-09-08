@@ -37,9 +37,9 @@ export function AcceptInvite() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-md bg-white relative">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-md bg-white relative overflow-x-hidden">
       <div
-        className="w-full max-w-md bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10"
+        className="w-full max-w-md max-w-[calc(100vw-2rem)] bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10 min-w-0"
         style={flash ? ({ ['--nb-flash-from' as string]: '#ffffff' } as CSSProperties) : undefined}
       >
         <div className="mb-lg">

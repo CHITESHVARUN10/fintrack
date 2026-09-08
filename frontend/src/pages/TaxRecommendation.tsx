@@ -136,8 +136,8 @@ function MoneyRow({
               : ''
   const sign = amount < 0 ? '− ' : tone === 'add' && amount > 0 ? '+ ' : ''
   return (
-    <div className="flex justify-between items-baseline border-b-2 border-on-surface/70 pb-2 gap-3">
-      <div className="font-medium">
+    <div className="flex flex-wrap justify-between items-baseline border-b-2 border-on-surface/70 pb-2 gap-3">
+      <div className="font-medium min-w-0 flex-1 break-words">
         {label}
         {sub && <div className="font-normal text-xs text-on-surface-variant mt-0.5">{sub}</div>}
       </div>
@@ -166,7 +166,7 @@ function Expandable({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 p-3 bg-surface-container-low hover:bg-surface-container-high"
+        className="w-full flex flex-wrap items-center justify-between gap-3 p-3 bg-surface-container-low hover:bg-surface-container-high min-w-0"
       >
         <span className="font-bold uppercase text-sm flex items-center gap-2">
           <Icon name={open ? 'expand_less' : 'expand_more'} />
@@ -181,26 +181,28 @@ function Expandable({
 
 function SlabTable({ slabs }: { slabs: RegimeTrace['slabs'] }) {
   return (
-    <table className="w-full text-sm font-mono-data">
+    <div className="overflow-x-auto min-w-0">
+    <table className="w-full min-w-[600px] text-sm font-mono-data">
       <thead>
         <tr className="text-left bg-on-surface text-white uppercase text-xs">
-          <th className="py-1 pr-2 font-bold">Slab</th>
-          <th className="py-1 px-2 font-bold text-right">Rate</th>
-          <th className="py-1 px-2 font-bold text-right">Income in Band</th>
-          <th className="py-1 pl-2 font-bold text-right">Tax</th>
+          <th className="py-1 pr-2 font-bold whitespace-nowrap">Slab</th>
+          <th className="py-1 px-2 font-bold text-right whitespace-nowrap">Rate</th>
+          <th className="py-1 px-2 font-bold text-right whitespace-nowrap">Income in Band</th>
+          <th className="py-1 pl-2 font-bold text-right whitespace-nowrap">Tax</th>
         </tr>
       </thead>
       <tbody>
         {slabs.map((s, i) => (
           <tr key={i} className={`border-t-[2px] border-on-surface/30 transition-none hover:bg-brand-yellow/50 ${i % 2 === 1 ? 'bg-surface-container-low/80' : ''}`}>
-            <td className="py-1 pr-2">{s.label}</td>
-            <td className="py-1 px-2 text-right">{s.rate > 0 ? `${Math.round(s.rate * 100)}%` : 'Nil'}</td>
-            <td className="py-1 px-2 text-right">{formatCurrency(s.incomeInBand)}</td>
-            <td className="py-1 pl-2 text-right">{formatCurrency(s.tax)}</td>
+            <td className="py-1 pr-2 whitespace-nowrap">{s.label}</td>
+            <td className="py-1 px-2 text-right whitespace-nowrap">{s.rate > 0 ? `${Math.round(s.rate * 100)}%` : 'Nil'}</td>
+            <td className="py-1 px-2 text-right whitespace-nowrap">{formatCurrency(s.incomeInBand)}</td>
+            <td className="py-1 pl-2 text-right whitespace-nowrap">{formatCurrency(s.tax)}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    </div>
   )
 }
 
@@ -215,7 +217,7 @@ function DeductionPlan({ items, regime }: { items: RegimeTrace['deductions']; re
           key={d.key}
           className="flex justify-between items-start gap-3 border-b border-on-surface/40 pb-2"
         >
-          <div className="font-medium">
+          <div className="font-medium min-w-0 flex-1 break-words">
             {d.label}
             {d.disallowed && (
               <span className="ml-2 text-[10px] uppercase font-bold bg-on-surface text-white px-2 py-0.5 align-middle">
@@ -257,7 +259,7 @@ function RegimeWaterfall({ trace, recommended }: { trace: RegimeTrace; recommend
 
   return (
     <div
-      className={`bg-white brutal flex flex-col relative nb-card-enter ${
+      className={`bg-white brutal flex flex-col relative nb-card-enter min-w-0 max-w-full ${
         recommended ? 'md:-translate-y-4' : ''
       }`}
     >
@@ -465,15 +467,15 @@ function SourceBadge({ source }: { source?: string }) {
 function CalculationTraceTable({ trace }: { trace?: CalculationTraceStep[] | null }) {
   if (!trace || trace.length === 0) return null
   return (
-    <div className="bg-white brutal p-lg overflow-x-auto">
-      <table className="w-full text-xs font-mono-data">
+    <div className="bg-white brutal p-lg overflow-x-auto min-w-0">
+      <table className="w-full min-w-[800px] text-xs font-mono-data">
         <thead>
           <tr className="text-left bg-on-surface text-white uppercase text-xs">
-            <th className="py-1 pr-3 font-bold">Step</th>
-            <th className="py-1 px-3 font-bold">Input Value</th>
-            <th className="py-1 px-3 font-bold">Formula</th>
-            <th className="py-1 px-3 font-bold">Source</th>
-            <th className="py-1 pl-3 font-bold">Output</th>
+            <th className="py-1 pr-3 font-bold whitespace-nowrap">Step</th>
+            <th className="py-1 px-3 font-bold whitespace-nowrap">Input Value</th>
+            <th className="py-1 px-3 font-bold whitespace-nowrap">Formula</th>
+            <th className="py-1 px-3 font-bold whitespace-nowrap">Source</th>
+            <th className="py-1 pl-3 font-bold whitespace-nowrap">Output</th>
           </tr>
         </thead>
         <tbody>
@@ -522,15 +524,16 @@ function getExclusionReasonLabel(reason?: string | null): string {
 
 function DeductionTable({ items, type }: { items: DeductionLineItem[], type: 'applied' | 'data' | 'regime' }) {
   return (
-    <table className="w-full text-xs font-mono-data">
+    <div className="overflow-x-auto min-w-0">
+    <table className="w-full min-w-[700px] text-xs font-mono-data">
       <thead>
         <tr className="text-left bg-on-surface text-white uppercase text-xs">
-          <th className="py-1 pr-3 font-bold">Section</th>
-          <th className="py-1 px-3 font-bold">Subtype</th>
-          <th className="py-1 px-3 font-bold text-right">Amount</th>
-          <th className="py-1 px-3 font-bold">Source</th>
-          <th className="py-1 px-3 font-bold text-right">Conf.</th>
-          <th className="py-1 pl-3 font-bold">Status</th>
+          <th className="py-1 pr-3 font-bold whitespace-nowrap">Section</th>
+          <th className="py-1 px-3 font-bold whitespace-nowrap">Subtype</th>
+          <th className="py-1 px-3 font-bold text-right whitespace-nowrap">Amount</th>
+          <th className="py-1 px-3 font-bold whitespace-nowrap">Source</th>
+          <th className="py-1 px-3 font-bold text-right whitespace-nowrap">Conf.</th>
+          <th className="py-1 pl-3 font-bold whitespace-nowrap">Status</th>
         </tr>
       </thead>
       <tbody>
@@ -551,11 +554,11 @@ function DeductionTable({ items, type }: { items: DeductionLineItem[], type: 'ap
 
           return (
             <tr key={i} className={`border-t-[2px] border-on-surface/30 align-top transition-none hover:bg-brand-yellow/50 ${i % 2 === 1 ? 'bg-surface-container-low/80' : ''}`}>
-              <td className="py-2 pr-3 font-bold">{d.section}</td>
+              <td className="py-2 pr-3 font-bold whitespace-nowrap">{d.section}</td>
               <td className="py-2 px-3">{d.subtype ?? '—'}</td>
-              <td className="py-2 px-3 text-right">{formatCurrency(d.amount)}</td>
+              <td className="py-2 px-3 text-right whitespace-nowrap">{formatCurrency(d.amount)}</td>
               <td className="py-2 px-3">{d.source ?? '—'}</td>
-              <td className="py-2 px-3 text-right">{d.confidence}</td>
+              <td className="py-2 px-3 text-right whitespace-nowrap">{d.confidence}</td>
               <td className={`py-2 pl-3 font-bold ${badgeClass}`}>
                 {showWarning && <Icon name="warning" className="text-sm align-middle mr-1" />}
                 {statusText}
@@ -565,6 +568,7 @@ function DeductionTable({ items, type }: { items: DeductionLineItem[], type: 'ap
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -580,13 +584,13 @@ function DeductionSourceTable({ items }: { items?: DeductionLineItem[] | null })
   return (
     <div className="flex flex-col gap-6">
       {applied.length > 0 && (
-        <div className="bg-white brutal p-lg overflow-x-auto">
+        <div className="bg-white brutal p-lg overflow-x-auto min-w-0">
           <DeductionTable items={applied} type="applied" />
         </div>
       )}
 
       {dataVal.length > 0 && (
-        <div className="bg-white brutal p-lg overflow-x-auto">
+        <div className="bg-white brutal p-lg overflow-x-auto min-w-0">
           <h4 className="font-bold text-lg mb-1">Data Validation Exclusions</h4>
           <p className="text-sm text-on-surface-variant mb-4">These deductions were excluded due to data quality or duplication issues before regime rules were applied.</p>
           <DeductionTable items={dataVal} type="data" />
@@ -594,7 +598,7 @@ function DeductionSourceTable({ items }: { items?: DeductionLineItem[] | null })
       )}
 
       {regimeRules.length > 0 && (
-        <div className="bg-white brutal p-lg overflow-x-auto">
+        <div className="bg-white brutal p-lg overflow-x-auto min-w-0">
           <h4 className="font-bold text-lg mb-1">Regime Exclusions</h4>
           <p className="text-sm text-on-surface-variant mb-4">These deductions are valid but not permitted under the selected regime. They would apply under the other regime.</p>
           <DeductionTable items={regimeRules} type="regime" />
@@ -620,7 +624,7 @@ function RecommendationSkeleton() {
         <span className="border-2 border-on-surface-variant bg-surface-container-low text-on-surface-variant px-3 py-2">■ Preparing Results</span>
       </div>
       <section className="nb-skeleton-card min-h-[230px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><SkeletonLines /></section>
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-8 min-w-0">
         {[0, 1].map((i) => <div key={i} className="nb-skeleton-card min-h-[640px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><div className="w-[60px] h-[60px] nb-skeleton mt-6" /><SkeletonLines /><div className="mt-8 space-y-3">{Array.from({ length: 7 }).map((_, row) => <div key={row} className="h-8 nb-skeleton" />)}</div></div>)}
       </section>
       <section className="nb-skeleton-card min-h-[220px] p-6"><div className="h-6 w-[40%] nb-skeleton" /><SkeletonLines /></section>
@@ -646,7 +650,7 @@ export function TaxRecommendation() {
   if (loading || !data || !minimumElapsed) return <RecommendationSkeleton />
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, ease: 'easeIn' }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, ease: 'easeIn' }} className="min-w-0 max-w-full">
       <PageHeader
         title="Tax Recommendation"
         subtitle="Based on your Form 16 & declared investments for FY 2025-26."
@@ -683,7 +687,7 @@ export function TaxRecommendation() {
       )}
 
       {/* Recommendation banner */}
-      <div className="w-full bg-brand-yellow brutal p-lg md:p-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden mb-xl">
+      <div className="w-full max-w-full bg-brand-yellow brutal p-lg md:p-xl flex flex-col sm:flex-row flex-wrap items-center justify-between gap-6 relative overflow-hidden mb-xl min-w-0">
         <div className="absolute -right-10 -top-10 opacity-10">
           <Icon name="verified" className="text-[200px]" filled />
         </div>
@@ -701,11 +705,11 @@ export function TaxRecommendation() {
             {data.explanation}
           </p>
         </div>
-        <div className="z-10 bg-white brutal p-lg text-center min-w-[220px]">
+        <div className="z-10 bg-white brutal p-lg text-center w-full sm:w-auto sm:min-w-[220px] max-w-full min-w-0">
           <p className="font-bold uppercase text-on-surface-variant mb-2">
             {data.savingsAmount === 0 ? 'Tax Difference' : 'You Save'}
           </p>
-          <p className="font-bold text-4xl text-on-surface">{formatCurrency(data.savingsAmount)}</p>
+          <p className="font-bold text-3xl sm:text-4xl text-on-surface break-words">{formatCurrency(data.savingsAmount)}</p>
         </div>
       </div>
 
@@ -714,7 +718,7 @@ export function TaxRecommendation() {
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 hidden md:flex w-16 h-16 rounded-full brutal bg-white items-center justify-center">
           <span className="font-bold text-lg">VS</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 min-w-0">
           <RegimeWaterfall trace={data.regimes.old} recommended={data.recommendedRegime === 'Old'} />
           <RegimeWaterfall trace={data.regimes.new} recommended={data.recommendedRegime === 'New'} />
         </div>
@@ -771,7 +775,7 @@ export function TaxRecommendation() {
               elements.push(
                 <div
                   key={s.id || idx}
-                  className="w-full md:w-[340px] shrink-0 bg-white brutal p-lg flex flex-col"
+                  className="w-[280px] sm:w-[320px] lg:w-[340px] max-w-[calc(100vw-2rem)] shrink-0 bg-white brutal p-lg flex flex-col min-w-0"
                 >
                   <div className="w-12 h-12 bg-brand-yellow brutal flex items-center justify-center mb-4">
                     <Icon name={s.icon || 'lightbulb'} />
@@ -813,7 +817,7 @@ export function TaxRecommendation() {
             </div>
           </div>
           <h3 className="font-bold text-xl uppercase mb-2 text-on-surface-variant">Deduction Section Reference</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 min-w-0">
             {data.deductionBreakdown.map((d) => (
               <div key={d.section} className="bg-surface-container-low brutal-thin border-2 border-on-surface/40 p-lg flex flex-col gap-3">
                 <div className="flex justify-between items-baseline border-b-2 border-on-surface/40 pb-2">
@@ -834,11 +838,11 @@ export function TaxRecommendation() {
             Every figure above, derived step by step from the Form 16 and your declared data — so any
             value can be verified against its source.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 min-w-0">
             <div className="bg-white brutal p-lg">
               <DebugTraceBlock t={(data.debug as { old: DebugTraceT }).old} regime="Old" />
             </div>
-            <div className="bg-white brutal p-lg">
+            <div className="bg-white brutal p-lg min-w-0 max-w-full">
               <DebugTraceBlock t={(data.debug as { new: DebugTraceT }).new} regime="New" />
             </div>
           </div>
@@ -878,7 +882,7 @@ export function TaxRecommendation() {
       </div>
 
       {/* Bottom actions */}
-      <div className="flex flex-col md:flex-row justify-end gap-4 mt-lg pt-lg border-t-[3px] border-on-surface">
+      <div className="flex flex-col sm:flex-row flex-wrap justify-end gap-4 mt-lg pt-lg border-t-[3px] border-on-surface">
         <Button variant="white" onClick={() => navigate('/form16')}>
           Back to Form 16
         </Button>

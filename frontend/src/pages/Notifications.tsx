@@ -54,7 +54,7 @@ export function Notifications() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto min-w-0 w-full">
       <PageHeader
         title="Notifications"
         subtitle={`You have ${unreadCount} unread alerts.`}
@@ -68,7 +68,7 @@ export function Notifications() {
         }
       />
 
-      <div className="flex flex-wrap gap-sm mb-lg border-b-[3px] border-on-surface pb-md">
+      <div className="flex flex-wrap gap-sm mb-lg border-b-[3px] border-on-surface pb-md min-w-0">
         {tabMap.map((t) => (
           <button
             key={t.value}
@@ -84,7 +84,7 @@ export function Notifications() {
         ))}
       </div>
 
-      <div className="border-[3px] border-on-surface bg-white">
+      <div className="border-[3px] border-on-surface bg-white min-w-0 max-w-full">
         {filtered.length === 0 && (
           <div className="p-xl text-center font-bold text-on-surface-variant">
             No notifications.
@@ -96,7 +96,7 @@ export function Notifications() {
             <Link
               key={n.id}
               to={`/${n.relatedModule}`}
-              className={`flex items-start p-md border-b-[3px] border-on-surface relative group hover:bg-surface-container-low transition-none nb-card-enter ${
+              className={`flex items-start gap-2 p-md border-b-[3px] border-on-surface relative group hover:bg-surface-container-low transition-none nb-card-enter min-w-0 max-w-full ${
                 i === filtered.length - 1 ? 'border-b-0' : ''
               } ${isUnread ? '' : 'bg-surface-container-lowest'}`}
               style={{ '--nb-stagger': `${i * 40}ms` } as React.CSSProperties}
@@ -105,17 +105,17 @@ export function Notifications() {
                 <div className="absolute left-0 top-0 bottom-0 w-2 bg-brand-yellow" />
               )}
               <div
-                className={`w-12 h-12 border-[3px] border-on-surface flex-shrink-0 flex items-center justify-center mr-sm ${typeColor[n.type]}`}
+                className={`w-12 h-12 border-[3px] border-on-surface shrink-0 flex items-center justify-center ${typeColor[n.type]}`}
               >
                 <Icon name={typeIcon[n.type]} />
               </div>
-              <div className="flex-1 pr-sm">
-                <p className="font-medium text-on-surface leading-tight mb-1">{n.message}</p>
+              <div className="flex-1 min-w-0 pr-sm">
+                <p className="font-medium text-on-surface leading-tight mb-1 break-words">{n.message}</p>
                 <p className="font-bold text-xs text-on-surface-variant">
                   {formatDate(n.scheduledAt)}
                 </p>
               </div>
-              {isUnread && <div className="w-3 h-3 bg-on-surface mt-2" />}
+              {isUnread && <div className="w-3 h-3 shrink-0 bg-on-surface mt-2" />}
             </Link>
           )
         })}

@@ -141,7 +141,7 @@ function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -181,7 +181,7 @@ function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
           onChange={(e) => setNotes(e.target.value)}
         />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-wrap justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -253,24 +253,24 @@ export function Recurring() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
         {items.map((p) => (
-          <div key={p.id} className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-xs">
-                <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center">
+          <div key={p.id} className="bg-white brutal p-md flex flex-col gap-3 min-w-0 nb-card-enter nb-card-hover">
+            <div className="flex gap-sm justify-between items-start min-w-0">
+              <div className="flex items-center gap-xs min-w-0 flex-1">
+                <div className="w-10 h-10 shrink-0 bg-surface-variant brutal-thin flex items-center justify-center">
                   <Icon name={categoryIcon[p.category] ?? 'receipt_long'} />
                 </div>
-                <span className="font-bold">{p.title}</span>
+                <span className="font-bold break-words min-w-0">{p.title}</span>
               </div>
               <Badge color="yellow">{p.category}</Badge>
             </div>
             <div className="font-bold text-2xl">{formatCurrency(p.amount)}</div>
-            <div className="flex items-center gap-2 font-bold text-xs text-on-surface-variant">
+            <div className="flex flex-wrap items-center gap-2 font-bold text-xs text-on-surface-variant break-words min-w-0">
               <Icon name="event" className="text-sm" />
               Due on {formatDay(p.dueDate)} · {p.paymentMethod}
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="flex flex-wrap gap-2 mt-2">
               <button
                 onClick={() => setEditing(p)}
                 className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"

@@ -200,7 +200,7 @@ export function LoanDetail() {
   const repaidPct = loan.principalAmount > 0 ? Math.round((repaidAmount / loan.principalAmount) * 100) : 0
 
   return (
-    <div className="flex flex-col gap-lg pb-xl">
+    <div className="flex flex-col gap-lg pb-xl min-w-0">
       {/* Header */}
       <div>
         <button
@@ -249,9 +249,9 @@ export function LoanDetail() {
       </div>
 
       {/* Hero Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
         {/* Outstanding */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
@@ -269,7 +269,7 @@ export function LoanDetail() {
         </div>
 
         {/* Monthly EMI */}
-        <div className="brutal bg-brand-yellow p-md flex flex-col justify-between">
+        <div className="brutal bg-brand-yellow p-md flex flex-col justify-between min-w-0">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Monthly EMI
@@ -284,7 +284,7 @@ export function LoanDetail() {
         </div>
 
         {/* Total Interest & Cost */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Total Interest
@@ -299,7 +299,7 @@ export function LoanDetail() {
         </div>
 
         {/* Tenure & Timeline */}
-        <div className="brutal bg-white p-md flex flex-col justify-between">
+        <div className="brutal bg-white p-md flex flex-col justify-between min-w-0">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Tenure &amp; Payoff
@@ -315,17 +315,17 @@ export function LoanDetail() {
       </div>
 
       {/* Progress & Quick Actions Card */}
-      <div className="brutal bg-white p-md flex flex-col gap-md">
+      <div className="brutal bg-white p-md flex flex-col gap-md min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-sm">
-          <div>
+          <div className="min-w-0">
             <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               Repayment Progress
             </span>
-            <div className="text-lg font-bold">
+            <div className="text-lg font-bold break-words">
               {formatCurrency(repaidAmount)} repaid of {formatCurrency(loan.principalAmount)} ({repaidPct}%)
             </div>
           </div>
-          <div className="flex gap-sm">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-sm">
             <Button
               variant="white"
               onClick={() => setPrepayPlannerOpen(true)}
@@ -348,16 +348,16 @@ export function LoanDetail() {
       </div>
 
       {/* Amortization Schedule Section */}
-      <div className="brutal bg-white p-md flex flex-col gap-md">
+      <div className="brutal bg-white p-md flex flex-col gap-md min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-sm border-b-2 border-on-surface pb-sm">
-          <div>
-            <h3 className="font-bold uppercase tracking-tight text-lg">Amortization Schedule</h3>
+          <div className="min-w-0">
+            <h3 className="font-bold uppercase tracking-tight text-lg break-words">Amortization Schedule</h3>
             <span className="text-xs text-on-surface-variant">
               RBI Reducing Balance Breakdown · {scheduleData.schedule.length} Total Monthly EMIs
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-sm">
+          <div className="flex flex-wrap items-center gap-sm min-w-0">
             {/* View Toggle */}
             <div className="flex gap-xs">
               <button
@@ -394,7 +394,7 @@ export function LoanDetail() {
             )}
 
             {/* Exports */}
-            <div className="flex gap-xs">
+            <div className="flex flex-wrap gap-xs">
               <Button variant="white" onClick={handleExportCsv} className="text-xs">
                 Export CSV
               </Button>
@@ -406,19 +406,19 @@ export function LoanDetail() {
         </div>
 
         {/* Schedule Table */}
-        <div className="overflow-auto max-h-96">
+        <div className="overflow-x-auto max-h-96">
           {scheduleView === 'monthly' ? (
-            <table className="w-full text-xs">
+            <table className="w-full min-w-[760px] text-xs">
               <thead className="bg-on-surface text-white sticky top-0">
                 <tr>
-                  <th className="px-sm py-xs text-left"># Month</th>
-                  <th className="px-sm py-xs text-left">Due Date</th>
-                  <th className="px-sm py-xs text-right">Monthly EMI</th>
-                  <th className="px-sm py-xs text-right">Principal</th>
-                  <th className="px-sm py-xs text-right">Interest</th>
-                  <th className="px-sm py-xs text-right">Opening Balance</th>
-                  <th className="px-sm py-xs text-right">Closing Balance</th>
-                  <th className="px-sm py-xs text-center">Status</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap"># Month</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Due Date</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Monthly EMI</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Principal</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Interest</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Opening Balance</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Closing Balance</th>
+                  <th className="px-sm py-xs text-center whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
@@ -429,13 +429,13 @@ export function LoanDetail() {
                       key={r.month}
                       className={`hover:bg-surface-container-low/60 ${isPaid ? 'bg-surface-container-low/30' : ''}`}
                     >
-                      <td className="px-sm py-xs font-mono">{r.month}</td>
+                      <td className="px-sm py-xs font-mono whitespace-nowrap">{r.month}</td>
                       <td className="px-sm py-xs whitespace-nowrap font-medium">{formatDate(r.date)}</td>
-                      <td className="px-sm py-xs text-right font-bold">{formatCurrency(r.emi)}</td>
-                      <td className="px-sm py-xs text-right">{formatCurrency(r.principal)}</td>
-                      <td className="px-sm py-xs text-right opacity-70">{formatCurrency(r.interest)}</td>
-                      <td className="px-sm py-xs text-right">{formatCurrency(r.opening)}</td>
-                      <td className="px-sm py-xs text-right font-bold">{formatCurrency(r.closing)}</td>
+                      <td className="px-sm py-xs text-right font-bold whitespace-nowrap">{formatCurrency(r.emi)}</td>
+                      <td className="px-sm py-xs text-right whitespace-nowrap">{formatCurrency(r.principal)}</td>
+                      <td className="px-sm py-xs text-right opacity-70 whitespace-nowrap">{formatCurrency(r.interest)}</td>
+                      <td className="px-sm py-xs text-right whitespace-nowrap">{formatCurrency(r.opening)}</td>
+                      <td className="px-sm py-xs text-right font-bold whitespace-nowrap">{formatCurrency(r.closing)}</td>
                       <td className="px-sm py-xs text-center">
                         {isPaid ? (
                           <span className="brutal-thin bg-tertiary-container px-xs py-0.5 text-[10px] font-bold uppercase">
@@ -453,14 +453,14 @@ export function LoanDetail() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full text-xs">
+            <table className="w-full min-w-[600px] text-xs">
               <thead className="bg-on-surface text-white sticky top-0">
                 <tr>
-                  <th className="px-sm py-xs text-left">Year</th>
-                  <th className="px-sm py-xs text-right">EMI Total</th>
-                  <th className="px-sm py-xs text-right">Principal Repaid</th>
-                  <th className="px-sm py-xs text-right">Interest Paid</th>
-                  <th className="px-sm py-xs text-right">Closing Balance</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Year</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">EMI Total</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Principal Repaid</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Interest Paid</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Closing Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
@@ -482,10 +482,10 @@ export function LoanDetail() {
       </div>
 
       {/* Linked Transactions & Payment History */}
-      <div className="brutal bg-white p-md flex flex-col gap-md">
-        <div className="flex justify-between items-center border-b-2 border-on-surface pb-sm">
-          <div>
-            <h3 className="font-bold uppercase tracking-tight text-lg">Linked Transactions &amp; Payments</h3>
+      <div className="brutal bg-white p-md flex flex-col gap-md min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-sm border-b-2 border-on-surface pb-sm">
+          <div className="min-w-0">
+            <h3 className="font-bold uppercase tracking-tight text-lg break-words">Linked Transactions &amp; Payments</h3>
             <span className="text-xs text-on-surface-variant">
               Actual bank and ledger records linked to this loan ({linkedTxs.length} linked · Total Paid:{' '}
               {formatCurrency(totalPaidFromLinked / 100)})
@@ -515,13 +515,13 @@ export function LoanDetail() {
                 return (
                   <div
                     key={s._id}
-                    className="brutal-thin bg-white p-xs flex items-center justify-between text-xs"
+                    className="brutal-thin bg-white p-xs flex flex-col sm:flex-row sm:items-center gap-xs sm:justify-between text-xs min-w-0"
                   >
-                    <span>
+                    <span className="break-words min-w-0">
                       {formatDate(s.occurredAt)} · <strong>{formatCurrency(sAmt)}</strong> ·{' '}
                       {s.recipient?.name || s.mode}
                     </span>
-                    <div className="flex gap-xs">
+                    <div className="flex flex-wrap gap-xs">
                       <button
                         type="button"
                         onClick={() => handleLinkSuggestion(s._id, false)}
@@ -550,16 +550,16 @@ export function LoanDetail() {
             No transactions currently linked. Click “Link / Record Payment” or import a bank statement to link EMI payments and prepayments.
           </div>
         ) : (
-          <div className="overflow-auto max-h-80">
-            <table className="w-full text-xs">
+          <div className="overflow-x-auto max-h-80">
+            <table className="w-full min-w-[640px] text-xs">
               <thead className="bg-surface-container-high border-b border-on-surface/20">
                 <tr>
-                  <th className="px-sm py-xs text-left">Date</th>
-                  <th className="px-sm py-xs text-left">Type / Purpose</th>
-                  <th className="px-sm py-xs text-right">Amount</th>
-                  <th className="px-sm py-xs text-left">Mode</th>
-                  <th className="px-sm py-xs text-left">Recipient / Memo</th>
-                  <th className="px-sm py-xs text-center">Action</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Date</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Type / Purpose</th>
+                  <th className="px-sm py-xs text-right whitespace-nowrap">Amount</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Mode</th>
+                  <th className="px-sm py-xs text-left whitespace-nowrap">Recipient / Memo</th>
+                  <th className="px-sm py-xs text-center whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
@@ -580,9 +580,9 @@ export function LoanDetail() {
                           </span>
                         )}
                       </td>
-                      <td className="px-sm py-xs text-right font-bold">{formatCurrency(amt)}</td>
-                      <td className="px-sm py-xs">{t.mode}</td>
-                      <td className="px-sm py-xs opacity-80">{t.recipient?.name || t.productName || '—'}</td>
+                      <td className="px-sm py-xs text-right font-bold whitespace-nowrap">{formatCurrency(amt)}</td>
+                      <td className="px-sm py-xs whitespace-nowrap">{t.mode}</td>
+                      <td className="px-sm py-xs opacity-80 break-words">{t.recipient?.name || t.productName || '—'}</td>
                       <td className="px-sm py-xs text-center">
                         <button
                           type="button"
@@ -804,7 +804,7 @@ function EditLoanForm({
       <Field label="Notes">
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-wrap justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>

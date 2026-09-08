@@ -498,3 +498,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .text-\[\#9a998d\] { color: var(--text-muted) !important; }
 .dark .shadow-\[4px_4px_0_\#000\],
 .dark .shadow-\[4px_0_0_\#000\] { box-shadow: 0 1px 8px rgba(0,0,0,0.5) !important; }
+
+/* ---- Responsive safety nets (mobile) ---- */
+/* Never allow page-level horizontal scrolling; inner scroll regions
+   (overflow-x-auto table wrappers) still work because clip only applies
+   to the viewport-level box. */
+html, body { overflow-x: clip; max-width: 100%; }
+img, svg, video { max-width: 100%; }
+/* Long unbroken strings (UPIs, IDs, URLs) must wrap instead of overflowing */
+.break-all-safe { overflow-wrap: anywhere; }

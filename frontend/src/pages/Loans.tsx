@@ -153,7 +153,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Principal Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -168,7 +168,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
           </div>
         </Field>
         <Field label="Outstanding Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -185,7 +185,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="EMI Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -231,14 +231,14 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
         </Field>
       </div>
       {/* Calculate EMI helper — uses same reducing-balance formula as calculator */}
-      <div className="flex items-center gap-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-sm">
         <button type="button" onClick={()=>{
           const P = Number(principalAmount)||0
           const R = Number(interestRate)||0
           const N = Number(tenureMonths)||0
           if(P>0 && R>=0 && N>0){ const { emi } = calcEMI(P,R,N); setEmiAmount(String(emi)); setCalcHint(`EMI = ${formatCurrency(emi)} (P ${formatCurrency(P)} @${R}% × ${N}mo)`); setTimeout(()=> setCalcHint(null), 4000) }
-        }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Calculate EMI</button>
-        {calcHint && <span className="text-xs font-bold">{calcHint}</span>}
+        }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase w-fit max-w-full">Calculate EMI</button>
+        {calcHint && <span className="text-xs font-bold break-words min-w-0">{calcHint}</span>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Start Date">
@@ -251,7 +251,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-wrap justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -320,7 +320,7 @@ export function Loans() {
         title="EMI & Loans"
         subtitle="Track principal, interest and monthly EMIs."
         action={
-          <div className="flex gap-sm">
+          <div className="flex flex-col sm:flex-row gap-sm max-w-full">
             <Button variant="white" onClick={() => setCalcOpen(true)}>
               <Icon name="calculate" className="text-xl" />
               EMI Calculator
@@ -367,6 +367,7 @@ export function Loans() {
             key: 'emiDate',
             header: 'EMI Date',
             align: 'center',
+            className: 'whitespace-nowrap',
             render: (l) => formatDay(l.emiDate),
           },
           {
@@ -377,9 +378,9 @@ export function Loans() {
                 ((l.principalAmount - l.outstandingAmount) / l.principalAmount) * 100,
               )
               return (
-                <div className="w-32">
+                <div className="w-32 max-w-full">
                   <ProgressBar value={pct} />
-                  <span className="text-xs font-bold mt-1 block">{pct}%</span>
+                  <span className="text-xs font-bold mt-1 block whitespace-nowrap">{pct}%</span>
                 </div>
               )
             },
@@ -388,6 +389,7 @@ export function Loans() {
             key: 'status',
             header: 'Status',
             align: 'center',
+            className: 'whitespace-nowrap',
             render: (l) => (
               <Badge color={l.status === 'Active' ? 'cyan' : 'surface'}>{l.status}</Badge>
             ),
@@ -396,6 +398,7 @@ export function Loans() {
             key: 'endDate',
             header: 'Ends',
             align: 'right',
+            className: 'whitespace-nowrap',
             render: (l) => <span className="text-sm">{formatDate(l.endDate)}</span>,
           },
           {
@@ -438,8 +441,8 @@ export function Loans() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-md mt-8">
-        <div className="bg-white brutal p-md nb-card-enter nb-card-hover">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md mt-8 min-w-0">
+        <div className="bg-white brutal p-md min-w-0 nb-card-enter nb-card-hover">
           <span className="font-bold uppercase text-sm text-on-surface-variant">
             Total Outstanding
           </span>
@@ -447,7 +450,7 @@ export function Loans() {
             {formatCurrency(totalOutstanding)}
           </p>
         </div>
-        <div className="bg-brand-yellow brutal p-md">
+        <div className="bg-brand-yellow brutal p-md min-w-0">
           <span className="font-bold uppercase text-sm text-on-surface-variant">
             Total Monthly EMI
           </span>

@@ -42,7 +42,7 @@ export function FamilyCreateJoin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white p-md">
-      <div className="w-full max-w-lg brutal bg-white p-xl flex flex-col gap-md">
+      <div className="w-full max-w-[calc(100vw-2rem)] sm:max-w-lg brutal bg-white p-lg sm:p-xl flex flex-col gap-md min-w-0">
         <h1 className="text-2xl font-bold uppercase tracking-tight">Family</h1>
         <p className="text-sm text-on-surface-variant">Create a new family or join one with an invite code.</p>
 
@@ -59,7 +59,7 @@ export function FamilyCreateJoin() {
           <div className="flex flex-col gap-sm">
             <label className="text-xs font-bold uppercase tracking-wider">Family Name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Varun Family" className="brutal-thin px-sm py-xs" />
-            <div className="flex gap-sm">
+            <div className="flex flex-col sm:flex-row gap-sm">
               <button onClick={handleCreate} disabled={loading} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase disabled:opacity-50">{loading ? 'Creating…' : 'Create'}</button>
               <button onClick={() => setMode('choose')} className="brutal bg-white px-md py-xs font-bold uppercase">Back</button>
             </div>
@@ -70,7 +70,7 @@ export function FamilyCreateJoin() {
           <div className="flex flex-col gap-sm">
             <label className="text-xs font-bold uppercase tracking-wider">Invite Code (e.g. VF7K92)</label>
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="VF7K92" className="brutal-thin px-sm py-xs uppercase tracking-widest" maxLength={6} />
-            <div className="flex gap-sm">
+            <div className="flex flex-col sm:flex-row gap-sm">
               <button onClick={handleJoin} disabled={loading} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase disabled:opacity-50">{loading ? 'Joining…' : 'Join'}</button>
               <button onClick={() => setMode('choose')} className="brutal bg-white px-md py-xs font-bold uppercase">Back</button>
             </div>

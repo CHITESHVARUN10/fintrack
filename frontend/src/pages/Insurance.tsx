@@ -129,7 +129,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           {error}
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Policy Name">
           <Input
             placeholder="e.g. Term Plan"
@@ -146,7 +146,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Type">
           <Select
             value={insuranceType}
@@ -168,7 +168,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           </Select>
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Policy Number">
           <Input value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} />
         </Field>
@@ -176,7 +176,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           <Input value={nominee} onChange={(e) => setNominee(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Sum Assured">
           <div className="flex">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
@@ -208,7 +208,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           </div>
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Premium Frequency">
           <Select
             value={premiumFrequency}
@@ -223,7 +223,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           <Input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Start Date">
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
@@ -245,7 +245,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -307,7 +307,7 @@ export function Insurance() {
     .reduce((s, i) => s + i.premiumAmount, 0)
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Insurance"
         subtitle="Life, health, vehicle & other policies."
@@ -319,6 +319,7 @@ export function Insurance() {
         }
       />
 
+      <div className="overflow-x-auto min-w-0">
       <Table<Insurance>
         rowKey={(i) => i.id}
         columns={[
@@ -326,8 +327,8 @@ export function Insurance() {
             key: 'policyName',
             header: 'Policy',
             render: (i) => (
-              <div className="flex flex-col">
-                <span className="font-bold">{i.policyName}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold break-words">{i.policyName}</span>
                 <span className="text-xs text-on-surface-variant">
                   {i.insurer} · {i.policyNumber}
                 </span>
@@ -398,6 +399,7 @@ export function Insurance() {
         ]}
         rows={items}
       />
+      </div>
 
       {items.length === 0 && (
         <p className="font-bold text-on-surface-variant mt-6">
@@ -405,12 +407,12 @@ export function Insurance() {
         </p>
       )}
 
-      <div className="w-full bg-on-surface text-white py-6 px-6 brutal mt-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="w-full max-w-full bg-on-surface text-white py-6 px-6 brutal mt-8 min-w-0">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
           <span className="text-lg font-bold uppercase tracking-wider">
             Total Active Premium
           </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
+          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
             {formatCurrency(totalPremium)}
           </span>
         </div>
@@ -418,6 +420,7 @@ export function Insurance() {
 
       <Modal
         open={open || !!editing}
+        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
         onClose={() => {
           setOpen(false)
           setEditing(null)

@@ -11,7 +11,7 @@ import { initials } from '../lib/format'
 function Toggle({ label, desc, defaultOn = false }: { label: string; desc: string; defaultOn?: boolean }) {
   const [on, setOn] = useState(defaultOn)
   return (
-    <div className="flex items-center justify-between p-4 bg-white border-[3px] border-on-surface shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white border-[3px] border-on-surface shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all min-w-0">
       <div>
         <p className="font-bold">{label}</p>
         <p className="font-medium text-on-surface-variant text-sm mt-1">{desc}</p>
@@ -47,18 +47,18 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-xl">
+    <div className="max-w-4xl mx-auto space-y-xl min-w-0 w-full">
       <PageHeader title="Settings" />
 
       {/* Account */}
       <section className="border-b-[3px] border-on-surface pb-lg">
         <h2 className="text-2xl font-bold uppercase mb-lg">Account</h2>
-        <div className="flex flex-col md:flex-row gap-lg items-start">
-          <div className="w-32 h-32 border-[3px] border-on-surface flex items-center justify-center text-4xl font-bold bg-brand-yellow shadow-brutal shrink-0">
+        <div className="flex flex-col sm:flex-row gap-lg items-start min-w-0">
+          <div className="w-32 h-32 max-w-full border-[3px] border-on-surface flex items-center justify-center text-4xl font-bold bg-brand-yellow shadow-brutal shrink-0">
             {initials(user.name)}
           </div>
-          <div className="flex-grow w-full space-y-sm">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
+          <div className="flex-grow w-full min-w-0 space-y-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm min-w-0">
               <Field label="First Name">
                 <Input defaultValue={user.name.split(' ')[0]} />
               </Field>
@@ -80,13 +80,13 @@ export function Settings() {
       <section className="border-b-[3px] border-on-surface dark:border-[#f5f0da] pb-lg">
         <h2 className="text-2xl font-bold uppercase mb-lg dark:text-[#f5f0da]">Appearance</h2>
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-white dark:bg-[#23231a] border-[3px] border-on-surface dark:border-[#f5f0da] shadow-brutal">
+          <div className="flex flex-col sm:flex-row flex-wrap sm:items-center justify-between gap-3 p-4 bg-white dark:bg-[#23231a] border-[3px] border-on-surface dark:border-[#f5f0da] shadow-brutal min-w-0">
             <div>
               <p className="font-bold dark:text-[#f5f0da]">Dark Mode</p>
               <p className="font-medium text-on-surface-variant dark:text-[#b8b5a0] text-sm mt-1">Toggle between light and dark theme. Saved for next visit.</p>
               <p className="text-[11px] opacity-60 dark:text-[#b8b5a0] mt-1">Shortcut: theme persists + respects system preference.</p>
             </div>
-            <div className="flex items-center gap-sm ml-md shrink-0">
+            <div className="flex flex-wrap items-center gap-sm sm:ml-md shrink-0 min-w-0">
               <button
                 onClick={() => setTheme('light')}
                 className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${theme === 'light' ? 'bg-brand-yellow' : 'bg-white dark:bg-[#2a2a1e] dark:text-[#f5f0da]'}`}
@@ -169,7 +169,7 @@ export function Settings() {
       {/* Danger zone */}
       <section>
         <h2 className="text-2xl font-bold uppercase text-error mb-lg">Danger Zone</h2>
-        <div className="border-[3px] border-error p-lg bg-error-container">
+        <div className="border-[3px] border-error p-lg bg-error-container min-w-0 max-w-full">
           <h3 className="text-lg font-bold text-on-error-container mb-2">
             Delete Account
           </h3>

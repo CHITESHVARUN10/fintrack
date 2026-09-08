@@ -163,7 +163,7 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
         <Field label="Amount">
-          <div className="flex">
+          <div className="flex min-w-0">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
               ₹
             </span>
@@ -246,7 +246,7 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
           onChange={(e) => setNotes(e.target.value)}
         />
       </Field>
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-wrap justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -402,14 +402,14 @@ export function Subscriptions() {
           <div className="text-xs opacity-80 mb-sm">We detected payments matching your subscriptions. Accept to update your billing schedule and automatically link matching transactions to subscription payment history.</div>
           <div className="flex flex-col gap-sm">
             {suggestions.map((s:any)=> (
-              <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold">{s.name}</span>
+              <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs min-w-0">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs min-w-0">
+                  <span className="font-bold break-words min-w-0">{s.name}</span>
                   <span className="text-xs brutal-thin px-xs py-0.5 bg-surface-container-low">confidence {s.confidence}%</span>
                 </div>
-                <div className="text-xs">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : 'Link matching payments'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
-                <div className="text-xs opacity-60">Matched {s.matchedCount} transaction(s) {s.sample?.[0] && `e.g. ${new Date(s.sample[0].date).toLocaleDateString('en-IN')} ${formatCurrency(s.sample[0].amount)} ${String(s.sample[0].recipient||'').slice(0,30)}`}</div>
-                <div className="flex gap-sm mt-1">
+                <div className="text-xs break-words min-w-0">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : 'Link matching payments'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
+                <div className="text-xs opacity-60 break-words min-w-0">Matched {s.matchedCount} transaction(s) {s.sample?.[0] && `e.g. ${new Date(s.sample[0].date).toLocaleDateString('en-IN')} ${formatCurrency(s.sample[0].amount)} ${String(s.sample[0].recipient||'').slice(0,30)}`}</div>
+                <div className="flex flex-col sm:flex-row gap-sm mt-1">
                   <button onClick={() => handleAcceptSuggestion(s)} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Accept</button>
                   <button onClick={() => handleDismissSuggestion(s)} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Dismiss</button>
                 </div>
@@ -419,36 +419,36 @@ export function Subscriptions() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
         {items.map((sub: Subscription) => (
-          <div key={sub.id} className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover">
-            <div className="flex justify-between items-start">
+          <div key={sub.id} className="bg-white brutal p-md flex flex-col gap-3 min-w-0 nb-card-enter nb-card-hover">
+            <div className="flex gap-sm justify-between items-start min-w-0">
               <button
                 type="button"
                 onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                className="flex items-center gap-xs text-left hover:text-primary transition-colors"
+                className="flex items-center gap-xs text-left min-w-0 flex-1 hover:text-primary transition-colors"
               >
-                <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center">
+                <div className="w-10 h-10 shrink-0 bg-surface-variant brutal-thin flex items-center justify-center">
                   <Icon name="subscriptions" />
                 </div>
-                <span className="font-bold underline decoration-2">{sub.name}</span>
+                <span className="font-bold underline decoration-2 break-words min-w-0">{sub.name}</span>
               </button>
               <Badge color={sub.status === 'Active' ? 'cyan' : 'surface'}>
                 {sub.status}
               </Badge>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
               <span className="font-bold text-2xl">
                 {formatCurrency(sub.amount)}
                 <span className="text-sm font-normal">/{cadence}</span>
               </span>
               <Badge color="yellow">{sub.category}</Badge>
             </div>
-            <div className="flex items-center gap-2 font-bold text-xs text-on-surface-variant">
+            <div className="flex flex-wrap items-center gap-2 font-bold text-xs text-on-surface-variant break-words min-w-0">
               <Icon name="event_repeat" className="text-sm" />
               Billing on {formatDay(sub.billingDate)} · {sub.paymentMethod}
             </div>
-            <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-on-surface/20">
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-on-surface/20">
               <button
                 type="button"
                 onClick={() => navigate(`/subscriptions/${sub.id}`)}

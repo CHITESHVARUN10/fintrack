@@ -40,10 +40,10 @@ export function Form16Upload() {
         Back
       </button>
 
-      <main className="w-full max-w-2xl bg-white brutal p-xl flex flex-col gap-lg relative overflow-hidden">
-        <header className="flex items-center gap-sm pb-md border-b-[3px] border-on-surface">
+      <main className="w-full max-w-2xl max-w-[calc(100vw-2rem)] bg-white brutal p-lg sm:p-xl flex flex-col gap-lg relative overflow-hidden min-w-0">
+        <header className="flex flex-wrap items-center gap-sm pb-md border-b-[3px] border-on-surface min-w-0">
           <Icon name="upload_file" className="text-3xl" />
-          <h1 className="font-bold text-2xl uppercase tracking-tight">Upload Form 16 PDF</h1>
+          <h1 className="font-bold text-xl sm:text-2xl uppercase tracking-tight break-words min-w-0">Upload Form 16 PDF</h1>
         </header>
 
         <label
@@ -78,8 +78,8 @@ export function Form16Upload() {
         </label>
 
         {fileName && (
-          <div className="bg-surface-container-high brutal-thin p-sm flex items-center justify-between">
-            <div className="flex items-center gap-sm overflow-hidden">
+          <div className="bg-surface-container-high brutal-thin p-sm flex flex-wrap items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-sm overflow-hidden min-w-0 flex-1">
               <Icon name="description" className="bg-brand-yellow p-1 border-r-[3px] border-on-surface" />
               <div className="flex flex-col overflow-hidden">
                 <span className="font-bold truncate">{fileName}</span>
@@ -96,7 +96,7 @@ export function Form16Upload() {
           </div>
         )}
 
-        <div className="flex flex-col gap-xs md:flex-row md:justify-between font-mono-data text-sm uppercase text-on-surface-variant">
+        <div className="flex flex-col gap-xs sm:flex-row sm:flex-wrap sm:justify-between font-mono-data text-sm uppercase text-on-surface-variant min-w-0">
           <div className="flex items-center gap-2">
             <Icon name="picture_as_pdf" className="text-[20px]" />
             <span>Supported format: PDF only</span>

@@ -7,12 +7,12 @@ import { Icon } from '../ui/Icon'
 import { cn } from '../../lib/cn'
 import { motion } from 'framer-motion'
 
-export function Sidebar() {
+function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth()
   const { theme, toggle } = useTheme()
 
   return (
-    <aside className="w-[240px] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
+    <>
       {/* Logo */}
       <div className="h-[60px] border-b-[3px] border-on-surface flex items-center px-md shrink-0" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
         <h1 className="font-bold text-2xl uppercase tracking-tighter" style={{ color: 'var(--text-primary)' }}>
@@ -27,6 +27,7 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.to === '/dashboard' || item.to === '/family'}
+            onClick={onNavigate}
             className={({ isActive }) =>
               cn(
                 'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
@@ -83,6 +84,32 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  )
+}
+
+export function Sidebar({ mobileOpen = false, onClose = () => {} }: { mobileOpen?: boolean; onClose?: () => void }) {
+  return (
+    <>
+      {/* Desktop: fixed sidebar */}
+      <aside className="hidden lg:flex w-[240px] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex-col" style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}>
+        <SidebarBody />
+      </aside>
+
+      {/* Mobile: slide-in drawer + backdrop */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={onClose} aria-hidden="true" />
+      )}
+      <aside
+        className={cn(
+          'lg:hidden w-[280px] max-w-[85vw] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col transition-transform duration-200 ease-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+        style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}
+        aria-hidden={!mobileOpen}
+      >
+        <SidebarBody onNavigate={onClose} />
+      </aside>
+    </>
   )
 }

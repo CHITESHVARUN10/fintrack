@@ -52,7 +52,7 @@ export function Form16List() {
   }
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Form 16 Records"
         subtitle="Manage and analyze your tax documents."
@@ -65,7 +65,7 @@ export function Form16List() {
       />
 
       {data.length === 0 ? (
-        <div className="bg-white brutal p-xl text-center flex flex-col items-center gap-md">
+        <div className="bg-white brutal p-xl text-center flex flex-col items-center gap-md min-w-0 max-w-full">
           <Icon name="description" className="text-5xl text-on-surface-variant" />
           <p className="font-bold text-lg uppercase">No Form 16 records yet</p>
           <Button variant="yellow" onClick={() => setNewOpen(true)}>
@@ -74,43 +74,43 @@ export function Form16List() {
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-lg">
+        <div className="flex flex-col gap-lg min-w-0">
           {data.map((rec) => (
-            <div key={rec.id} className="bg-white brutal flex flex-col nb-card-enter nb-card-hover">
+            <div key={rec.id} className="bg-white brutal flex flex-col nb-card-enter nb-card-hover min-w-0 max-w-full">
               {/* Card header */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-md border-b-[3px] border-on-surface gap-3 bg-surface-container-low">
-                <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex flex-col sm:flex-row flex-wrap justify-between items-start sm:items-center p-md border-b-[3px] border-on-surface gap-3 bg-surface-container-low min-w-0">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
                   <Badge color="yellow">{rec.financialYear}</Badge>
                   <Badge color="surface">{rec.status}</Badge>
                   <Badge color={rec.taxRegimeUsed === 'New' ? 'cyan' : 'white'}>
                     {rec.taxRegimeUsed} Regime
                   </Badge>
                 </div>
-                <div className="font-mono-data text-sm text-on-surface-variant bg-white brutal-thin px-2 py-1">
+                <div className="font-mono-data text-sm text-on-surface-variant bg-white brutal-thin px-2 py-1 max-w-full break-all min-w-0">
                   ID: {rec.id}
                 </div>
               </div>
 
               {/* Card body */}
-              <div className="p-lg flex flex-col md:flex-row gap-md md:gap-xl">
-                <div className="flex-1 flex flex-col gap-3">
+              <div className="p-lg flex flex-col sm:flex-row flex-wrap gap-md md:gap-xl min-w-0">
+                <div className="flex-1 flex flex-col gap-3 min-w-0">
                   <div>
                     <p className="font-bold text-xs uppercase text-on-surface-variant">Employer</p>
-                    <p className="font-bold text-lg uppercase">{rec.employerName}</p>
+                    <p className="font-bold text-lg uppercase break-words">{rec.employerName}</p>
                   </div>
                   <div>
                     <p className="font-bold text-xs uppercase text-on-surface-variant">Employee</p>
-                    <p className="font-bold uppercase">{rec.employeeName}</p>
+                    <p className="font-bold uppercase break-words">{rec.employeeName}</p>
                   </div>
                 </div>
-                <div className="flex-1 flex flex-col md:flex-row gap-md md:gap-xl md:pl-xl md:border-l-[3px] md:border-on-surface">
+                <div className="flex-1 flex flex-col sm:flex-row flex-wrap gap-md md:gap-xl sm:pl-xl sm:border-l-[3px] sm:border-on-surface min-w-0">
                   <div>
                     <p className="font-bold text-xs uppercase text-on-surface-variant">Gross Salary</p>
-                    <p className="font-bold text-2xl">{formatCurrency(rec.grossSalary)}</p>
+                    <p className="font-bold text-2xl break-words">{formatCurrency(rec.grossSalary)}</p>
                   </div>
                   <div>
                     <p className="font-bold text-xs uppercase text-on-surface-variant">TDS Deducted</p>
-                    <p className="font-bold text-2xl bg-brand-yellow border-b-[3px] border-on-surface inline-block px-1">
+                    <p className="font-bold text-2xl bg-brand-yellow border-b-[3px] border-on-surface inline-block px-1 break-words max-w-full">
                       {formatCurrency(rec.tdsDeducted)}
                     </p>
                   </div>
@@ -118,7 +118,7 @@ export function Form16List() {
               </div>
 
               {/* Card actions */}
-              <div className="p-md border-t-[3px] border-on-surface bg-white flex flex-wrap gap-sm md:justify-end">
+              <div className="p-md border-t-[3px] border-on-surface bg-white flex flex-wrap gap-sm sm:justify-end min-w-0">
                 <Button
                   variant="white"
                   size="sm"

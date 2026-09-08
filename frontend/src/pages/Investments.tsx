@@ -199,13 +199,13 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-lg">
+    <form onSubmit={onSubmit} className="flex flex-col gap-lg min-w-0">
       {error && (
         <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
           {error}
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Name / Title">
           <Input
             placeholder="e.g. Infosys, PPFAS Flexi Cap, SBI FD"
@@ -228,7 +228,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Total Invested">
           <div className="flex">
             <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
@@ -261,7 +261,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       </div>
 
       {type === 'stock' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
           <Field label="Ticker">
             <Input placeholder="e.g. INFY" value={ticker} onChange={(e) => setTicker(e.target.value)} />
           </Field>
@@ -278,7 +278,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       )}
 
       {type === 'mf_sip' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
           <Field label="Fund House">
             <Input placeholder="e.g. PPFAS" value={fundHouse} onChange={(e) => setFundHouse(e.target.value)} />
           </Field>
@@ -306,7 +306,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       )}
 
       {type === 'fd' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
           <Field label="Bank Name">
             <Input placeholder="e.g. SBI" value={bankName} onChange={(e) => setBankName(e.target.value)} />
           </Field>
@@ -347,7 +347,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       )}
 
       {(type === 'real_estate' || type === 'other') && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
           <Field label="Asset Type">
             <Select value={assetType} onChange={(e) => setAssetType(e.target.value)}>
               <option value="">Select</option>
@@ -362,7 +362,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
         <Field label="Start Date">
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
@@ -381,7 +381,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
 
-      <div className="flex justify-end gap-sm pt-sm">
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
         <Button variant="white" type="button" onClick={onCancel}>
           Cancel
         </Button>
@@ -405,10 +405,10 @@ function InvestmentCard({
   const { g, pct } = gainLoss(inv)
   const positive = g >= 0
   return (
-    <div className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover">
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="text-lg font-bold">{inv.title}</h3>
+    <div className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover min-w-0 max-w-full">
+      <div className="flex flex-wrap justify-between items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg font-bold break-words min-w-0">{inv.title}</h3>
           <span className="text-xs text-on-surface-variant uppercase">
             {inv.investmentType.replace('_', ' ')}
           </span>
@@ -541,7 +541,7 @@ export function Investments() {
   const gain = currentValue - totalInvested
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Investments"
         subtitle="Stocks, mutual funds, FDs & real estate."
@@ -569,7 +569,7 @@ export function Investments() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
         {items.map((inv) => (
           <InvestmentCard
             key={inv.id}
@@ -586,7 +586,7 @@ export function Investments() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
         <div className="bg-white brutal p-md nb-card-enter nb-card-hover">
           <span className="font-bold uppercase text-sm text-on-surface-variant">Invested</span>
           <p className="text-2xl font-bold mt-1">{formatCompact(totalInvested)}</p>
@@ -606,6 +606,7 @@ export function Investments() {
 
       <Modal
         open={open || !!editing}
+        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
         onClose={() => {
           setOpen(false)
           setEditing(null)

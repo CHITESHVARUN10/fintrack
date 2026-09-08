@@ -7,7 +7,7 @@ import { Icon } from '../ui/Icon'
 import { cn } from '../../lib/cn'
 import { GlobalSearch } from './GlobalSearch'
 
-export function Header({ title }: { title: string }) {
+export function Header({ title, onMenu }: { title: string; onMenu?: () => void }) {
   const { isAdmin, members, activeMember, setActiveMemberId } = useAuth()
   const { theme, toggle } = useTheme()
   const [open, setOpen] = useState(false)
@@ -33,8 +33,18 @@ export function Header({ title }: { title: string }) {
 
   return (
     <header className="h-[60px] w-full border-b-[3px] border-on-surface flex justify-between items-center px-md shrink-0 z-40 relative" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
-      <div className="flex items-center gap-sm">
-        <h2 className="font-bold uppercase tracking-tight text-xl" style={{ color: 'var(--text-primary)' }}>
+      <div className="flex items-center gap-sm min-w-0">
+        {onMenu && (
+          <button
+            onClick={onMenu}
+            className="lg:hidden p-1 border-2 hover:brightness-110 transition-colors shrink-0"
+            style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+            aria-label="Open navigation menu"
+          >
+            <Icon name="menu" className="text-2xl" />
+          </button>
+        )}
+        <h2 className="font-bold uppercase tracking-tight text-base sm:text-xl truncate" style={{ color: 'var(--text-primary)' }}>
           {title}
         </h2>
         {isAdmin && (
