@@ -49,6 +49,7 @@ const investmentSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     status: { type: String, enum: ['Active', 'Matured', 'Closed', 'Broken'] },
+    taxPayments: { type: [require('./taxpayment.schema')], default: [] },
     notes: { type: String },
   },
   { timestamps: true },

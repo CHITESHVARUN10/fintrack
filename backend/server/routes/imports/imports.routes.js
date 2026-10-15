@@ -29,7 +29,7 @@ router.post('/bank', upload.single('file'), async (req,res,next)=>{
     if(!requireFamily(req,res)) return;
     if(!req.file) return res.status(400).json({ error:'file required' });
     const fHash = hashFile(req.file.buffer);
-    const existing = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash, status: { $ne: 'failed' } }).lean();
+    const existing = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash, status: 'success' }).lean();
     if(existing){
       return res.json({ status:'duplicate_file', duplicateOf: existing.batchId, fileName: req.file.originalname, fileHash: fHash, message: `Already imported on ${new Date(existing.createdAt).toLocaleString('en-IN')} — ${existing.total} rows`, batch: existing });
     }
@@ -43,7 +43,7 @@ router.post('/bank', upload.single('file'), async (req,res,next)=>{
       return res.json({ batchId, total: 0, results: [], status: 'failed', message: 'No rows parsed — check file format/headers' });
     }
     const rh = rowHash(candidates);
-    const rowDup = await ImportBatch.findOne({ familyId: req.user.familyAccountId, rowHash: rh }).lean();
+    const rowDup = await ImportBatch.findOne({ familyId: req.user.familyAccountId, rowHash: rh, status: 'success' }).lean();
     if(rowDup){
       return res.json({ status:'duplicate_file', duplicateOf: rowDup.batchId, fileName: req.file.originalname, fileHash: fHash, rowHash: rh, message: `Same transactions already imported on ${new Date(rowDup.createdAt).toLocaleString('en-IN')} — ${rowDup.total} rows (different file bytes)`, batch: rowDup });
     }
@@ -74,7 +74,7 @@ router.post('/screenshot', upload.single('file'), async (req,res,next)=>{
     if(!requireFamily(req,res)) return;
     if(!req.file) return res.status(400).json({ error:'file required'});
     const fHash = hashFile(req.file.buffer);
-    const existingImg = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash }).lean();
+    const existingImg = await ImportBatch.findOne({ familyId: req.user.familyAccountId, fileHash: fHash, status: 'success' }).lean();
     if(existingImg){
       return res.json({ status:'duplicate_file', duplicateOf: existingImg.batchId, message: `Same screenshot already imported on ${new Date(existingImg.createdAt).toLocaleString('en-IN')}`, batch: existingImg });
     }
@@ -84,7 +84,7 @@ router.post('/screenshot', upload.single('file'), async (req,res,next)=>{
       await ImportBatch.create({ familyId: req.user.familyAccountId, createdBy: req.user._id, batchId, source: 'SCREENSHOT', fileName: req.file.originalname, fileHash: fHash, fileSize: req.file.size, total: 1, failed: 1, status: 'failed' });
       return res.status(422).json({ error:'Could not extract amount from screenshot' });
     }
-    const candidate = { amountPaise: parsed.amountPaise, occurredAt: parsed.occurredAt || new Date(), type:'EXPENSE', mode:'UPI', category:'Other', recipient: parsed.recipient, upiId: parsed.upiId, transactionIdExt: parsed.transactionIdExt, utr: parsed.utr, metadata:{ screenshot: true } };
+    const candidate = { amountPaise: parsed.amountPaise, occurredAt: parsed.occurredAt || new Date(), type:'EXPENSE', mode:'UPI', category:'Other', recipient: parsed.recipient, upiId: parsed.upiId, transactionIdExt: parsed.transactionIdExt, utr: parsed.utr, metadata:{ screenshot: true, timePrecision: parsed.raw?.time ? 'minute' : 'day' } };
     const result = await ingest(candidate, { familyId: req.user.familyAccountId, createdBy: req.user._id, source:'SCREENSHOT', rawPayload: parsed.raw, batchId });
     await ImportBatch.create({ familyId: req.user.familyAccountId, createdBy: req.user._id, batchId, source: 'SCREENSHOT', fileName: req.file.originalname, fileHash: fHash, fileSize: req.file.size, total: 1, created: result.created ? 1 : 0, reconciled: result.reconciled ? 1 : 0, pendingReview: result.pendingReview ? 1 : 0, deduped: result.deduped ? 1 : 0, failed: 0, status: 'success' });
     res.json({ batchId, parsed, ...result, status: 'success' });
@@ -94,7 +94,8 @@ router.post('/screenshot', upload.single('file'), async (req,res,next)=>{
 // GET /api/imports/batches/:id
 router.get('/batches/:id', async (req,res,next)=>{
   try{
-    const batch = await ImportBatch.findOne({ batchId: req.params.id }).populate('createdBy','name email');
+    if (!requireFamily(req, res)) return;
+    const batch = await ImportBatch.findOne({ batchId: req.params.id, familyId: req.user.familyAccountId }).populate('createdBy','name email');
     if(!batch) return res.status(404).json({ error:'Batch not found' });
     res.json({ batch });
   } catch(err){ next(err) }

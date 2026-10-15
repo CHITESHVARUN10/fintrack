@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/expenses (?from, ?to, ?category)
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.category) filter.category = req.query.category;
     if (req.query.from || req.query.to) {
       filter.date = {};

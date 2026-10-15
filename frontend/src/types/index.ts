@@ -1,3 +1,5 @@
+export interface TaxPayment { financialYear: string; section: '80C' | '80CCD' | '80D' | '80E' | '80G' | '24b'; amount: number }
+
 // TypeScript domain types for FinStack.
 // Field names mirror the PRD MongoDB schemas (camelCase) so the mock layer
 // can be swapped for the real API without changing call sites.
@@ -75,6 +77,7 @@ export interface CanonicalTransaction {
 }
 
 export interface SourceRecord {
+  createdAt?: string
   _id: string
   transactionId: string
   familyId: string
@@ -155,6 +158,7 @@ export interface RecurringPayment {
 export type InvestmentType = 'stock' | 'mf_sip' | 'fd' | 'real_estate' | 'other'
 
 export interface Investment {
+  taxPayments?: TaxPayment[]
   id: string
   memberId: string
   investmentType: InvestmentType
@@ -198,6 +202,7 @@ export type LoanType =
   | 'Other'
 
 export interface EMILoan {
+  taxPayments?: TaxPayment[]
   id: string
   memberId: string
   loanName: string
@@ -248,6 +253,7 @@ export type InsuranceType =
 export type PremiumFrequency = 'Monthly' | 'Quarterly' | 'Half-Yearly' | 'Yearly'
 
 export interface Insurance {
+  taxPayments?: TaxPayment[]
   id: string
   memberId: string
   policyName: string
@@ -281,6 +287,7 @@ export type EducationFrequency =
   | 'One-time'
 
 export interface EducationPayment {
+  taxPayments?: TaxPayment[]
   id: string
   memberId: string
   title: string
@@ -432,6 +439,13 @@ export interface Form16 {
 }
 
 export interface TaxSavingSuggestion {
+  suggestion?: string
+  section: string
+  suggestionType: string
+  amount?: number
+  savingsType?: string
+  savingsAmount?: number | null
+  displayMessage?: string
   id: string
   title: string
   detail: string

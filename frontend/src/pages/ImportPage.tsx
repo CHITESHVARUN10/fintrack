@@ -1,3 +1,5 @@
+import type { ImportResult } from '../types/api'
+import { toApiError } from '../lib/apiError'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
@@ -31,8 +33,8 @@ export function ImportPage() {
   const nav = useNavigate()
   const { user } = useAuth()
   const hasNoFamily = !user?.familyAccountId
-  const [bankResult, setBankResult] = useState<any>(null)
-  const [shotResult, setShotResult] = useState<any>(null)
+  const [bankResult, setBankResult] = useState<ImportResult | null>(null)
+  const [shotResult, setShotResult] = useState<ImportResult | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [busy, setBusy] = useState<'bank' | 'shot' | null>(null)
@@ -52,11 +54,11 @@ export function ImportPage() {
       loadHistory()
       if (r.status === 'duplicate_file') { setErr(r.message || `Already imported — ${r.batch?.total||''} rows on ${r.batch?.createdAt||''}`); setBankResult(r); return }
       if (r.total > 0 && (r.status === 'success' || r.status === 'partial')) {
-        const s = r.summary
+        const s = r.summary || { created: 0, reconciled: 0, pendingReview: 0, deduped: 0, failed: 0 }
         const msg = `Imported ${r.total} rows • ${s.created} new • ${s.reconciled} reconciled • ${s.deduped} deduped${s.pendingReview ? ` • ${s.pendingReview} pending review` : ''}`
         setSuccess({ msg })
       }
-    } catch (ex: any) { setErr(ex.response?.data?.error || ex.response?.data?.message || ex.message) }
+    } catch (caught: unknown) { const ex = toApiError(caught); setErr(ex.response?.data?.error || ex.response?.data?.message || ex.message) }
     finally { setBusy(null); (e.target as HTMLInputElement).value = '' }
   }
 
@@ -69,7 +71,7 @@ export function ImportPage() {
       loadHistory()
       if (r.status === 'duplicate_file') { setErr(r.message || 'Already imported'); setShotResult(r); return }
       if (r.status === 'success') setSuccess({ msg: 'Screenshot extracted and reconciled.' })
-    } catch (ex: any) { setErr(ex.response?.data?.error || ex.message) }
+    } catch (caught: unknown) { const ex = toApiError(caught); setErr(ex.response?.data?.error || ex.message) }
     finally { setBusy(null); (e.target as HTMLInputElement).value = '' }
   }
 

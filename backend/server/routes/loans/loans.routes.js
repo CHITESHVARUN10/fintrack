@@ -1,7 +1,7 @@
 const express = require('express');
 const EMILoan = require('../../models/loan.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
-const { buildListFilter, canModify } = require('../../utils/scope');
+const { buildListFilter, canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/loans
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.loanType) filter.loanType = req.query.loanType;
     const items = await EMILoan.find(filter).sort({ createdAt: -1 });
     res.json(items);
@@ -58,6 +58,7 @@ router.post('/:id/apply-suggestion', async (req, res, next) => {
       acceptAmount,
       acceptDate,
       matchedTxIds,
+      createdBy: req.user._id,
       familyId: req.user.familyAccountId,
     });
     res.json(updated);
@@ -132,10 +133,10 @@ router.get('/:id/transactions', async (req, res, next) => {
     if (!canModify(req, loan)) return res.status(403).json({ error: 'Forbidden' });
     const Transaction = require('../../models/transaction.model');
     // linked explicitly
-    const linked = await Transaction.find({ loanRef: loan._id, familyId: loan.familyAccountId, status: { $ne: 'VOIDED' } }).sort({ occurredAt: -1 }).limit(200).lean();
+    const linked = await Transaction.find({ loanRef: loan._id, familyId: loan.familyAccountId, ...buildTransactionVisibilityFilter(req), status: { $ne: 'VOIDED' } }).sort({ occurredAt: -1 }).limit(200).lean();
     // also suggest via amount+name fuzzy (reuse subscriptionLinker)
     const { findMatches } = require('../../services/subscriptionLinker.service');
-    const suggestions = await findMatches({ familyId: loan.familyAccountId, name: loan.loanName, amount: loan.emiAmount, dueDay: loan.emiDate, type: 'loan' });
+    const suggestions = await findMatches({ familyId: loan.familyAccountId, createdBy: req.user._id, name: loan.loanName, amount: loan.emiAmount, dueDay: loan.emiDate, type: 'loan' });
     // filter out already linked
     const linkedIds = new Set(linked.map(x=> String(x._id)));
     const unmatchedSuggestions = suggestions.filter(s=> !linkedIds.has(String(s._id)));
@@ -156,7 +157,9 @@ router.post('/:id/link-transaction', async (req, res, next) => {
     const Transaction = require('../../models/transaction.model');
     const tx = await Transaction.findById(transactionId);
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
     if (String(tx.familyId) !== String(loan.familyAccountId)) return res.status(403).json({ error: 'Transaction not in family' });
+    if (tx.loanMeta?.isPrepayment) return res.status(409).json({ error: 'Recorded prepayments cannot be relinked' });
     tx.loanRef = loan._id;
     tx.loanMeta = { isLoanPayment: true, isPrepayment: !!isPrepayment };
     // also set category to Bills/Loan if Other
@@ -180,7 +183,9 @@ router.post('/:id/unlink-transaction', async (req, res, next) => {
     const Transaction = require('../../models/transaction.model');
     const tx = await Transaction.findById(transactionId);
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
     if (String(tx.loanRef) !== String(loan._id)) return res.status(400).json({ error: 'Transaction not linked to this loan' });
+    if (tx.loanMeta?.isPrepayment) return res.status(409).json({ error: 'Recorded prepayments cannot be unlinked without reversing their balance adjustment' });
     tx.loanRef = null;
     tx.loanMeta = { isLoanPayment: false, isPrepayment: false };
     await tx.save();
@@ -196,8 +201,9 @@ router.post('/:id/record-prepayment', async (req, res, next) => {
     if (!canModify(req, loan)) return res.status(403).json({ error: 'Forbidden' });
     const { amount, transactionId, date, mode, notes } = req.body;
     const prepayVal = Number(amount || 0);
-    if (!prepayVal && !transactionId) return res.status(400).json({ error: 'Amount or transactionId is required' });
+    if ((!Number.isFinite(prepayVal) || prepayVal <= 0) && !transactionId) return res.status(400).json({ error: 'Amount or transactionId is required' });
 
+    if (!transactionId && prepayVal > Number(loan.outstandingAmount || 0)) return res.status(400).json({ error: 'Prepayment exceeds outstanding balance' });
     const Transaction = require('../../models/transaction.model');
     let tx;
     let effectiveAmount = prepayVal;
@@ -205,7 +211,12 @@ router.post('/:id/record-prepayment', async (req, res, next) => {
     if (transactionId) {
       tx = await Transaction.findById(transactionId);
       if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
       if (String(tx.familyId) !== String(loan.familyAccountId)) return res.status(403).json({ error: 'Transaction not in family' });
+      if (!['EXPENSE', 'CASH_EXPENSE'].includes(tx.type) || tx.status === 'VOIDED') return res.status(400).json({ error: 'An active expense transaction is required' });
+      if (tx.loanRef && String(tx.loanRef) !== String(loan._id)) return res.status(409).json({ error: 'Transaction already linked to another loan' });
+      if (loan.prepayments?.some(p => String(p.transactionId) === String(tx._id))) return res.json({ loan, transaction: tx, alreadyApplied: true });
+      if (!Number.isFinite(tx.amountPaise) || tx.amountPaise <= 0 || tx.amountPaise / 100 > Number(loan.outstandingAmount || 0)) return res.status(400).json({ error: 'Invalid prepayment amount' });
       tx.loanRef = loan._id;
       tx.loanMeta = { isLoanPayment: true, isPrepayment: true };
       if (!tx.category || tx.category === 'Other') tx.category = 'Bills';
@@ -233,16 +244,24 @@ router.post('/:id/record-prepayment', async (req, res, next) => {
       await tx.save();
     }
 
-    // Update loan outstanding
-    loan.outstandingAmount = Math.max(0, Math.round(Number(loan.outstandingAmount || 0) - effectiveAmount));
-    if (loan.outstandingAmount === 0) {
-      loan.status = 'Prepaid';
+    // Claim the transaction and reduce principal in one conditional Mongo update.
+    // Concurrent retries cannot apply the same payment more than once.
+    const updated = await EMILoan.findOneAndUpdate(
+      { _id: loan._id, 'prepayments.transactionId': { $ne: tx._id }, outstandingAmount: { $gte: effectiveAmount } },
+      { $inc: { outstandingAmount: -effectiveAmount }, $push: { prepayments: { transactionId: tx._id, amount: effectiveAmount, date: tx.occurredAt, notes: notes || '' } } },
+      { new: true, runValidators: true },
+    );
+    if (!updated) {
+      const current = await EMILoan.findById(loan._id);
+      if (current?.prepayments?.some(p => String(p.transactionId) === String(tx._id))) return res.json({ loan: current, transaction: tx, alreadyApplied: true });
+      return res.status(409).json({ error: 'Prepayment exceeds the remaining balance or the loan changed; refresh and try again' });
     }
-    const logEntry = `Prepaid ₹${effectiveAmount.toLocaleString('en-IN')} on ${new Date().toISOString().slice(0,10)}${notes ? ` (${notes})` : ''}`;
-    loan.notes = loan.notes ? `${loan.notes}\n${logEntry}` : logEntry;
-    await loan.save();
+    if (updated.outstandingAmount === 0) {
+      await EMILoan.updateOne({ _id: updated._id, outstandingAmount: 0 }, { $set: { status: 'Prepaid' } });
+      updated.status = 'Prepaid';
+    }
 
-    res.status(201).json({ loan, transaction: tx });
+    res.status(201).json({ loan: updated, transaction: tx });
   } catch (err) { next(err); }
 });
 

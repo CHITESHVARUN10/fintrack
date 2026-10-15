@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
@@ -21,6 +23,7 @@ const STATUSES = ['Active', 'Closed', 'Prepaid']
 // type (and all call sites) stay unchanged.
 function normalizeLoan(raw: Record<string, unknown>): EMILoan {
   return {
+    taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
     memberId: String(raw.memberId ?? ''),
     loanName: (raw.loanName as string) ?? '',
@@ -67,6 +70,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
   const [endDate, setEndDate] = useState(initial?.endDate ? String(initial.endDate).slice(0,10) : '')
   const [status, setStatus] = useState<EMILoan['status']>(initial?.status ?? 'Active')
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [calcHint, setCalcHint] = useState<string | null>(null)
@@ -89,6 +93,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
       endDate: endDate || undefined,
       status,
       notes: notes || undefined,
+      taxPayments,
     }
     try {
       if (initial) {
@@ -98,7 +103,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save loan.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save loan.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -248,6 +253,7 @@ function LoanForm({ initial, onSaved, onCancel }: LoanFormProps) {
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </Field>
       </div>
+      <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
@@ -273,24 +279,22 @@ export function Loans() {
   const [calcOpen, setCalcOpen] = useState(false)
   const [prefill, setPrefill] = useState<{ principal: number; rate: number; tenure: number; emi: number } | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/loans')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeLoan))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load loans.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load loans.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (loan: EMILoan) => {
     if (!window.confirm(`Delete "${loan.loanName}"?`)) return
@@ -298,7 +302,7 @@ export function Loans() {
       await apiClient.delete(`/loans/${loan.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete loan.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete loan.'
       setError(msg)
     }
   }
@@ -468,7 +472,7 @@ export function Loans() {
         title={editing ? 'Edit Loan' : 'Add Loan'}
       >
         <LoanForm
-          initial={editing || (prefill ? { id: '', memberId: '', loanName: '', loanType: 'Home', lender: '', principalAmount: prefill.principal, outstandingAmount: prefill.principal, emiAmount: prefill.emi, emiDate: 5, interestRate: prefill.rate, tenureMonths: prefill.tenure, startDate: new Date().toISOString().slice(0,10), endDate: '', status: 'Active' } as any : null)}
+          initial={editing || (prefill ? { id: '', memberId: '', loanName: '', loanType: 'Home', lender: '', principalAmount: prefill.principal, outstandingAmount: prefill.principal, emiAmount: prefill.emi, emiDate: 5, interestRate: prefill.rate, tenureMonths: prefill.tenure, startDate: new Date().toISOString().slice(0,10), endDate: '', status: 'Active' } as EMILoan : null)}
           onSaved={() => {
             setOpen(false)
             setEditing(null)

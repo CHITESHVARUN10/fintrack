@@ -31,7 +31,7 @@ router.get('/monthly', async (req, res, next) => {
     if (!month || !year || month < 1 || month > 12) {
       return res.status(400).json({ error: 'Valid month (1-12) and year are required' });
     }
-    const { memberId } = buildListFilter(req);
+    const { memberId } = await buildListFilter(req);
     const isExcel = req.query.format === 'excel';
     const buf = isExcel
       ? await generateMonthlyExcel(memberId, month, year)
@@ -50,7 +50,7 @@ router.get('/annual', async (req, res, next) => {
   try {
     const year = parseInt(req.query.year, 10);
     if (!year) return res.status(400).json({ error: 'Valid year is required' });
-    const { memberId } = buildListFilter(req);
+    const { memberId } = await buildListFilter(req);
     const isExcel = req.query.format === 'excel';
     const buf = isExcel
       ? await generateAnnualExcel(memberId, year)
@@ -71,7 +71,7 @@ router.get('/category', async (req, res, next) => {
     if (!from || !to || isNaN(Date.parse(from)) || isNaN(Date.parse(to))) {
       return res.status(400).json({ error: 'Valid from and to dates are required' });
     }
-    const { memberId } = buildListFilter(req);
+    const { memberId } = await buildListFilter(req);
     const isExcel = req.query.format === 'excel';
     const buf = isExcel
       ? await generateCategoryExcel(memberId, from, to)
@@ -89,7 +89,7 @@ router.get('/category', async (req, res, next) => {
 router.get('/tax', async (req, res, next) => {
   try {
     const year = parseInt(req.query.year, 10) || new Date().getFullYear();
-    const { memberId } = buildListFilter(req);
+    const { memberId } = await buildListFilter(req);
     const buf = await generateTaxPDF(memberId, year);
     res.setHeader('Content-Type', PDF);
     res.setHeader('Content-Disposition', `attachment; filename="tax-summary-${year}.pdf"`);

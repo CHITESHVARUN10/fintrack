@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/recurring
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.category) filter.category = req.query.category;
     const items = await RecurringPayment.find(filter).sort({ createdAt: -1 });
     res.json(items);
@@ -58,6 +58,7 @@ router.post('/:id/apply-suggestion', async (req, res, next) => {
       acceptAmount,
       acceptDate,
       matchedTxIds,
+      createdBy: req.user._id,
       familyId: req.user.familyAccountId,
     });
     res.json(updated);

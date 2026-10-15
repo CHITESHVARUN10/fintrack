@@ -1,4 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import type { LedgerTransaction } from '../types/api'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -57,8 +59,8 @@ export function LoanDetail() {
   const [error, setError] = useState<string | null>(null)
 
   // Linked transactions & suggestions
-  const [linkedTxs, setLinkedTxs] = useState<any[]>([])
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [linkedTxs, setLinkedTxs] = useState<LedgerTransaction[]>([])
+  const [suggestions, setSuggestions] = useState<LedgerTransaction[]>([])
   const [totalPaidFromLinked, setTotalPaidFromLinked] = useState(0)
 
   // Modals
@@ -71,29 +73,29 @@ export function LoanDetail() {
   const [scheduleView, setScheduleView] = useState<'yearly' | 'monthly'>('yearly')
   const [scheduleFilter, setScheduleFilter] = useState<'all' | 'paid' | 'upcoming'>('all')
 
-  const loadData = async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
+  const loadData = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
+
+if (!id) return
     try {
       const [loanRes, txRes] = await Promise.all([
         loanService.get(id),
         loanService.getTransactions(id).catch(() => ({ linked: [], suggestions: [], totalPaidFromLinked: 0 })),
       ])
-      setLoan(normalizeLoan(loanRes as any))
+      setLoan(normalizeLoan(loanRes as unknown as Record<string, unknown>))
       setLinkedTxs(txRes.linked || [])
       setSuggestions(txRes.suggestions || [])
       setTotalPaidFromLinked(txRes.totalPaidFromLinked || 0)
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       setError(err?.response?.data?.error || 'Could not load loan details.')
     } finally {
       setLoading(false)
     }
-  }
+  }), [id])
 
   useEffect(() => {
     loadData()
-  }, [id])
+  }, [loadData])
 
   // Compute full amortization schedule
   const scheduleData = useMemo(() => {
@@ -127,7 +129,7 @@ export function LoanDetail() {
     try {
       await apiClient.delete(`/loans/${loan.id}`)
       navigate('/loans')
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not delete loan.')
     }
   }
@@ -137,7 +139,7 @@ export function LoanDetail() {
     try {
       await loanService.unlinkTransaction(loan.id, { transactionId: txId })
       loadData()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not unlink transaction.')
     }
   }
@@ -147,7 +149,7 @@ export function LoanDetail() {
     try {
       await loanService.linkTransaction(loan.id, { transactionId: txId, isPrepayment })
       loadData()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not link transaction.')
     }
   }
@@ -384,7 +386,7 @@ export function LoanDetail() {
             {scheduleView === 'monthly' && (
               <select
                 value={scheduleFilter}
-                onChange={(e) => setScheduleFilter(e.target.value as any)}
+                onChange={(e) => setScheduleFilter(e.target.value as 'all' | 'paid' | 'upcoming')}
                 className="brutal-thin px-sm py-xs text-xs font-bold uppercase"
               >
                 <option value="all">All EMIs ({scheduleData.schedule.length})</option>
@@ -510,7 +512,7 @@ export function LoanDetail() {
               💡 Suggested Transactions ({suggestions.length} found matching loan EMI / lender)
             </span>
             <div className="flex flex-col gap-xs max-h-36 overflow-auto">
-              {suggestions.map((s: any) => {
+              {suggestions.map((s) => {
                 const sAmt = s.amountPaise ? s.amountPaise / 100 : 0
                 return (
                   <div
@@ -563,7 +565,7 @@ export function LoanDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
-                {linkedTxs.map((t: any) => {
+                {linkedTxs.map((t) => {
                   const isPrepayment = t.loanMeta?.isPrepayment
                   const amt = t.amountPaise ? t.amountPaise / 100 : 0
                   return (
@@ -700,7 +702,7 @@ function EditLoanForm({
     try {
       await apiClient.put(`/loans/${loan.id}`, payload)
       onSaved()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       setError(err?.response?.data?.error || 'Could not update loan.')
     } finally {
       setLoading(false)

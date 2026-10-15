@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
@@ -22,10 +22,11 @@ export function Layout() {
   const needsFamily = !user?.familyAccountId
   const [navOpen, setNavOpen] = useState(false)
 
-  // Close the mobile drawer on every route change
-  useEffect(() => {
+  const [previousPath, setPreviousPath] = useState(pathname)
+  if (previousPath !== pathname) {
+    setPreviousPath(pathname)
     setNavOpen(false)
-  }, [pathname])
+  }
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-page)' }}>

@@ -20,7 +20,9 @@ const emiLoanSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     status: { type: String, enum: ['Active', 'Closed', 'Prepaid'] },
+    taxPayments: { type: [require('./taxpayment.schema')], default: [] },
     notes: { type: String },
+    prepayments: [{ transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' }, amount: Number, date: Date, notes: String }],
   },
   { timestamps: true },
 );

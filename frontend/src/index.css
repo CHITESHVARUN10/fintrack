@@ -386,14 +386,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .border-on-surface { border-color: var(--border) !important; }
 .dark .border-outline-variant { border-color: var(--border-subtle) !important; }
 /* Keep 3px brutal width in dark — stark structure, not 1px */
-.dark .border-\[3px\],
-.dark .border-b-\[3px\],
-.dark .border-t-\[3px\],
-.dark .border-r-\[3px\],
-.dark .border-l-\[3px\] {
-  border-width: 3px !important;
-  border-color: var(--border) !important;
-}
+.dark .border-\[3px\] { border-width: 3px !important; border-color: var(--border) !important; }
+.dark .border-b-\[3px\] { border-bottom-width: 3px !important; border-color: var(--border) !important; }
+.dark .border-t-\[3px\] { border-top-width: 3px !important; border-color: var(--border) !important; }
+.dark .border-r-\[3px\] { border-right-width: 3px !important; border-color: var(--border) !important; }
+.dark .border-l-\[3px\] { border-left-width: 3px !important; border-color: var(--border) !important; }
 .dark .border-b-2,
 .dark .border-t-2 { border-color: var(--border-subtle) !important; }
 .dark .border-2 { border-width: 1px !important; }

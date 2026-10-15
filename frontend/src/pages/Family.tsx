@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
@@ -11,7 +12,8 @@ import { apiClient } from '../services/apiClient'
 const AVATAR_COLORS = ['bg-brand-yellow', 'bg-tertiary-container', 'bg-error-container', 'bg-surface-variant']
 
 export function Family() {
-  const { members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
+  const navigate = useNavigate()
+  const { refreshSession, members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [family, setFamily] = useState<{ _id: string; inviteCode?: string; name: string } | null>(null)
   const [requests, setRequests] = useState<{ _id: string; userId: { name: string; email: string } }[]>([])
@@ -28,6 +30,7 @@ export function Family() {
   async function handleReview(id: string, action: 'accept' | 'reject') {
     if (!family) return
     await familyService.review(family._id, id, action)
+    await refreshSession()
     setRequests((prev) => prev.filter((x) => x._id !== id))
   }
 
@@ -148,7 +151,7 @@ export function Family() {
               <div className="flex gap-sm">
                 {isAdmin && m.role !== 'admin' && (
                   <button
-                    onClick={() => setActiveMemberId(m.id)}
+                    onClick={() => { setActiveMemberId(m.id); navigate('/dashboard') }}
                     className="bg-white border-[3px] border-on-surface px-sm py-xs font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
                   >
                     Dashboard

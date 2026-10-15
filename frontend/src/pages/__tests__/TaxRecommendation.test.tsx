@@ -22,17 +22,17 @@ describe('TaxRecommendation duplicate suggestion render bug (Final 3% Part 1)', 
     recommendedRegime: 'New',
     savingsAmount: 50000,
     explanation: 'Test explanation',
-    regimes: { 
+    regimes: {
       old: {
         salaryExemptions: { hra: 0, lta: 0 },
         deductions: [],
         slabs: []
-      }, 
+      },
       new: {
         salaryExemptions: { hra: 0, lta: 0 },
         deductions: [],
         slabs: []
-      } 
+      }
     },
     taxSavingSuggestions: suggestions,
     grossSalaryUsed: 1500000,

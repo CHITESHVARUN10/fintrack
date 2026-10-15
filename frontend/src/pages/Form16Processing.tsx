@@ -17,20 +17,20 @@ export function Form16Processing() {
   const location = useLocation()
   const file = (location.state as { file?: File } | null)?.file
   const [step, setStep] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(file ? null : 'No file was selected for upload.')
   const timer = useRef<number[]>([])
 
   useEffect(() => {
     if (!file) {
-      setError('No file was selected for upload.')
       return
     }
+    const timers = timer.current
     let active = true
 
     // Advance through the steps, then upload and route to the review screen.
-    timer.current.push(window.setTimeout(() => active && setStep(1), 900))
-    timer.current.push(window.setTimeout(() => active && setStep(2), 1900))
-    timer.current.push(
+    timers.push(window.setTimeout(() => active && setStep(1), 900))
+    timers.push(window.setTimeout(() => active && setStep(2), 1900))
+    timers.push(
       window.setTimeout(() => {
         if (!active) return
         form16Service
@@ -48,7 +48,7 @@ export function Form16Processing() {
 
     return () => {
       active = false
-      timer.current.forEach(clearTimeout)
+      timers.forEach(clearTimeout)
     }
   }, [navigate, file])
 

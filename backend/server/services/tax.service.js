@@ -1,7 +1,7 @@
 const Investment = require('../models/investment.model');
 const Insurance = require('../models/insurance.model');
 const EMILoan = require('../models/loan.model');
-const { investedValue } = require('../utils/investmentCalc');
+const EducationPayment = require('../models/education.model');
 const { TAX_CONFIG, DEFAULT_FY } = require('./taxConfig');
 
 const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
@@ -380,55 +380,23 @@ function annualize(amount, frequency) {
  * Aggregate deductible amounts from all financial modules for a user.
  * Values are estimates suitable for a quick comparison/recommendation.
  */
-async function aggregateDeductions(userId) {
-  const [investments, insurances, loans] = await Promise.all([
-    Investment.find({ memberId: userId }),
-    Insurance.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId }),
+async function aggregateDeductions(userId, financialYear = DEFAULT_FY) {
+  const groups = await Promise.all([
+    Investment.find({ memberId: userId }), Insurance.find({ memberId: userId }),
+    EMILoan.find({ memberId: userId }), EducationPayment.find({ memberId: userId }),
   ]);
-
-  let section80C = 0;
-  let section80CCD = 0;
-  let section80D = 0;
-  let section80E = 0;
-  let section80G = 0;
-  let section24 = 0;
-
-  for (const inv of investments) {
-    if (inv.fundCategory === 'ELSS' || inv.assetType === 'PPF') section80C += investedValue(inv);
-    if (inv.assetType === 'NPS') section80CCD += investedValue(inv);
-  }
-
-  for (const ins of insurances) {
-    if (ins.insuranceType === 'Health') {
-      section80D += annualize(ins.premiumAmount, ins.premiumFrequency);
+  const totals = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section80G: 0, section24: 0 };
+  const fields = { '80C': 'section80C', '80CCD': 'section80CCD', '80D': 'section80D', '80E': 'section80E', '80G': 'section80G', '24b': 'section24' };
+  for (const record of groups.flat()) {
+    for (const payment of record.taxPayments || []) {
+      const field = fields[payment.section];
+      if (field && payment.financialYear === financialYear && Number.isFinite(payment.amount) && payment.amount > 0) totals[field] += payment.amount;
     }
   }
-
-  for (const loan of loans) {
-    if (loan.loanType === 'Home' && loan.interestRate && loan.principalAmount) {
-      const annualInterest = Math.min((loan.interestRate / 100) * loan.principalAmount, 200000);
-      section24 += annualInterest;
-      const principalRepaid = Math.max(0, (loan.emiAmount || 0) * 12 - annualInterest);
-      section80C += principalRepaid;
-    }
-  }
-
-  // Section 80C has a hard cap — read from config.
-  section80C = Math.min(section80C, _cfg.DEDUCTION_CAPS.SECTION_80C_GROUP);
-
-  const totalDeductions =
-    section80C + section80CCD + section80D + section80E + section80G + section24;
-
-  return {
-    section80C: round(section80C),
-    section80CCD: round(section80CCD),
-    section80D: round(section80D),
-    section80E: round(section80E),
-    section80G: round(section80G),
-    section24: round(section24),
-    totalDeductions: round(totalDeductions),
-  };
+  // Do not treat a lifetime holding value, scheduled premium, or estimated EMI
+  // split as evidence of a contribution during this financial year.
+  for (const field of Object.keys(totals)) totals[field] = round(totals[field]);
+  return { ...totals, totalDeductions: Object.values(totals).reduce((sum, amount) => sum + amount, 0) };
 }
 
 // Plain-English descriptions of each deduction section. Static reference text

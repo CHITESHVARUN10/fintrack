@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -30,6 +32,7 @@ const STATUSES = ['Active', 'Lapsed', 'Matured', 'Claimed']
 // type (and all call sites) stay unchanged.
 function normalizeInsurance(raw: Record<string, unknown>): Insurance {
   return {
+    taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
     memberId: String(raw.memberId ?? ''),
     policyName: (raw.policyName as string) ?? '',
@@ -84,6 +87,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
   const [status, setStatus] = useState<Insurance['status']>(initial?.status ?? 'Active')
   const [tax80C, setTax80C] = useState(initial?.tax80C ?? false)
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -106,6 +110,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
       status,
       tax80C,
       notes: notes || undefined,
+      taxPayments,
     }
     try {
       if (initial) {
@@ -115,7 +120,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save policy.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save policy.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -242,6 +247,7 @@ function InsuranceForm({ initial, onSaved, onCancel }: InsuranceFormProps) {
           <span className="font-bold">{tax80C ? 'Yes' : 'No'}</span>
         </label>
       </Field>
+      <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
@@ -264,24 +270,22 @@ export function Insurance() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Insurance | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/insurance')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeInsurance))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load insurance.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load insurance.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (ins: Insurance) => {
     if (!window.confirm(`Delete "${ins.policyName}"?`)) return
@@ -289,7 +293,7 @@ export function Insurance() {
       await apiClient.delete(`/insurance/${ins.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete policy.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete policy.'
       setError(msg)
     }
   }

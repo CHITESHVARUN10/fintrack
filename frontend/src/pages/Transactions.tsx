@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CategorizeResult, CompareData, DuplicateGroup, LedgerSummary, LedgerTransaction, MergeResult, TransactionDetail, Vendor, VendorProduct } from '../types/api'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { transactionService, familyService, loanService } from '../services/api'
@@ -7,7 +9,7 @@ import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
 import { OPAQUE_HEADER_STYLE, OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
 
-type Tx = { _id: string; type: string; mode: string; amountPaise: number; category?: string; subcategory?: string; productName?: string; status: string; occurredAt: string; recipient?: { name?: string; upiId?: string }; sender?: { name?: string }; createdBy?: { name: string; email: string } | string; candidateOf?: string; confidence?: number; utr?: string; upiId?: string; visibility?: string }
+type Tx = LedgerTransaction
 
 const DEFAULT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
 let ALL_CATEGORIES: string[] = [...DEFAULT_CATEGORIES]
@@ -23,6 +25,11 @@ const TYPE_STYLES: Record<string, string> = {
   INTERNAL_TRANSFER: 'bg-brand-yellow',
   CASH_WITHDRAWAL: 'bg-surface-container-high',
   CASH_EXPENSE: 'bg-error-container text-on-error-container',
+}
+
+function localDateTime() {
+  const now = new Date()
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
 
 function money(paise?: number) { return `₹${((paise || 0) / 100).toLocaleString('en-IN')}` }
@@ -44,14 +51,15 @@ function monthLabel(fromDate: string) {
 }
 
 export function Transactions() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
+  const ownsTransaction = (tx: LedgerTransaction) => String(typeof tx.createdBy === 'object' ? tx.createdBy._id : tx.createdBy) === user?.id
   const [searchParams, setSearchParams] = useSearchParams()
   const [familyView, setFamilyView] = useState(false)
   const [items, setItems] = useState<Tx[]>([])
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
-  const [summary, setSummary] = useState<any>(null)
-  const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '', visibility: 'FAMILY' })
+  const [summary, setSummary] = useState<LedgerSummary | null>(null)
+  const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: localDateTime(), recipient: '', toUserId: '', visibility: 'FAMILY' })
   const [q, setQ] = useState(() => searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
@@ -62,17 +70,17 @@ export function Transactions() {
   const [memberFilter, setMemberFilter] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<any>(null)
-  const [compareData, setCompareData] = useState<any>(null)
+  const [detail, setDetail] = useState<TransactionDetail | null>(null)
+  const [compareData, setCompareData] = useState<CompareData | null>(null)
   const [catEditId, setCatEditId] = useState<string | null>(null)
   const [catEditVal, setCatEditVal] = useState('')
-  const [vendorSuggest, setVendorSuggest] = useState<any[]>([])
+  const [vendorSuggest, setVendorSuggest] = useState<Vendor[]>([])
   const [showVendorSuggest, setShowVendorSuggest] = useState(false)
   const vendorSuggestRef = useRef(0)
   const [dynamicCats, setDynamicCats] = useState<string[]>(DEFAULT_CATEGORIES)
 
   useEffect(()=>{
-    apiClient.get('/recipients/categories').then((r:any)=>{
+    apiClient.get('/recipients/categories').then((r)=>{
       const cats = r.data?.categories || r.data?.items || []
       if(Array.isArray(cats) && cats.length){
         const merged = Array.from(new Set([...cats, ...DEFAULT_CATEGORIES]))
@@ -84,8 +92,9 @@ export function Transactions() {
     apiClient.get('/transactions', { params:{ limit: 1 } }).catch(()=>{})
   }, [])
 
-  function load() {
-    setLoading(true)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
+
     const params: Record<string, string> = { familyView: String(familyView) }
     if (statusFilter) params.status = statusFilter
     if (categoryFilter) params.category = categoryFilter
@@ -94,18 +103,19 @@ export function Transactions() {
     if (modeFilter) params.mode = modeFilter
     if (vendorFilter.trim()) params.vendor = vendorFilter.trim()
     if (familyView && memberFilter) params.memberId = memberFilter
-    transactionService.list(params as any).then((d: any) => { setItems(d.items || d || []); setSummary(d.summary || null) }).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
-  // keep q/vendor in sync with URL ?q= and ?highlight=
-  useEffect(() => {
+    transactionService.list(params).then((d) => { setItems(d.items || d || []); setSummary(d.summary || null) }).finally(() => setLoading(false))
+  }), [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
+  useEffect(() => { load() }, [load])
+  // External navigation synchronizes local filters before rendering the next frame.
+  const [previousSearch, setPreviousSearch] = useState(searchParams.toString())
+  if (previousSearch !== searchParams.toString()) {
+    setPreviousSearch(searchParams.toString())
     const urlQ = searchParams.get('q')
     const highlight = searchParams.get('highlight')
     if (urlQ !== null && urlQ !== q) setQ(urlQ)
     if (urlQ && urlQ !== vendorFilter) setVendorFilter(urlQ)
-    if (highlight && highlight !== detailId) setDetailId(highlight)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+    if (highlight !== detailId) setDetailId(highlight)
+  }
 
   // reflect detail drawer in URL so back button works
   useEffect(() => {
@@ -118,20 +128,20 @@ export function Transactions() {
     setSearchParams(p, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailId])
-  useEffect(() => { apiClient.get('/families/me').then((r) => r.data?.family?._id ? familyService.members(r.data.family._id).then((d: any) => setMembers((d.members || []).map((m: any) => ({ id: m.id, name: m.name })))).catch(() => {}) : null).catch(() => {}) }, [])
+  useEffect(() => { apiClient.get('/families/me').then((r) => r.data?.family?._id ? familyService.members(r.data.family._id).then((d) => setMembers((d.members || []).map((m) => ({ id: m.id, name: m.name })))).catch(() => {}) : null).catch(() => {}) }, [])
 
   useEffect(() => {
-    if (!detailId) { setDetail(null); return }
-    transactionService.get(detailId).then((d: any) => setDetail(d)).catch(() => setDetail(null))
+    if (!detailId) return
+    transactionService.get(detailId).then((d) => setDetail(d)).catch(() => setDetail(null))
   }, [detailId])
 
   // autocomplete vendor for recipient field
   useEffect(()=>{
     const q = form.recipient.trim()
-    if(q.length < 2){ setVendorSuggest([]); setShowVendorSuggest(false); return }
+    if(q.length < 2) return
     const seq = ++vendorSuggestRef.current
     const t = setTimeout(()=>{
-      apiClient.get('/recipients', { params:{ q, limit:5 }}).then((r:any)=>{
+      apiClient.get('/recipients', { params:{ q, limit:5 }}).then((r)=>{
         if(seq!==vendorSuggestRef.current) return
         const arr = r.data?.items||[]
         setVendorSuggest(arr)
@@ -145,15 +155,15 @@ export function Transactions() {
     e.preventDefault()
     const amountPaise = Math.round(Number(form.amount || 0) * 100)
     if (!amountPaise) return
-    await transactionService.create({ amountPaise, type: form.type, mode: form.mode, category: form.category, occurredAt: form.occurredAt, recipient: form.recipient ? { name: form.recipient } : undefined, visibility: form.visibility, familyTransfer: (form as any).toUserId ? { toUserId: (form as any).toUserId } : undefined } as any)
-    setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: new Date().toISOString().slice(0, 16), recipient: '', visibility: 'FAMILY' })
+    await transactionService.create({ amountPaise, type: form.type, mode: form.mode, category: form.category, occurredAt: new Date(form.occurredAt).toISOString(), recipient: form.recipient ? { name: form.recipient } : undefined, visibility: form.visibility, familyTransfer: form.toUserId ? { toUserId: form.toUserId } : undefined })
+    setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: localDateTime(), recipient: '', toUserId: '', visibility: 'FAMILY' })
     load()
   }
 
   const filtered = useMemo(() => {
     if (!q.trim()) return items
     const needle = q.toLowerCase()
-    return items.filter((t) => [t.type, t.category, t.mode, t.status, (t.recipient as any)?.name, typeof t.createdBy === 'object' ? (t.createdBy as any)?.name : ''].join(' ').toLowerCase().includes(needle))
+    return items.filter((t) => [t.type, t.category, t.mode, t.status, (t.recipient)?.name, typeof t.createdBy === 'object' ? (t.createdBy)?.name : ''].join(' ').toLowerCase().includes(needle))
   }, [items, q])
 
   function toggleSelect(id: string) {
@@ -165,8 +175,8 @@ export function Transactions() {
   const [reviewSearchMode, setReviewSearchMode] = useState<'manual' | 'auto'>('manual')
   const [dupSelected, setDupSelected] = useState<Set<string>>(new Set())
   const [dupMergeLoading, setDupMergeLoading] = useState(false)
-  const [dupMergeResult, setDupMergeResult] = useState<any>(null)
-  const [autoGroups, setAutoGroups] = useState<any[]>([])
+  const [dupMergeResult, setDupMergeResult] = useState<MergeResult | null>(null)
+  const [autoGroups, setAutoGroups] = useState<DuplicateGroup[]>([])
   const [autoLoading, setAutoLoading] = useState(false)
   const [autoError, setAutoError] = useState<string | null>(null)
 
@@ -198,27 +208,26 @@ export function Transactions() {
       setDupMergeResult(res)
       setDupSelected(new Set())
       load()
-    } catch (e: any) {
+    } catch (caught: unknown) { const e = toApiError(caught);
       setDupMergeResult({ error: e?.response?.data?.error || e.message || 'Bulk merge failed' })
     } finally { setDupMergeLoading(false) }
   }
 
-  async function findAutoGroups() {
-    setAutoLoading(true)
-    setAutoError(null)
+  const findAutoGroups = useCallback(() => Promise.resolve().then(async () => {
+    setAutoLoading(true); setAutoError(null);
     try {
       const params: Record<string, string> = { familyView: String(familyView) }
       if (fromDate) params.from = fromDate
       if (toDate) params.to = toDate
       const res = await transactionService.duplicateGroups(params)
       setAutoGroups(res.groups || [])
-    } catch (e: any) {
+    } catch (caught: unknown) { const e = toApiError(caught);
       setAutoError(e?.response?.data?.error || e.message || 'Auto search failed')
     } finally { setAutoLoading(false) }
-  }
+  }), [fromDate, toDate, familyView])
 
-  function toggleAutoGroup(group: any) {
-    const ids = (group.items || []).map((i: any) => String(i._id))
+  function toggleAutoGroup(group: DuplicateGroup) {
+    const ids = (group.items || []).map((i) => String(i._id))
     setDupSelected((prev) => {
       const n = new Set(prev)
       const allIn = ids.every((id: string) => n.has(id))
@@ -233,8 +242,7 @@ export function Transactions() {
   useEffect(() => {
     if (!reviewMode || reviewSearchMode !== 'auto') return
     findAutoGroups()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewMode, reviewSearchMode, fromDate, toDate, familyView])
+  }, [reviewMode, reviewSearchMode, findAutoGroups])
 
   async function doCompare() {
     if (selectedIds.size < 2) return
@@ -243,13 +251,13 @@ export function Transactions() {
   }
 
   async function saveCategory(id: string) {
-    await transactionService.update(id, { category: catEditVal } as any)
+    await transactionService.update(id, { category: catEditVal })
     setCatEditId(null); load()
-    if (detailId === id) { const d: any = await transactionService.get(id); setDetail(d) }
+    if (detailId === id) { const d = await transactionService.get(id); setDetail(d) }
   }
 
   const [bulkLoading, setBulkLoading] = useState(false)
-  const [bulkResult, setBulkResult] = useState<any>(null)
+  const [bulkResult, setBulkResult] = useState<CategorizeResult | null>(null)
   const [bulkResolveLoading, setBulkResolveLoading] = useState(false)
   const otherCount = useMemo(() => items.filter((t) => !t.category || t.category === 'Other').length, [items])
   const pendingCount = useMemo(() => items.filter((t) => t.status === 'PENDING_REVIEW').length, [items])
@@ -258,10 +266,10 @@ export function Transactions() {
     setBulkLoading(true)
     setBulkResult(null)
     try {
-      const res: any = await apiClient.post('/transactions/bulk-categorize', { familyView, confidenceThreshold: 30, limit: 200 })
+      const res = await apiClient.post('/transactions/bulk-categorize', { familyView, confidenceThreshold: 30, limit: 200 })
       setBulkResult(res.data)
       load()
-    } catch (e: any) {
+    } catch (caught: unknown) { const e = toApiError(caught);
       setBulkResult({ error: e?.response?.data?.error || e.message || 'Bulk categorize failed' })
     } finally { setBulkLoading(false) }
   }
@@ -378,7 +386,7 @@ export function Transactions() {
           )}
           <input value={vendorFilter} onChange={(e)=> setVendorFilter(e.target.value)} placeholder="Vendor" className="brutal-thin px-sm py-xs text-sm w-full sm:w-28 max-w-full min-w-0" />
           <select value={modeFilter} onChange={(e)=> setModeFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All modes</option><option value="UPI">UPI</option><option value="BANK">BANK</option><option value="CASH">CASH</option><option value="CARD">CARD</option><option value="OTHER">OTHER</option></select>
-          {familyView && <select value={memberFilter} onChange={(e)=> setMemberFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All members</option>{members.map((m:any)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select>}
+          {familyView && <select value={memberFilter} onChange={(e)=> setMemberFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All members</option>{members.map((m)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select>}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="brutal-thin px-sm py-xs text-sm w-full sm:w-28 max-w-full min-w-0" />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All statuses</option><option value="PENDING_REVIEW">Pending review</option><option value="ACTIVE">Active</option><option value="RECONCILED">Reconciled</option></select>
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All categories</option>{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
@@ -412,7 +420,7 @@ export function Transactions() {
                   <span className="font-bold">Scanned {bulkResult.scanned}, updated {bulkResult.updated}, still Other {bulkResult.stillOther}</span>
                   {bulkResult.details && bulkResult.details.length > 0 && (
                     <div className="mt-xs flex flex-col gap-xs max-h-32 overflow-auto">
-                      {bulkResult.details.slice(0, 10).map((d: any) => (
+                      {bulkResult.details.slice(0, 10).map((d) => (
                         <div key={d.id} className="flex flex-wrap justify-between gap-sm min-w-0">
                           <span>{(d.amount / 100).toFixed(2)} {d.oldCategory} → {d.newCategory}</span>
                           <span className="opacity-60">{d.confidence}% {d.rule}</span>
@@ -481,8 +489,8 @@ export function Transactions() {
               {!autoError && autoGroups.length === 0 && !autoLoading && (
                 <div className="text-xs opacity-80">No duplicate groups in this month scope — try another month or Manual select.</div>
               )}
-              {autoGroups.map((g: any) => {
-                const ids = (g.items || []).map((i: any) => String(i._id))
+              {autoGroups.map((g) => {
+                const ids = (g.items || []).map((i) => String(i._id))
                 const allIn = ids.length > 0 && ids.every((id: string) => dupSelected.has(id))
                 return (
                   <div key={g.key + String(g.items?.[0]?._id)} className="brutal-thin bg-white p-sm flex flex-col gap-xs">
@@ -496,7 +504,7 @@ export function Transactions() {
                       </button>
                     </div>
                     <div className="text-[11px] opacity-70">
-                      {(g.items || []).slice(0, 6).map((i: any) => `${fmtDate(i.occurredAt)} ${i.status}`).join(' · ')}
+                      {(g.items || []).slice(0, 6).map((i) => `${fmtDate(i.occurredAt)} ${i.status}`).join(' · ')}
                       {(g.items || []).length > 6 ? ` +${(g.items || []).length - 6} more` : ''}
                     </div>
                   </div>
@@ -511,7 +519,7 @@ export function Transactions() {
               ) : (
                 <span className="font-bold">
                   Merged into {dupMergeResult.kept} group(s), voided {dupMergeResult.voided}
-                  {(dupMergeResult.groups || []).slice(0, 5).map((g: any) => ` · ${((g.amountPaise || 0) / 100).toLocaleString('en-IN')} ×${g.count}`).join('')}
+                  {(dupMergeResult.groups || []).slice(0, 5).map((g) => ` · ${((g.amountPaise || 0) / 100).toLocaleString('en-IN')} ×${g.count}`).join('')}
                 </span>
               )}
             </div>
@@ -540,10 +548,10 @@ export function Transactions() {
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Category<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="brutal-thin px-sm py-xs">{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1">When<input type="datetime-local" value={form.occurredAt} onChange={(e) => setForm({ ...form, occurredAt: e.target.value })} className="brutal-thin px-sm py-xs" /></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1 relative">Recipient<input value={form.recipient} onChange={(e) => setForm({ ...form, recipient: e.target.value })} onFocus={()=> vendorSuggest.length && setShowVendorSuggest(true)} onBlur={()=> setTimeout(()=> setShowVendorSuggest(false),200)} className="brutal-thin px-sm py-xs" placeholder="Vendor — type to search" autoComplete="off" />
-          {showVendorSuggest && vendorSuggest.length>0 && (
+          {showVendorSuggest && form.recipient.trim().length >= 2 && vendorSuggest.length>0 && (
             <div className="absolute top-full left-0 right-0 mt-1 brutal bg-white z-20 max-h-40 overflow-auto flex flex-col max-w-[calc(100vw-2rem)]">
-              {vendorSuggest.map((v:any)=> (
-                <button key={v._id} type="button" onMouseDown={(e)=>{ e.preventDefault(); setForm({ ...form, recipient: v.label }); setShowVendorSuggest(false); if(v.primaryCategory && v.primaryCategory!=='Other' && form.category==='Other') setForm(f=> ({ ...f, recipient: v.label, category: v.primaryCategory })) }} className="text-left px-sm py-xs text-xs hover:bg-brand-yellow flex justify-between">
+              {vendorSuggest.map((v)=> (
+                <button key={v._id} type="button" onMouseDown={(e)=>{ e.preventDefault(); setForm({ ...form, recipient: v.label }); setShowVendorSuggest(false); if(v.primaryCategory && v.primaryCategory!=='Other' && form.category==='Other') setForm(f=> ({ ...f, recipient: v.label, category: v.primaryCategory || f.category })) }} className="text-left px-sm py-xs text-xs hover:bg-brand-yellow flex justify-between">
                   <span className="font-bold">{v.label}</span><span className="opacity-60">{v.primaryCategory} · {v.vendorKey}</span>
                 </button>
               ))}
@@ -551,7 +559,7 @@ export function Transactions() {
             </div>
           )}
         </label>
-        {form.type === 'INTERNAL_TRANSFER' && <label className="flex flex-col text-xs font-bold uppercase gap-1">To member<select value={(form as any).toUserId || ''} onChange={(e) => setForm({ ...form, toUserId: e.target.value } as any)} className="brutal-thin px-sm py-xs"><option value="">Select</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}
+        {form.type === 'INTERNAL_TRANSFER' && <label className="flex flex-col text-xs font-bold uppercase gap-1">To member<select value={form.toUserId || ''} onChange={(e) => setForm({ ...form, toUserId: e.target.value })} className="brutal-thin px-sm py-xs"><option value="">Select</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>}
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Visibility<select value={form.visibility} onChange={(e)=> setForm({...form, visibility:e.target.value})} className="brutal-thin px-sm py-xs"><option value="FAMILY">Family</option><option value="PRIVATE">Private (hidden)</option></select></label>
         <button type="submit" className="brutal bg-brand-yellow px-md py-xs font-bold uppercase">+ Add</button>
       </form>
@@ -567,7 +575,7 @@ export function Transactions() {
         <div className="brutal bg-white p-md mb-md">
           <div className="flex flex-wrap justify-between items-center gap-sm mb-sm"><h3 className="font-bold uppercase">Compare</h3><button onClick={() => setCompareData(null)} className="brutal-thin px-sm py-xs text-xs font-bold uppercase">Close</button></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-md min-w-0">
-            {(compareData.items || []).map((t: any) => (
+            {(compareData.items || []).map((t) => (
               <div key={t._id} className="brutal-thin p-sm bg-surface-container-low">
                 <div className="font-bold text-sm">{money(t.amountPaise)} — {t.type}</div>
                 <div className="text-xs">Date: {fmtDate(t.occurredAt)} • Mode: {t.mode} • Category: {t.category || '—'} • By: {typeof t.createdBy === 'object' ? t.createdBy?.name : '—'}</div>
@@ -585,7 +593,7 @@ export function Transactions() {
               <thead className="bg-on-surface text-white whitespace-nowrap"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Sub / Loan</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
               <tbody>
                 {filtered.map((t) => {
-                  const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy as any).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
+                  const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
                   const isActive = detailId===t._id
                   const isDupSelected = dupSelected.has(t._id)
                   return (
@@ -610,17 +618,17 @@ export function Transactions() {
                             <button onClick={(e) => { e.stopPropagation(); setCatEditId(null) }} className="brutal bg-white px-xs py-0.5 text-xs font-bold">Cancel</button>
                           </span>
                         ) : (
-                          <button onClick={(e) => { e.stopPropagation(); setCatEditId(t._id); setCatEditVal(t.category || 'Other') }} className="brutal-thin px-xs py-0.5 text-xs bg-white hover:bg-brand-yellow">{t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}</button>
+                          <button disabled={!ownsTransaction(t)} onClick={(e) => { e.stopPropagation(); setCatEditId(t._id); setCatEditVal(t.category || 'Other') }} className="brutal-thin px-xs py-0.5 text-xs bg-white hover:bg-brand-yellow">{t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}</button>
                         )}
                       </td>
                       <td className="px-sm py-xs text-xs">
-                        {(t as any).loanRef ? (
-                          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block" title={typeof (t as any).loanRef==='object'? (t as any).loanRef.loanName: 'Loan'}>
-                            {(t as any).loanMeta?.isPrepayment ? '⭐ Prepay' : 'Loan EMI'}: {typeof (t as any).loanRef==='object' ? ((t as any).loanRef.loanName||'Loan') : 'Linked'}
+                        {t.loanRef ? (
+                          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block" title={typeof t.loanRef==='object'? t.loanRef.loanName: 'Loan'}>
+                            {t.loanMeta?.isPrepayment ? '⭐ Prepay' : 'Loan EMI'}: {typeof t.loanRef==='object' ? (t.loanRef.loanName||'Loan') : 'Linked'}
                           </span>
-                        ) : (t as any).subscriptionRef ? (
+                        ) : t.subscriptionRef ? (
                           <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block">
-                            {typeof (t as any).subscriptionRef==='object' ? ((t as any).subscriptionRef.name||'Sub') : 'Sub'}
+                            {typeof t.subscriptionRef==='object' ? (t.subscriptionRef.name||'Sub') : 'Sub'}
                           </span>
                         ) : (
                           <span className="opacity-30">—</span>
@@ -649,7 +657,7 @@ export function Transactions() {
         </div>
       )}
 
-      {detail && (()=>{ const idx=filtered.findIndex((x:any)=> x._id===detailId); const prevId= idx>0? filtered[idx-1]._id: null; const nextId= idx>=0 && idx<filtered.length-1? filtered[idx+1]._id: null; return (
+      {detail && (()=>{ const idx=filtered.findIndex((x)=> x._id===detailId); const prevId= idx>0? filtered[idx-1]._id: null; const nextId= idx>=0 && idx<filtered.length-1? filtered[idx+1]._id: null; return (
         <div className="fixed inset-0 z-[100] flex justify-end" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={() => setDetailId(null)} aria-hidden="true" />
           <div className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-lg bg-white brutal h-screen max-h-screen overflow-y-auto min-w-0" style={OPAQUE_PANEL_STYLE}>
@@ -681,17 +689,17 @@ export function Transactions() {
                 ) : (
                   <span className="flex items-center gap-sm">
                     <span className="font-medium">{detail.transaction.category || '—'}</span>
-                    <button onClick={()=> { setCatEditId(detail.transaction._id); setCatEditVal(detail.transaction.category||'Other')}} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold uppercase">Edit</button>
+                    <button disabled={!ownsTransaction(detail.transaction)} onClick={()=> { setCatEditId(detail.transaction._id); setCatEditVal(detail.transaction.category||'Other')}} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold uppercase">Edit</button>
                   </span>
                 )}
               </div>
-              {detail.transaction.subcategory && <DetailRow label="Subcategory" value={detail.transaction.subcategory} />}
+              {detail.transaction.subcategory && <DetailRow label="Subcategory" value={detail.transaction.subcategory || ''} />}
               {detail.transaction.productName && <DetailRow label="Product" value={detail.transaction.productName} />}
-              {detail.transaction.categorySplit && detail.transaction.categorySplit.length>0 && <div className="brutal-thin bg-surface-container-low p-xs text-xs">Split: {detail.transaction.categorySplit.map((s:any)=> `${s.category} ${(s.amountPaise/100).toLocaleString('en-IN')}`).join(' + ')}</div>}
-              {detail.transaction.lineItems && detail.transaction.lineItems.length>0 && <div className="brutal-thin bg-surface-container-low p-xs text-xs">Items: {detail.transaction.lineItems.map((li:any)=> `${li.productName||''} ${li.category||''} ${(li.amountPaise/100).toLocaleString('en-IN')}`).join(' · ')}</div>}
+              {detail.transaction.categorySplit && detail.transaction.categorySplit.length>0 && <div className="brutal-thin bg-surface-container-low p-xs text-xs">Split: {detail.transaction.categorySplit.map((s)=> `${s.category} ${(s.amountPaise/100).toLocaleString('en-IN')}`).join(' + ')}</div>}
+              {detail.transaction.lineItems && detail.transaction.lineItems.length>0 && <div className="brutal-thin bg-surface-container-low p-xs text-xs">Items: {detail.transaction.lineItems.map((li)=> `${li.productName||''} ${li.category||''} ${(li.amountPaise/100).toLocaleString('en-IN')}`).join(' · ')}</div>}
               {vendorInfoCategoryChip(detail)}
               <DetailRow label="Date" value={fmtDate(detail.transaction.occurredAt)} />
-              <DetailRow label="Made by" value={typeof detail.transaction.createdBy === 'object' ? detail.transaction.createdBy?.name || detail.transaction.createdBy?.email : detail.transaction.createdBy || '—'} />
+              <DetailRow label="Made by" value={typeof detail.transaction.createdBy === 'object' ? detail.transaction.createdBy?.name || detail.transaction.createdBy?.email || '—' : detail.transaction.createdBy || '—'} />
               <DetailRow label="Recipient" value={detail.transaction.recipient?.name || '—'} />
               <DetailRow label="Sender" value={detail.transaction.sender?.name || '—'} />
               <DetailRow label="UTR / Ref" value={detail.transaction.utr || detail.sources?.[0]?.utr || '—'} />
@@ -699,12 +707,12 @@ export function Transactions() {
               <div className="flex flex-wrap justify-between items-center gap-sm min-w-0">
                 <span className="text-on-surface-variant uppercase text-xs font-bold tracking-wider">Visibility</span>
                 <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${detail.transaction.visibility==='PRIVATE'?'bg-on-surface text-white':'bg-white'}`}>{detail.transaction.visibility||'FAMILY'}</span>
-                <button onClick={async()=>{ await transactionService.update(detail.transaction._id, { visibility: detail.transaction.visibility==='PRIVATE'?'FAMILY':'PRIVATE' } as any); const d:any=await transactionService.get(detail.transaction._id); setDetail(d); load(); }} className="brutal bg-white px-xs py-0.5 text-xs font-bold uppercase">{detail.transaction.visibility==='PRIVATE'?'Make Family':'Make Private (hide)'}</button>
+                <button disabled={!ownsTransaction(detail.transaction)} onClick={async()=>{ await transactionService.update(detail.transaction._id, { visibility: detail.transaction.visibility==='PRIVATE'?'FAMILY':'PRIVATE' }); const d=await transactionService.get(detail.transaction._id); setDetail(d); load(); }} className="brutal bg-white px-xs py-0.5 text-xs font-bold uppercase">{detail.transaction.visibility==='PRIVATE'?'Make Family':'Make Private (hide)'}</button>
               </div>
               <div className="text-[11px] opacity-60">Private is invisible to other family members even in dashboard/budgets/reports.</div>
-              <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
-              <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
-              <LoanLinkBox tx={detail.transaction} onDone={async()=>{ const d:any = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />
+              {ownsTransaction(detail.transaction) && <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
+              {ownsTransaction(detail.transaction) && <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
+              {ownsTransaction(detail.transaction) && <LoanLinkBox tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
               <DetailRow label="Status" value={detail.transaction.status} />
               <DetailRow label="Confidence" value={detail.transaction.confidence != null ? `${detail.transaction.confidence}%` : '—'} />
               {detail.transaction.candidateOf && <DetailRow label="Possible duplicate of" value={String(detail.transaction.candidateOf).slice(0, 12)} />}
@@ -712,9 +720,9 @@ export function Transactions() {
               <div>
                 <div className="font-bold uppercase text-xs mb-xs">Source records ({(detail.sources || []).length})</div>
                 <div className="flex flex-col gap-xs">
-                  {(detail.sources || []).map((s: any) => (
+                  {(detail.sources || []).map((s) => (
                     <div key={s._id} className="brutal-thin p-sm bg-surface-container-low text-xs">
-                      <div className="font-bold">{s.source} — {new Date(s.createdAt).toLocaleString('en-IN')}</div>
+                      <div className="font-bold">{s.source} — {new Date(s.createdAt || '').toLocaleString('en-IN')}</div>
                       {s.utr && <div>UTR: {s.utr}</div>}
                       {s.upiId && <div>UPI: {s.upiId}</div>}
                       {s.transactionIdExt && <div>TxnId: {s.transactionIdExt}</div>}
@@ -724,7 +732,7 @@ export function Transactions() {
               </div>
               <div className="flex flex-wrap gap-sm min-w-0">
                 <button onClick={() => { if (detailId) { setSelectedIds((prev) => new Set(prev).add(detailId)); setDetailId(null) } }} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm">Add to compare</button>
-                {detail.transaction.status === 'PENDING_REVIEW' && (
+                {ownsTransaction(detail.transaction) && detail.transaction.status === 'PENDING_REVIEW' && (
                   <>
                     <button onClick={async () => { await transactionService.resolve(detail.transaction._id, 'merge', detail.transaction.candidateOf); setDetailId(null); load() }} className="brutal bg-white px-md py-xs font-bold uppercase text-sm">Merge duplicate</button>
                     <button onClick={async () => { await transactionService.resolve(detail.transaction._id, 'keepSeparate'); setDetailId(null); load() }} className="brutal bg-white px-md py-xs font-bold uppercase text-sm">Keep separate</button>
@@ -739,51 +747,50 @@ export function Transactions() {
   )
 }
 
-function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
+function TeachVendorBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()=>void }){
   const reqSeqRef = useRef(0)
   const [busy,setBusy]=useState(false)
   const [toast,setToast]=useState<string|null>(null)
   const [offerings, setOfferings] = useState<string[]>([])
-  const [vendorInfo, setVendorInfo] = useState<any>(null)
+  const [vendorInfo, setVendorInfo] = useState<Vendor | null>(null)
   const [customCat, setCustomCat] = useState('')
   const [productName, setProductName] = useState('')
-  const [suggestion, setSuggestion] = useState<any>(null)
+  const [suggestion, setSuggestion] = useState<VendorProduct | null>(null)
   const vendorKey = (()=>{
     const raw = String(tx.recipient?.name||tx.upiId||'')
     const low = raw.toLowerCase()
-    const m = low.match(/^upi\/([^\/]+)\//)
+    const m = low.match(/^upi\/([^/]+)\//)
     let s = m ? m[1] : low
-    s = s.replace(/[@\/]/g,' ').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim().slice(0,80)
+    s = s.replace(/[@/]/g,' ').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim().slice(0,80)
     return s
   })()
   const txKey = String(tx._id)
   useEffect(()=>{
-    setVendorInfo(null); setOfferings([]); setToast(null); setSuggestion(null); setProductName('');
     const reqId = ++reqSeqRef.current;
-    apiClient.get('/recipients/by-key', { params:{ vendorKey, upiId: tx.upiId || tx.recipient?.upiId || '', label: tx.recipient?.name||'' }}).then((r:any)=>{
+    apiClient.get<{ vendor: Vendor }>('/recipients/by-key', { params:{ vendorKey, upiId: tx.upiId || tx.recipient?.upiId || '', label: tx.recipient?.name||'' }}).then((r)=>{
       if(reqId !== reqSeqRef.current) return;
       const v=r.data?.vendor;
       if(v){
         setVendorInfo(v);
-        const cats=(v.offerings||[]).map((o:any)=> o.category);
+        const cats=(v.offerings||[]).map((o)=> o.category);
         if(cats.length) setOfferings(cats);
         // fetch amount suggestion if vendor has products
         if(v._id && tx.amountPaise){
-          apiClient.get(`/recipients/${v._id}/suggest`, { params:{ amountPaise: tx.amountPaise }}).then((s:any)=>{
+          apiClient.get(`/recipients/${v._id}/suggest`, { params:{ amountPaise: tx.amountPaise }}).then((s)=>{
             if(reqId!==reqSeqRef.current) return
             if(s.data?.suggestion) setSuggestion(s.data.suggestion)
           }).catch(()=>{})
         }
       }
     }).catch(()=>{})
-  }, [txKey, vendorKey])
+  }, [txKey, vendorKey, tx.amountPaise, tx.recipient?.name, tx.recipient?.upiId, tx.upiId])
   function toggle(cat:string){ setOfferings(p=> p.includes(cat)? p.filter(c=> c!==cat): [...p, cat]) }
   function addCustom(){
     const c = customCat.trim()
     if(!c) return
     const normalized = c[0].toUpperCase()+c.slice(1).toLowerCase()
     if(!offerings.includes(normalized)) setOfferings(p=> [...p, normalized])
-    if(!ALL_CATEGORIES.includes(normalized as any)) (ALL_CATEGORIES as string[]).push(normalized)
+    if(!(ALL_CATEGORIES as readonly string[]).includes(normalized)) (ALL_CATEGORIES as string[]).push(normalized)
     setCustomCat('')
   }
   async function teach(){
@@ -791,10 +798,10 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
     setBusy(true)
     setToast(null)
     try{
-      const resp:any = await apiClient.post('/recipients', { label: tx.recipient?.name||tx.upiId||'', vendorKey, upiId: tx.upiId||tx.recipient?.upiId||undefined, categories: offerings })
-      const rec = resp?.data?.recipient || resp?.recipient || resp?.data
+      const resp = await apiClient.post('/recipients', { label: tx.recipient?.name||tx.upiId||'', vendorKey, upiId: tx.upiId||tx.recipient?.upiId||undefined, categories: offerings })
+      const rec = resp.data.recipient || resp.data
       const vendorId: string | undefined = rec?._id
-      if(!vendorId) throw new Error(resp?.data?.error || resp?.data?.message || resp?.error || resp?.message || 'No vendor id returned')
+      if(!vendorId) throw new Error(resp.data.error || resp.data.message || 'No vendor id returned')
       // if productName supplied, add product with this amount
       if(productName.trim()){
         await apiClient.post(`/recipients/${vendorId}/products`, {
@@ -803,11 +810,11 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
           typicalAmountPaise: tx.amountPaise,
         }).catch(()=>{})
         // also patch transaction with productName so history reflects and link vendor
-        await apiClient.patch(`/transactions/${tx._id}`, { productName: productName.trim(), category: offerings[0], recipientVendorRef: vendorId } as any).catch(()=>{})
+        await apiClient.patch(`/transactions/${tx._id}`, { productName: productName.trim(), category: offerings[0], recipientVendorRef: vendorId }).catch(()=>{})
       } else {
         await apiClient.post(`/recipients/${vendorId}/apply`, { overwrite: false }).catch(()=>{})
         // link transaction to vendor even when only category taught
-        await apiClient.patch(`/transactions/${tx._id}`, { recipientVendorRef: vendorId, category: offerings[0] } as any).catch(()=>{})
+        await apiClient.patch(`/transactions/${tx._id}`, { recipientVendorRef: vendorId, category: offerings[0] }).catch(()=>{})
         if(suggestion && suggestion.name){
           // suggest chip already shows; user can type productName next time
         }
@@ -816,29 +823,29 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
       setToast(`Vendor saved — future payments suggest ${offerings.join(', ')}${productName? ` · ${productName.trim()} ₹${(tx.amountPaise/100).toFixed(0)}`:''}`)
       setTimeout(()=> setToast(null), 2800)
       onDone()
-    } catch(e:any){
+    } catch (caught: unknown) { const e = toApiError(caught);
       const status = e?.response?.status
       const data = e?.response?.data
       if(status===409){
         // idempotent duplicate – backend already updated vendor, refetch and treat as success
         try{
-          const refetch:any = await apiClient.get('/recipients/by-key', { params:{ vendorKey, upiId: tx.upiId||tx.recipient?.upiId||'', label: tx.recipient?.name||'' }})
+          const refetch = await apiClient.get<{ vendor: Vendor }>('/recipients/by-key', { params:{ vendorKey, upiId: tx.upiId||tx.recipient?.upiId||'', label: tx.recipient?.name||'' }})
           const v = refetch.data?.vendor
           if(v){
             setVendorInfo(v)
             if(productName.trim()){
               await apiClient.post(`/recipients/${v._id}/products`, { name: productName.trim(), category: offerings[0], typicalAmountPaise: tx.amountPaise }).catch(()=>{})
-              await apiClient.patch(`/transactions/${tx._id}`, { productName: productName.trim(), category: offerings[0], recipientVendorRef: v._id } as any).catch(()=>{})
+              await apiClient.patch(`/transactions/${tx._id}`, { productName: productName.trim(), category: offerings[0], recipientVendorRef: v._id }).catch(()=>{})
             } else {
               await apiClient.post(`/recipients/${v._id}/apply`, { overwrite:false }).catch(()=>{})
-              await apiClient.patch(`/transactions/${tx._id}`, { recipientVendorRef: v._id, category: offerings[0] } as any).catch(()=>{})
+              await apiClient.patch(`/transactions/${tx._id}`, { recipientVendorRef: v._id, category: offerings[0] }).catch(()=>{})
             }
             setToast(`Vendor updated — future payments suggest ${offerings.join(', ')}${productName? ` · ${productName.trim()}`:''}`)
             setTimeout(()=> setToast(null),2800)
             onDone()
             return
           }
-        }catch{}
+        }catch { /* A failed optional vendor refresh leaves the save error visible. */ }
       }
       setToast(data?.error || data?.message || e?.message || 'Save failed'); setTimeout(()=> setToast(null), 3200)
     } finally { setBusy(false)}
@@ -853,8 +860,8 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
   }
   const primaryCategory = vendorInfo?.primaryCategory || vendorInfo?.category || ''
   return <div className="flex flex-col gap-sm">
-    {vendorInfo && <div className="text-xs"><span className="font-bold uppercase tracking-wider">Vendor</span> <span className="brutal-thin px-xs py-0.5 bg-brand-yellow font-bold">{vendorInfo.label}</span> {primaryCategory && <span className="ml-xs brutal-thin px-xs py-0.5 bg-white text-xs">default {primaryCategory}</span>} {(vendorInfo.offerings||[]).length>0 && <span className="ml-xs text-on-surface-variant">{vendorInfo.offerings.map((o:any)=> `${o.category}×${o.hits}`).join(' · ')}</span>}</div>}
-    {vendorInfo && (vendorInfo.products||[]).length>0 && <div className="text-xs">Known products: {(vendorInfo.products||[]).map((p:any)=> `${p.name} ₹${p.typicalAmountPaise? (p.typicalAmountPaise/100).toFixed(0):'?'} ×${p.hits}`).join(' · ')}</div>}
+    {vendorInfo && <div className="text-xs"><span className="font-bold uppercase tracking-wider">Vendor</span> <span className="brutal-thin px-xs py-0.5 bg-brand-yellow font-bold">{vendorInfo.label}</span> {primaryCategory && <span className="ml-xs brutal-thin px-xs py-0.5 bg-white text-xs">default {primaryCategory}</span>} {(vendorInfo.offerings||[]).length>0 && <span className="ml-xs text-on-surface-variant">{vendorInfo.offerings.map((o)=> `${o.category}×${o.hits}`).join(' · ')}</span>}</div>}
+    {vendorInfo && (vendorInfo.products||[]).length>0 && <div className="text-xs">Known products: {(vendorInfo.products||[]).map((p)=> `${p.name} ₹${p.typicalAmountPaise? (p.typicalAmountPaise/100).toFixed(0):'?'} ×${p.hits}`).join(' · ')}</div>}
     {suggestion && (
       <div className="brutal-thin bg-white p-sm flex flex-col gap-xs">
         <span className="text-xs font-bold">💡 Amount hint: ₹{(tx.amountPaise/100).toFixed(0)} → <span className="bg-brand-yellow px-xs">{suggestion.name || suggestion.productName||'?'}</span> {suggestion.category? `(${suggestion.category})`:''} — {suggestion.subcategory || ''}</span>
@@ -879,15 +886,15 @@ function TeachVendorBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
     </div>
   </div>
 }
-function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
-  const [subs, setSubs] = useState<any[]>([])
+function SubscriptionLinkBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()=>void }){
+  const [subs, setSubs] = useState<{ id: string; name: string; amount: number; billingDate: number }[]>([])
   const [selected, setSelected] = useState('')
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string|null>(null)
   useEffect(()=>{
-    apiClient.get('/subscriptions').then((r:any)=>{
-      const arr = Array.isArray(r.data) ? r.data : (r.data?.items||[])
-      const list = arr.map((s:any)=> ({ id: s._id||s.id, name: s.name, amount: s.amount, billingDate: s.billingDate }))
+    apiClient.get<import('../types/api').RawSubscription[]>('/subscriptions').then((r)=>{
+      const arr = r.data
+      const list = arr.map((s)=> ({ id: s._id||s.id, name: s.name, amount: s.amount, billingDate: s.billingDate }))
       setSubs(list)
       if(tx.subscriptionRef){
         const sid = typeof tx.subscriptionRef==='object' ? (tx.subscriptionRef._id||tx.subscriptionRef.id) : tx.subscriptionRef
@@ -896,24 +903,24 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
     }).catch(()=>{})
   }, [tx._id, tx.subscriptionRef])
   const linked = tx.subscriptionRef
-  const linkedName = linked ? (typeof linked==='object' ? (linked.name||linked.title||'Subscription') : subs.find(s=> String(s.id)===String(linked))?.name || 'Linked') : null
+  const linkedName = linked ? (typeof linked==='object' ? (linked.name||'Subscription') : subs.find(s=> String(s.id)===String(linked))?.name || 'Linked') : null
   async function link(){
     if(!selected) { setToast('Pick a subscription'); setTimeout(()=>setToast(null),2000); return }
     setBusy(true)
     try{
-      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: selected } as any)
+      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: selected })
       setToast('Linked — future payments to this vendor will be known as subscription')
       setTimeout(()=>setToast(null),2500)
       onDone()
-    }catch(e:any){ setToast(e?.response?.data?.error||'Link failed'); setTimeout(()=>setToast(null),2500) } finally{ setBusy(false) }
+    }catch (caught: unknown) { const e = toApiError(caught);  setToast(e?.response?.data?.error||'Link failed'); setTimeout(()=>setToast(null),2500) } finally{ setBusy(false) }
   }
   async function unlink(){
     setBusy(true)
     try{
-      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: null } as any)
+      await apiClient.patch(`/transactions/${tx._id}`, { subscriptionRef: null })
       setToast('Unlinked'); setTimeout(()=>setToast(null),2000)
       onDone()
-    }catch(e:any){ setToast('Unlink failed'); setTimeout(()=>setToast(null),2000) } finally{ setBusy(false) }
+    }catch { setToast('Unlink failed'); setTimeout(()=>setToast(null),2000) } finally{ setBusy(false) }
   }
   return <div className="brutal-thin p-sm bg-white flex flex-col gap-sm">
     <span className="text-xs font-bold uppercase">Link to Subscription (auto-pay)</span>
@@ -927,7 +934,7 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
       <div className="flex gap-xs min-w-0">
         <select value={selected} onChange={e=> setSelected(e.target.value)} className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 bg-white">
           <option value="">Select subscription…</option>
-          {subs.map((s:any)=> <option key={s.id} value={s.id}>{s.name} — ₹{s.amount} on {s.billingDate}</option>)}
+          {subs.map((s)=> <option key={s.id} value={s.id}>{s.name} — ₹{s.amount} on {s.billingDate}</option>)}
         </select>
         <button onClick={link} disabled={busy||!selected} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Link</button>
       </div>
@@ -937,16 +944,16 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: any; onDone: ()=>void }){
   </div>
 }
 
-function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
-  const [loans, setLoans] = useState<any[]>([])
+function LoanLinkBox({ tx, onDone }: { tx: LedgerTransaction; onDone: () => void }) {
+  const [loans, setLoans] = useState<{ id: string; name: string; lender: string; type: string; emi: number; outstanding: number }[]>([])
   const [selectedLoan, setSelectedLoan] = useState('')
   const [isPrepay, setIsPrepay] = useState(false)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
-    loanService.list().then((arr: any) => {
-      const list = (Array.isArray(arr) ? arr : arr?.items || []).map((l: any) => ({
+    loanService.list().then((arr) => {
+      const list = arr.map((l) => ({
         id: l._id || l.id,
         name: l.loanName,
         lender: l.lender,
@@ -965,7 +972,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
 
   const linked = tx.loanRef
   const linkedName = linked
-    ? (typeof linked === 'object' ? (linked.loanName || linked.name) : loans.find((l) => String(l.id) === String(linked))?.name || 'Loan')
+    ? (typeof linked === 'object' ? (linked.loanName) : loans.find((l) => String(l.id) === String(linked))?.name || 'Loan')
     : null
   const isPrepayment = tx.loanMeta?.isPrepayment
 
@@ -984,7 +991,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
       setToast(`Linked as ${isPrepay ? 'Prepayment' : 'Regular EMI'}`)
       setTimeout(() => setToast(null), 2500)
       onDone()
-    } catch (e: any) {
+    } catch (caught: unknown) { const e = toApiError(caught);
       setToast(e?.response?.data?.error || 'Link failed')
       setTimeout(() => setToast(null), 2500)
     } finally {
@@ -993,7 +1000,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
   }
 
   async function unlink() {
-    const loanId = typeof linked === 'object' ? (linked._id || linked.id) : linked
+    const loanId = typeof linked === 'object' ? (linked?._id || linked?.id) : linked
     if (!loanId) return
     setBusy(true)
     try {
@@ -1001,7 +1008,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
       setToast('Unlinked from loan')
       setTimeout(() => setToast(null), 2000)
       onDone()
-    } catch (e: any) {
+    } catch (caught: unknown) { const e = toApiError(caught);
       setToast(e?.response?.data?.error || 'Unlink failed')
       setTimeout(() => setToast(null), 2000)
     } finally {
@@ -1046,7 +1053,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
               className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 bg-white"
             >
               <option value="">Select loan…</option>
-              {loans.map((l: any) => (
+              {loans.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name} ({l.lender || l.type}) — EMI ₹{l.emi}
                 </option>
@@ -1080,7 +1087,7 @@ function LoanLinkBox({ tx, onDone }: { tx: any; onDone: () => void }) {
   )
 }
 
-function vendorInfoCategoryChip(detail:any){ const v=detail.vendorInfo || detail.transaction?.recipientVendorRef; if(!v) return null; const cats=(v.offerings||[]).map((o:any)=>o.category).join(', '); if(!cats) return null; return <div className="brutal-thin bg-white p-xs text-xs">Vendor offers: <span className="font-bold">{cats}</span> · default <span className="font-bold">{v.primaryCategory||v.category}</span>{(v.products||[]).length? <> · sells <span className="font-bold">{v.products.map((p:any)=> p.name).join(', ')}</span></> : null}</div> }
+function vendorInfoCategoryChip(detail: TransactionDetail & { vendorInfo?: Vendor }){ const v=detail.vendorInfo || detail.transaction?.recipientVendorRef; if(!v || typeof v === 'string') return null; const cats=(v.offerings||[]).map((o)=>o.category).join(', '); if(!cats) return null; return <div className="brutal-thin bg-white p-xs text-xs">Vendor offers: <span className="font-bold">{cats}</span> · default <span className="font-bold">{v.primaryCategory||v.category}</span>{(v.products||[]).length? <> · sells <span className="font-bold">{v.products.map((p)=> p.name).join(', ')}</span></> : null}</div> }
 function DetailRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return <div className="flex justify-between gap-sm min-w-0"><span className="text-on-surface-variant uppercase text-xs font-bold tracking-wider shrink-0">{label}</span><span className={`${bold ? 'font-bold' : 'font-medium'} min-w-0 break-words text-right`}>{value}</span></div>
 }

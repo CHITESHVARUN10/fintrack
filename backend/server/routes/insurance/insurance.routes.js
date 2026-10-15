@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/insurance
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.insuranceType) filter.insuranceType = req.query.insuranceType;
     if (req.query.status) filter.status = req.query.status;
     const items = await Insurance.find(filter).sort({ createdAt: -1 });

@@ -1,3 +1,4 @@
+if (process.env.RUN_LIVE_INTEGRATION_TESTS === 'true') {
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
@@ -15,6 +16,9 @@ async function test() {
     console.log('PIPELINE STAGE 5 — AFTER DEDUP:', JSON.stringify(ctx.deductions, null, 2));
   } catch (err) {
     console.error(err);
+    process.exitCode = 1;
   }
 }
 test();
+
+}

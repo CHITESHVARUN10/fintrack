@@ -32,6 +32,9 @@ function hookStaleByUser(schema) {
   schema.post('findOneAndUpdate', async function (doc) {
     if (doc) await markStaleByUser(doc.memberId || doc.userId);
   });
+  schema.post('deleteOne', { document: true, query: false }, async function () {
+    await markStaleByUser(this.memberId || this.userId);
+  });
 }
 
 module.exports = {

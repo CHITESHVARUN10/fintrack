@@ -144,6 +144,7 @@ function parseCSV(buffer) {
       recipient: description ? { name: description } : undefined,
       utr: chqRef || undefined,
       upiId: upiCell || upiFromDesc || undefined,
+      metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(cols[dateIdx])) ? 'minute' : 'day' },
       rawPayload: { line, rowNumber: i + 1 },
     });
   }
@@ -223,7 +224,7 @@ async function parseXLSX(buffer) {
           const chqRef = chqIdx !== -1 ? String(cols[chqIdx] || '').trim() : '';
           const upiCell = upiIdx !== -1 ? String(cols[upiIdx] || '').trim() : '';
           const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
-          rows.push({ occurredAt, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: n } });
+          rows.push({ occurredAt, metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(dateRaw)) ? 'minute' : 'day' }, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: n } });
         });
         if (rows.length) return rows;
       }

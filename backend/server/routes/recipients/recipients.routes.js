@@ -1,6 +1,7 @@
 const express = require('express');
 const RecipientDirectory = require('../../models/recipientdirectory.model');
 const Transaction = require('../../models/transaction.model');
+const { buildTransactionVisibilityFilter } = require('../../utils/scope');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { normalizeVendorKey, upsertFromCategory, upsertProduct, resolveProduct, normalizeProductName } = require('../../services/recipient.service');
 
@@ -340,7 +341,7 @@ router.get('/:id/suggest', async (req,res,next)=>{
 router.post('/backfill', async (req,res,next)=>{
   try{
     if(!requireFamily(req,res)) return;
-    const txs = await Transaction.find({ familyId: req.user.familyAccountId, status: { $ne:'VOIDED' } }).lean();
+    const txs = await Transaction.find({ familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req), status: { $ne:'VOIDED' } }).lean();
     const grouped = new Map();
     for(const t of txs){
       const upi = String(t.upiId || t.recipient?.upiId || '').toLowerCase().trim();
@@ -373,7 +374,7 @@ router.post('/:id/apply', async (req,res,next)=>{
     const cat = doc.primaryCategory || doc.category || (doc.offerings&&doc.offerings[0]?.category) || 'Other';
     const needle = String(doc.label||doc.vendorKey||'').toLowerCase();
     const vk = String(doc.vendorKey||'').toLowerCase();
-    const all = await Transaction.find({ familyId: req.user.familyAccountId, status: { $ne:'VOIDED'} }).lean();
+    const all = await Transaction.find({ familyId: req.user.familyAccountId, createdBy: req.user._id, status: { $ne:'VOIDED'} }).lean();
     let matched=0, updated=0;
     for(const t of all){
       const name = String(t.recipient?.name||'').toLowerCase();
@@ -446,7 +447,7 @@ router.post('/:id/merge', async (req,res,next)=>{
     }
     await target.save();
     // move transactions recipientVendorRef
-    await Transaction.updateMany({ familyId: target.familyId, recipientVendorRef: source._id }, { $set: { recipientVendorRef: target._id } });
+    await Transaction.updateMany({ familyId: target.familyId, createdBy: req.user._id, recipientVendorRef: source._id }, { $set: { recipientVendorRef: target._id } });
     // also need to handle transactions matched via name/upi: they will be picked up via vendorKey/upi after merge; no bulk category change unless requested
     await RecipientDirectory.findByIdAndDelete(source._id);
     res.json({ merged: true, target });

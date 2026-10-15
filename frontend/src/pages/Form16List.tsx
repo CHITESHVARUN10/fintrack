@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { form16Service } from '../services/api'
@@ -13,12 +14,17 @@ import type { Form16 } from '../types'
 
 export function Form16List() {
   const navigate = useNavigate()
-  const { data, loading } = useAsync(() => form16Service.list(), [])
+  const { user, activeMemberId, isAdmin } = useAuth()
+  const selectedMember = isAdmin && activeMemberId !== user?.id ? activeMemberId : undefined
+  const { data, loading, error } = useAsync(() => form16Service.list(selectedMember), [selectedMember])
   const [newOpen, setNewOpen] = useState(false)
   const [dupSource, setDupSource] = useState<Form16 | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (loading || !data) return <LoadingBlock label="Loading Form 16 records…" />
+  if (loading) return <LoadingBlock label="Loading Form 16 records…" />
+
+  if (error) return <div role="alert">Could not load Form 16 records.</div>
+  if (!data) return <div>No Form 16 records available.</div>
 
   const openRecommendation = (id: string) =>
     navigate(`/form16/recommendation/loading?form=${id}`)

@@ -186,6 +186,13 @@ router.post('/accept-invite/:token', async (req, res, next) => {
     user.isActive = true;
     await user.save();
 
+    const FamilyMembership = require('../../models/familymembership.model');
+    await FamilyMembership.findOneAndUpdate(
+      { userId: user._id, familyId: user.familyAccountId },
+      { $set: { role: 'MEMBER', status: 'ACTIVE', reviewedAt: new Date() } },
+      { upsert: true, setDefaultsOnInsert: true },
+    );
+    await FamilyAccount.updateOne({ _id: user.familyAccountId }, { $addToSet: { members: user._id } });
     return res.json({ message: 'Invite accepted. You can now log in.', user: sanitizeUser(user) });
   } catch (err) {
     next(err);

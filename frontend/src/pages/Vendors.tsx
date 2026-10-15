@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
@@ -61,35 +62,32 @@ export function Vendors(){
   const [mergeSource, setMergeSource] = useState<string|null>(null)
   const [mergeTarget, setMergeTarget] = useState('')
 
-  function load(search=q, category=catFilter){
+  const load = useCallback((search = q, category = catFilter) => Promise.resolve().then(async () => {
     setLoading(true)
-    const params:any={}
-    if(search.trim()) params.q=search.trim()
-    if(category) params.category=category
-    apiClient.get('/recipients', { params }).then(r=> {
-      const arr = r.data.items||r.data||[]
-      setItems(arr)
-      if(arr.length===0 && !search.trim() && !category && !backfilling) {
-        setBackfilling(true)
-        apiClient.post('/recipients/backfill').then((b:any)=> {
-          const d=b.data
-          if(d.touched>0){ setNotice(`Backfilled ${d.touched} vendors from ${d.scanned} transactions — including past imports. Edit to teach.`); load('','') }
-          else { setNotice(null) }
-        }).finally(()=> setBackfilling(false))
-      }
-    }).finally(()=> setLoading(false))
-  }
+    try {
+      const params: Record<string, string> = {}
+      if (search.trim()) params.q = search.trim()
+      if (category) params.category = category
+      const response = await apiClient.get<{ items: Vendor[] }>('/recipients', { params })
+      setItems(response.data.items || [])
+    } catch (error: unknown) {
+      setNotice(toApiError(error).response?.data?.error || 'Could not load vendors')
+    } finally { setLoading(false) }
+  }), [q, catFilter])
   async function backfill(){
     setBackfilling(true)
     try{
-      const r:any = await apiClient.post('/recipients/backfill')
+      const r = await apiClient.post('/recipients/backfill')
       setNotice(`Backfilled ${r.data.touched} vendors from ${r.data.scanned} transactions`)
       load('','')
     } finally { setBackfilling(false) }
   }
-  useEffect(()=>{ const urlQ = searchParams.get('q'); if(urlQ) { setQ(urlQ); load(urlQ, catFilter) } else load('','') }, [searchParams])
+  const urlQuery = searchParams.get('q') || ''
+  const [previousUrlQuery, setPreviousUrlQuery] = useState(urlQuery)
+  if (previousUrlQuery !== urlQuery) { setPreviousUrlQuery(urlQuery); setQ(urlQuery) }
+  useEffect(() => { load(q, catFilter) }, [load, q, catFilter])
   useEffect(()=>{
-    apiClient.get('/recipients/categories').then((r:any)=>{
+    apiClient.get('/recipients/categories').then((r)=>{
       if(r.data?.categories?.length) setCats(r.data.categories)
     }).catch(()=>{})
   }, [])
@@ -146,7 +144,7 @@ export function Vendors(){
       setEditId(null); load()
       setNotice('Vendor updated')
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){
+    } catch (caught: unknown) { const e = toApiError(caught);
       setNotice(e?.response?.data?.error||'Save failed')
       setTimeout(()=> setNotice(null),2500)
     } finally { setBusy(false) }
@@ -186,7 +184,7 @@ export function Vendors(){
       load()
       setNotice('Vendor created')
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){
+    } catch (caught: unknown) { const e = toApiError(caught);
       setNotice(e?.response?.data?.error||'Create failed')
       setTimeout(()=> setNotice(null),2500)
     } finally { setBusy(false) }
@@ -195,7 +193,7 @@ export function Vendors(){
   async function apply(id:string){
     setBusy(true)
     try{
-      const r:any = await apiClient.post(`/recipients/${id}/apply`, { overwrite: false })
+      const r = await apiClient.post(`/recipients/${id}/apply`, { overwrite: false })
       alert(`Matched ${r.data.matched}, updated ${r.data.updated} transactions (only Other)`)
     } finally { setBusy(false) }
   }
@@ -210,7 +208,7 @@ export function Vendors(){
       load()
       setNotice('Vendors merged')
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){
+    } catch (caught: unknown) { const e = toApiError(caught);
       setNotice(e?.response?.data?.error||'Merge failed')
       setTimeout(()=> setNotice(null),2500)
     } finally { setBusy(false) }

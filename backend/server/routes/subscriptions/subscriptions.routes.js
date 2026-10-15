@@ -1,7 +1,7 @@
 const express = require('express');
 const Subscription = require('../../models/subscription.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
-const { buildListFilter, canModify } = require('../../utils/scope');
+const { buildListFilter, canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -24,7 +24,7 @@ function computeNextRenewal(frequency, billingDate, base = new Date()) {
 // GET /api/subscriptions
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.frequency) filter.frequency = req.query.frequency;
     const items = await Subscription.find(filter).sort({ createdAt: -1 });
     res.json(items);
@@ -73,6 +73,7 @@ router.post('/:id/apply-suggestion', async (req, res, next) => {
       acceptAmount,
       acceptDate,
       matchedTxIds,
+      createdBy: req.user._id,
       familyId: req.user.familyAccountId,
     });
     res.json(updated);
@@ -108,7 +109,7 @@ router.get('/:id/transactions', async (req, res, next) => {
     const familyId = item.familyAccountId || req.user.familyAccountId;
 
     // 1. Linked transactions
-    const linked = await Transaction.find({ subscriptionRef: item._id })
+    const linked = await Transaction.find({ subscriptionRef: item._id, familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, ...buildTransactionVisibilityFilter(req) })
       .sort({ occurredAt: -1 })
       .populate('createdBy', 'name email')
       .populate('recipient', 'name upiId');
@@ -124,6 +125,8 @@ router.get('/:id/transactions', async (req, res, next) => {
 
     const baseFilter = {
       subscriptionRef: null,
+      createdBy: req.user._id,
+      status: { $ne: 'VOIDED' },
       type: 'EXPENSE',
     };
     if (familyId) {
@@ -182,6 +185,7 @@ router.post('/:id/link-transaction', async (req, res, next) => {
     const Transaction = require('../../models/transaction.model');
     const tx = await Transaction.findById(transactionId);
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
 
     tx.subscriptionRef = item._id;
     if (!tx.category || tx.category === 'Other') {
@@ -206,7 +210,7 @@ router.post('/:id/unlink-transaction', async (req, res, next) => {
     if (!transactionId) return res.status(400).json({ error: 'transactionId is required' });
 
     const Transaction = require('../../models/transaction.model');
-    await Transaction.updateOne({ _id: transactionId, subscriptionRef: item._id }, { $set: { subscriptionRef: null } });
+    await Transaction.updateOne({ _id: transactionId, subscriptionRef: item._id, familyId: req.user.familyAccountId, createdBy: req.user._id }, { $set: { subscriptionRef: null } });
 
     res.json({ success: true });
   } catch (err) {
@@ -227,6 +231,7 @@ router.post('/:id/record-payment', async (req, res, next) => {
     if (transactionId) {
       const tx = await Transaction.findById(transactionId);
       if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
       tx.subscriptionRef = item._id;
       if (notes) tx.notes = notes;
       await tx.save();

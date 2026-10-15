@@ -26,16 +26,17 @@ export function RecommendationLoading() {
   const timer = useRef<number[]>([])
 
   useEffect(() => {
+    const timers = timer.current
     let active = true
 
     // Advance visual step indicators on a cadence
-    timer.current.push(window.setTimeout(() => active && setStep(1), 800))
-    timer.current.push(window.setTimeout(() => active && setStep(2), 1600))
+    timers.push(window.setTimeout(() => active && setStep(1), 800))
+    timers.push(window.setTimeout(() => active && setStep(2), 1600))
 
     // Start the actual fetch and track minimum display time together
     const fetchPromise = form16Service.getRecommendation(formId)
     const minTime = new Promise<void>((resolve) => {
-      timer.current.push(window.setTimeout(resolve, 1200))
+      timers.push(window.setTimeout(resolve, 1200))
     })
 
     Promise.all([fetchPromise, minTime])
@@ -49,7 +50,7 @@ export function RecommendationLoading() {
 
     return () => {
       active = false
-      timer.current.forEach(clearTimeout)
+      timers.forEach(clearTimeout)
     }
   }, [navigate, formId])
 

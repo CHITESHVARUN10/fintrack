@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/notifications
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.type) filter.type = req.query.type;
     if (req.query.relatedModule) filter.relatedModule = req.query.relatedModule;
     if (req.query.isRead !== undefined) filter.isRead = req.query.isRead === 'true';
@@ -25,7 +25,8 @@ router.post('/', async (req, res, next) => {
   try {
     const body = { ...req.body };
     if (req.user.role === 'admin' && body.memberId) {
-      body.memberId = body.memberId;
+      const member = await require('../../models/user.model').exists({ _id: body.memberId, familyAccountId: req.user.familyAccountId, isActive: true });
+      if (!member) return res.status(403).json({ error: 'Member not in your family' });
       body.familyAccountId = req.user.familyAccountId;
     } else {
       body.memberId = req.user._id;
@@ -42,7 +43,7 @@ router.post('/', async (req, res, next) => {
 // PUT /api/notifications/read-all
 router.put('/read-all', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     const result = await Notification.updateMany(
       { ...filter, isRead: false },
       { $set: { isRead: true } },

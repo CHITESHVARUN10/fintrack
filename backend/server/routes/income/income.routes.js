@@ -9,7 +9,7 @@ router.use(isAuthenticated);
 // GET /api/income
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.category) filter.category = req.query.category;
     const items = await Income.find(filter).sort({ createdAt: -1 });
     res.json(items);

@@ -16,7 +16,7 @@ function getInitialTheme(): Theme {
   try {
     const stored = localStorage.getItem('fintrack-theme') as Theme | null
     if (stored === 'light' || stored === 'dark') return stored
-  } catch {}
+  } catch { /* Storage or optional suggestions may be unavailable. */ }
   return 'light'
 }
 
@@ -29,7 +29,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = (t: Theme) => {
     setThemeState(t)
-    try { localStorage.setItem('fintrack-theme', t) } catch {}
+    try { localStorage.setItem('fintrack-theme', t) } catch { /* Storage or optional suggestions may be unavailable. */ }
   }
 
   const toggle = () => setTheme(theme === 'dark' ? 'light' : 'dark')

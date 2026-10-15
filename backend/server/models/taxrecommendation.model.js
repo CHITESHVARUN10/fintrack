@@ -2,6 +2,13 @@ const mongoose = require('mongoose');
 
 const taxSavingSuggestionSchema = new mongoose.Schema(
   {
+    section: String,
+    suggestionType: String,
+    actionType: String,
+    amount: Number,
+    savingsType: String,
+    savingsAmount: Number,
+    displayMessage: String,
     suggestion: { type: String },
     potentialSaving: { type: Number },
   },
@@ -22,6 +29,7 @@ const deductionItemSchema = new mongoose.Schema(
 
 const taxRecommendationSchema = new mongoose.Schema(
   {
+    calculationVersion: String,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     form16Id: { type: mongoose.Schema.Types.ObjectId, ref: 'Form16' },
     oldRegimeTax: { type: Number },

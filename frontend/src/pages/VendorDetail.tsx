@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import type { ApiMember, LedgerTransaction, LineItem, Vendor, VendorSummary } from '../types/api'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
 import { familyService } from '../services/api'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
 
-type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: any[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: any }
+type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: LineItem[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: LedgerTransaction['createdBy'] }
 
 const ALL_CATS = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
 const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)','var(--accent-hover)','#8f8f88','var(--chart-5)','var(--chart-8)']
@@ -13,9 +15,9 @@ const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--ch
 export function VendorDetail(){
   const { id } = useParams()
   const nav = useNavigate()
-  const [vendor, setVendor] = useState<any>(null)
+  const [vendor, setVendor] = useState<Vendor | null>(null)
   const [txs, setTxs] = useState<Tx[]>([])
-  const [summary, setSummary] = useState<any>(null)
+  const [summary, setSummary] = useState<VendorSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [catEditId, setCatEditId] = useState<string|null>(null)
   const [catVal, setCatVal] = useState('')
@@ -27,7 +29,7 @@ export function VendorDetail(){
   const [to, setTo] = useState('')
   const [memberId, setMemberId] = useState('')
   const [filterCat, setFilterCat] = useState('')
-  const [members, setMembers] = useState<any[]>([])
+  const [members, setMembers] = useState<ApiMember[]>([])
   const [page, setPage] = useState(0)
   const limit=50
 
@@ -53,19 +55,18 @@ export function VendorDetail(){
   const [prodBusy, setProdBusy] = useState(false)
 
   function fetchMembers(){
-    apiClient.get('/families/me').then(r=> r.data?.family?._id ? familyService.members(r.data.family._id).then((d:any)=> setMembers(d.members||[])) : null).catch(()=>{})
+    apiClient.get('/families/me').then(r=> r.data?.family?._id ? familyService.members(r.data.family._id).then((d)=> setMembers(d.members||[])) : null).catch(()=>{})
   }
   useEffect(()=> { fetchMembers() }, [])
 
-  async function load(){
-    setLoading(true)
-    try{
-      const params:any={ limit, skip: page*limit }
+  const load = useCallback(async () => {
+try{
+      const params: Record<string, string | number> = { limit, skip: page*limit }
       if(from) params.from=from
       if(to) params.to=to
       if(memberId) params.memberId=memberId
       if(filterCat) params.category=filterCat
-      const r:any = await apiClient.get(`/vendors/${id}/transactions`, { params })
+      const r = await apiClient.get<VendorSummary & { vendor: Vendor; transactions: Tx[] }>(`/vendors/${id}/transactions`, { params })
       setVendor(r.data.vendor); setTxs(r.data.transactions||[]); setSummary({ totalPaise: r.data.totalPaise, byCategory: r.data.byCategory, bySubcategory: r.data.bySubcategory, byProduct: r.data.byProduct, byMember: r.data.byMember, monthlyBuckets: r.data.monthlyBuckets, count: r.data.count })
       // init edit fields on first load
       if(!editMode){
@@ -76,12 +77,12 @@ export function VendorDetail(){
         setEPhone(r.data.vendor.contact?.phone||'')
         setEAliases((r.data.vendor.aliases||[]).join(', '))
         setEContactMode(r.data.vendor.contact?.preferredMode||'')
-        setECats(r.data.vendor.offerings?.map((o:any)=> o.category) || (r.data.vendor.primaryCategory?[r.data.vendor.primaryCategory]:[]))
+        setECats(r.data.vendor.offerings?.map((o)=> o.category) || (r.data.vendor.primaryCategory?[r.data.vendor.primaryCategory]:[]))
         setNewProdCat(r.data.vendor.primaryCategory||'Food')
       }
     } finally { setLoading(false) }
-  }
-  useEffect(()=>{ if(id) load() }, [id, page, from, to, memberId, filterCat])
+  }, [id, page, from, to, memberId, filterCat, editMode])
+  useEffect(()=>{ load() }, [load])
 
   async function saveCat(txId:string){
     try{
@@ -89,7 +90,7 @@ export function VendorDetail(){
       setCatEditId(null); load()
       setNotice('Transaction updated — vendor will learn')
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){ setNotice(e?.response?.data?.error||'Save failed'); setTimeout(()=> setNotice(null),2000) }
+    } catch (caught: unknown) { const e = toApiError(caught); setNotice(e?.response?.data?.error||'Save failed'); setTimeout(()=> setNotice(null),2000) }
   }
 
   async function saveVendor(){
@@ -109,7 +110,7 @@ export function VendorDetail(){
       setEditMode(false); load()
       setNotice('Vendor saved')
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){ setNotice(e?.response?.data?.error||'Save failed'); setTimeout(()=> setNotice(null),2500) }
+    } catch (caught: unknown) { const e = toApiError(caught); setNotice(e?.response?.data?.error||'Save failed'); setTimeout(()=> setNotice(null),2500) }
     finally{ setSaving(false) }
   }
 
@@ -123,7 +124,7 @@ export function VendorDetail(){
       load()
       setNotice(`Product ${newProdName.trim()} added`)
       setTimeout(()=> setNotice(null),2000)
-    } catch(e:any){ setNotice(e?.response?.data?.error||'Add failed'); setTimeout(()=> setNotice(null),2500) }
+    } catch (caught: unknown) { const e = toApiError(caught); setNotice(e?.response?.data?.error||'Add failed'); setTimeout(()=> setNotice(null),2500) }
     finally{ setProdBusy(false) }
   }
   async function delProduct(pid:string){
@@ -135,8 +136,8 @@ export function VendorDetail(){
     } finally { setProdBusy(false) }
   }
 
-  const byCategoryData = summary?.byCategory ? Object.entries(summary.byCategory).map(([k,v]:any)=> ({ name:k, value: Math.round((v as number)/100) })) : []
-  const byProductData = summary?.byProduct ? Object.entries(summary.byProduct).map(([k,v]:any)=> ({ name:k, value: Math.round((v as number)/100) })) : []
+  const byCategoryData = summary?.byCategory ? Object.entries(summary.byCategory).map(([k,v])=> ({ name:k, value: Math.round((v as number)/100) })) : []
+  const byProductData = summary?.byProduct ? Object.entries(summary.byProduct).map(([k,v])=> ({ name:k, value: Math.round((v as number)/100) })) : []
   const monthlyData = summary?.monthlyBuckets || []
 
   return (
@@ -156,9 +157,9 @@ export function VendorDetail(){
                 <span className="ml-auto text-xs brutal-thin px-sm py-0.5 bg-brand-yellow font-bold uppercase">{vendor.primaryCategory}</span>
               </div>
               {vendor.description && <div className="text-sm mb-xs">{vendor.description}</div>}
-              <div className="text-xs opacity-80 mb-xs">Offers: {(vendor.offerings||[]).map((o:any)=> `${o.category}×${o.hits}${o.subcategories?.length? ` (${o.subcategories.join(', ')})`:''}`).join(' · ') || vendor.primaryCategory}</div>
-              {(vendor.products||[]).length>0 && <div className="text-xs mb-xs">Sells: {(vendor.products||[]).map((p:any)=> `${p.name} ${p.typicalAmountPaise? `₹${(p.typicalAmountPaise/100).toFixed(0)}`:''} · ${p.category}${p.subcategory? `/${p.subcategory}`:''} ×${p.hits}`).join(' · ')}</div>}
-              {(vendor.aliases||[]).length>0 && <div className="text-xs opacity-60 mb-xs">Aliases: {vendor.aliases.join(', ')}</div>}
+              <div className="text-xs opacity-80 mb-xs">Offers: {(vendor.offerings||[]).map((o)=> `${o.category}×${o.hits}${o.subcategories?.length? ` (${o.subcategories.join(', ')})`:''}`).join(' · ') || vendor.primaryCategory}</div>
+              {(vendor.products||[]).length>0 && <div className="text-xs mb-xs">Sells: {(vendor.products||[]).map((p)=> `${p.name} ${p.typicalAmountPaise? `₹${(p.typicalAmountPaise/100).toFixed(0)}`:''} · ${p.category}${p.subcategory? `/${p.subcategory}`:''} ×${p.hits}`).join(' · ')}</div>}
+              {(vendor.aliases||[]).length>0 && <div className="text-xs opacity-60 mb-xs">Aliases: {vendor.aliases?.join(', ')}</div>}
               {(vendor.contact?.phone || vendor.contact?.address) && <div className="text-xs opacity-60 mb-xs">Contact: {vendor.contact.phone||''} {vendor.contact.address? `· ${vendor.contact.address}`:''} {vendor.contact.preferredMode? `· ${vendor.contact.preferredMode}`:''}</div>}
               {vendor.notes && <div className="text-xs opacity-60 mb-xs">Notes: {vendor.notes}</div>}
               <div className="text-xs opacity-60 mb-sm">Hits {vendor.hits} · Last seen {vendor.lastSeen? new Date(vendor.lastSeen).toLocaleString('en-IN') : '—'} {vendor.createdBy? `· by ${vendor.createdBy}`:''}</div>
@@ -199,7 +200,7 @@ export function VendorDetail(){
           <h3 className="font-bold uppercase mb-sm">What this vendor sells — products (free form)</h3>
           <div className="text-xs opacity-60 mb-sm">Add products with typical amount to enable amount → product suggestions, e.g. 40 → paneer. Keep category as transaction category.</div>
           <div className="flex flex-wrap gap-sm mb-sm min-w-0">
-            {(vendor.products||[]).length===0 ? <span className="text-sm opacity-60">No products yet — add below.</span> : vendor.products.map((p:any)=> (
+            {(vendor.products||[]).length===0 ? <span className="text-sm opacity-60">No products yet — add below.</span> : vendor.products.map((p)=> (
               <span key={p._id} className="brutal-thin bg-surface-container-low px-sm py-xs text-xs flex items-center gap-sm">
                 <span className="font-bold">{p.name}</span>
                 <span className="opacity-60">{p.category}{p.subcategory? `/${p.subcategory}`:''}</span>
@@ -224,7 +225,7 @@ export function VendorDetail(){
           <div className="brutal bg-brand-yellow p-sm min-w-0"><div className="text-xs uppercase font-bold">Transactions</div><div className="text-xl font-bold">{summary.count}</div><div className="text-xs opacity-60">{txs.length} on page</div></div>
           <div className="brutal bg-white p-sm min-w-0"><div className="text-xs uppercase font-bold">Total spend</div><div className="text-xl font-bold break-words">₹{(summary.totalPaise/100).toLocaleString('en-IN')}</div><div className="text-xs opacity-60">EXPENSE only</div></div>
           <div className="brutal bg-white p-sm min-w-0"><div className="text-xs uppercase font-bold">Avg per txn</div><div className="text-xl font-bold">₹{summary.count? ((summary.totalPaise/100)/summary.count).toFixed(0):0}</div></div>
-          <div className="brutal bg-white p-sm md:col-span-1 min-w-0"><div className="text-xs uppercase font-bold">By member</div><div className="text-xs break-words">{summary.byMember?.length? summary.byMember.map((m:any)=> `${m.name} ₹${m.spend.toFixed(0)} ×${m.count}`).join(' · ') : '—'}</div></div>
+          <div className="brutal bg-white p-sm md:col-span-1 min-w-0"><div className="text-xs uppercase font-bold">By member</div><div className="text-xs break-words">{summary.byMember?.length? summary.byMember.map((m)=> `${m.name} ₹${m.spend.toFixed(0)} ×${m.count}`).join(' · ') : '—'}</div></div>
         </div>
       )}
 
@@ -253,8 +254,8 @@ export function VendorDetail(){
               <div className="h-[200px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(props:any)=> { const total = byCategoryData.reduce((s:any,v:any)=>s+v.value,0); const pct = total? props.payload.value/total*100:0; return pct<5? null : `${props.payload.name} ${pct.toFixed(0)}%`; }}>
-                      {byCategoryData.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} stroke="var(--border)" strokeWidth={1.5}/>)}
+                    <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(props)=> { const total = byCategoryData.reduce((s, v)=>s+v.value,0); const pct = total? props.payload.value/total*100:0; return pct<5? null : `${props.payload.name} ${pct.toFixed(0)}%`; }}>
+                      {byCategoryData.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} stroke="var(--border)" strokeWidth={1.5}/>)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -273,7 +274,7 @@ export function VendorDetail(){
                     <YAxis type="category" dataKey="name" tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} width={90} axisLine={{stroke:'var(--border)'}} />
                     <Tooltip />
                     <Bar dataKey="value" fill="var(--chart-1)" stroke="var(--border)" strokeWidth={1}>
-                      {byProductData.slice(0,6).map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                      {byProductData.slice(0,6).map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -287,7 +288,7 @@ export function VendorDetail(){
       <div className="brutal bg-white p-sm mb-md flex flex-col sm:flex-row sm:flex-wrap gap-sm sm:items-end">
         <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">From <input type="date" value={from} onChange={e=> {setFrom(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs max-w-full" /></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">To <input type="date" value={to} onChange={e=> {setTo(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs max-w-full" /></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Member <select value={memberId} onChange={e=> {setMemberId(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white max-w-full"><option value="">All members</option>{members.map((m:any)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Member <select value={memberId} onChange={e=> {setMemberId(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white max-w-full"><option value="">All members</option>{members.map((m)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Category <select value={filterCat} onChange={e=> {setFilterCat(e.target.value); setPage(0)}} className="brutal-thin px-sm py-xs bg-white max-w-full"><option value="">All</option>{ALL_CATS.map(c=> <option key={c} value={c}>{c}</option>)}</select></label>
         <button onClick={()=> {setFrom(''); setTo(''); setMemberId(''); setFilterCat(''); setPage(0)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Clear</button>
         <span className="text-xs opacity-60 sm:ml-auto">{summary?.count||0} total · page {page+1}</span>
@@ -300,7 +301,7 @@ export function VendorDetail(){
             <thead className="bg-on-surface text-white"><tr><th className="text-left px-sm py-xs whitespace-nowrap">Date</th><th className="text-left px-sm py-xs whitespace-nowrap">Amount</th><th className="text-left px-sm py-xs whitespace-nowrap">Category</th><th className="text-left px-sm py-xs whitespace-nowrap">Product</th><th className="text-left px-sm py-xs whitespace-nowrap">By</th><th className="text-left px-sm py-xs whitespace-nowrap">Mode</th><th className="text-left px-sm py-xs whitespace-nowrap">Status</th><th className="text-left px-sm py-xs whitespace-nowrap">Action</th></tr></thead>
             <tbody>
               {txs.map(t=> {
-                const madeBy = t.createdBy?.name || (typeof t.createdBy==='string'? t.createdBy.slice(0,8): '—')
+                const madeBy = (typeof t.createdBy === 'object' ? t.createdBy?.name : '') || (typeof t.createdBy==='string'? t.createdBy.slice(0,8): '—')
                 return (
                 <tr key={t._id} className="border-t-2 border-on-surface/20">
                   <td className="px-sm py-xs whitespace-nowrap">{new Date(t.occurredAt).toLocaleString('en-IN')}</td>

@@ -22,7 +22,7 @@ function daysDiff(a, b) {
 }
 
 // Find transactions that likely correspond to a subscription/recurring/loan
-async function findMatches({ familyId, name, amount, dueDay, type = 'subscription', tolerancePct = 0.05 }) {
+async function findMatches({ familyId, createdBy, name, amount, dueDay, type = 'subscription', tolerancePct = 0.05 }) {
   const amountPaise = Math.round(Number(amount || 0) * 100);
   if (!amountPaise) return [];
   const isVariable = type === 'recurring' || (type === 'subscription' && String(name).toLowerCase().includes('electric')) || type === 'utility';
@@ -34,6 +34,7 @@ async function findMatches({ familyId, name, amount, dueDay, type = 'subscriptio
   since.setMonth(since.getMonth() - 6);
   const filter = {
     familyId,
+    ...(createdBy ? { createdBy } : { visibility: { $ne: 'PRIVATE' } }),
     status: { $ne: 'VOIDED' },
     type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
     amountPaise: { $gte: minPaise, $lte: maxPaise },
@@ -84,11 +85,7 @@ async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
 
       // If already identical to current subscription and drift is 0, auto-link matched transactions directly
       if (dateDrift === 0 && amountDriftPct < 0.01) {
-        // Automatically link matching transactions to subscription in background so ledger is organized
-        await Transaction.updateMany(
-          { _id: { $in: matched.map((m) => m._id) } },
-          { $set: { subscriptionRef: sub._id } }
-        ).catch(() => {});
+        // GET suggestions never mutates another person's ledger.
         continue;
       }
 
@@ -189,7 +186,7 @@ async function buildSuggestionsForLoans({ familyId, memberId }) {
   return out;
 }
 
-async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxIds, familyId }) {
+async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxIds, familyId, createdBy }) {
   if (kind === 'subscription') {
     const sub = await Subscription.findOne({ _id: id, familyAccountId: familyId });
     if (!sub) throw Object.assign(new Error('Subscription not found'), { status: 404 });
@@ -212,7 +209,7 @@ async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxId
     // Link matched transactions to this subscription
     if (Array.isArray(matchedTxIds) && matchedTxIds.length > 0) {
       await Transaction.updateMany(
-        { _id: { $in: matchedTxIds } },
+        { _id: { $in: matchedTxIds }, familyId, createdBy },
         { $set: { subscriptionRef: sub._id, category: sub.category || 'Entertainment' } }
       ).catch(() => {});
     }
@@ -234,7 +231,7 @@ async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxId
     await loan.save();
     if (Array.isArray(matchedTxIds) && matchedTxIds.length > 0) {
       await Transaction.updateMany(
-        { _id: { $in: matchedTxIds } },
+        { _id: { $in: matchedTxIds }, familyId, createdBy },
         { $set: { loanRef: loan._id, loanMeta: { isLoanPayment: true, isPrepayment: false } } }
       ).catch(() => {});
     }

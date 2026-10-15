@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { familyService } from '../services/api'
@@ -5,6 +6,7 @@ import { Icon } from '../components/ui/Icon'
 
 export function FamilyCreateJoin() {
   const nav = useNavigate()
+  const { refreshSession } = useAuth()
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
@@ -17,6 +19,7 @@ export function FamilyCreateJoin() {
     setLoading(true)
     try {
       const res = await familyService.create({ name: name.trim() })
+      await refreshSession()
       nav('/family', { state: { created: res.family } })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to create family'

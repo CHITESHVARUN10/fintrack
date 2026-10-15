@@ -100,6 +100,8 @@ async function seed() {
     { _id: { $in: [rohan._id, priya._id] } },
     { familyAccountId: family._id },
   );
+  const { ensureLegacyMembership } = require('../utils/membership');
+  for (const seeded of [rohan, priya]) { seeded.familyAccountId = family._id; await ensureLegacyMembership(seeded); }
   console.log('✅ Family account seeded');
 
   const F = family._id;

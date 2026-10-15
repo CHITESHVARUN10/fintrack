@@ -188,7 +188,7 @@ async function generateRecommendation(form16, financials, agg, eduTuition = 0, o
   // --- Finalization override (Final 3% Part 1): when the Review page has been
   // finalized, replace ctx.deductions with the stored approved array so
   // computeTax uses EXACTLY what the user saw and approved — never re-merged.
-  if (overrideDeductions && Array.isArray(overrideDeductions) && overrideDeductions.length > 0) {
+  if (Array.isArray(overrideDeductions)) {
     ctx.deductions = overrideDeductions;
     ctx.isFinalized = true;
   }
@@ -233,7 +233,7 @@ async function generateRecommendation(form16, financials, agg, eduTuition = 0, o
   const fallback = explainResult(result, ctx);
   // Canonical suggestions are deterministic and derived only from TaxResult.
   const canonicalSuggestions = generateSuggestions(result)
-    .map((s) => ({ suggestion: s.text || s.suggestion || String(s), potentialSaving: 0 }));
+    .map((s) => ({ ...s, suggestion: s.text || s.suggestion || String(s), potentialSaving: 0 }));
 
   return {
     ...fallback,

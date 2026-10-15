@@ -1,3 +1,4 @@
+import { toApiError } from '../lib/apiError'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { form16Service } from '../services/api'
@@ -10,7 +11,7 @@ import { UnsavedModal } from '../components/form16/UnsavedModal'
 import { formatCurrency } from '../lib/format'
 import { useTaxpayerContext } from '../context/TaxpayerContext'
 import { computeTax, computeTaxPreview, previewDeductionSplit, TAX_CONFIG } from '../lib/tax'
-import type { Form16, Form16Regime, GrossSalarySource, DeductionLineItem } from '../types'
+import type { Form16, Form16Regime, GrossSalarySource } from '../types'
 
 
 type TagKind = 'ai' | 'modified' | 'none'
@@ -131,6 +132,8 @@ function ReviewForm({ record }: { record: Form16 }) {
   const [regime, setRegime] = useState<Form16Regime>(record.taxRegimeUsed)
   const [unsavedOpen, setUnsavedOpen] = useState(false)
   const [deductionsLoaded, setDeductionsLoaded] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const { ctx, load, setFromForm, loadDeductions, finalize } = useTaxpayerContext()
 
@@ -143,21 +146,21 @@ function ReviewForm({ record }: { record: Form16 }) {
   // sources via /deductions-preview and populate ctx.deductions.
   useEffect(() => {
     if (!record.id) return
-    form16Service.getDeductionsPreview(record.id).then(({ deductions }) => {
-      if (deductions && deductions.length > 0) loadDeductions(deductions)
-      setDeductionsLoaded(true)
-    }).catch(() => setDeductionsLoaded(true))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record.id])
+    let active = true
+    const timer = window.setTimeout(() => {
+      form16Service.getDeductionsPreview(record.id, form).then(({ deductions }) => {
+        if (active) { loadDeductions(deductions); setDeductionsLoaded(true) }
+      }).catch(() => { if (active) setDeductionsLoaded(true) })
+    }, 200)
+    return () => { active = false; clearTimeout(timer) }
+  }, [record.id, form, loadDeductions])
 
   const aiExtracted = record.sourceType !== 'Manual'
 
   const setField = (k: keyof Form16, v: string | number) => {
-    setForm((f) => {
-      const next = { ...f, [k]: v }
-      setFromForm(next) // keep the canonical context in sync
-      return next
-    })
+    const next = { ...form, [k]: v }
+    setForm(next)
+    setFromForm(next)
     setModified((m) => new Set(m).add(k as string))
   }
 
@@ -207,19 +210,19 @@ function ReviewForm({ record }: { record: Form16 }) {
   }
 
   const save = async (then: 'list' | 'recommend') => {
-    // Part 1 / Final 3%: finalize context lock BEFORE saving.
-    finalize()
-    // Persist finalized deductions to backend so recommendation flow uses them.
-    if (ctx && ctx.deductions && ctx.deductions.length > 0) {
-      try {
-        await form16Service.finalizeForm16(record.id, ctx.deductions as DeductionLineItem[])
-      } catch {
-        console.warn('[Form16Review] Failed to persist finalized deductions.')
-      }
-    }
-    const updated = await form16Service.update(record.id, { ...form, taxRegimeUsed: regime })
-    if (then === 'list' || !updated) navigate('/form16')
-    else navigate(`/form16/recommendation/loading?form=${record.id}`)
+    if (saving) return
+    setSaving(true); setSaveError(null)
+    try {
+      const updated = await form16Service.update(record.id, { ...form, taxRegimeUsed: regime })
+      if (!updated) throw new Error('Form 16 could not be saved')
+      if (then === 'list') { navigate('/form16'); return }
+      const preview = await form16Service.getDeductionsPreview(record.id)
+      await form16Service.finalizeForm16(record.id, preview.deductions)
+      finalize()
+      navigate(`/form16/recommendation/loading?form=${record.id}`)
+    } catch (error: unknown) {
+      setSaveError(toApiError(error).response?.data?.error || 'Could not save Form 16. Please try again.')
+    } finally { setSaving(false) }
   }
 
   // Brief loading state while fetching merged deductions from all sources.
@@ -240,6 +243,7 @@ function ReviewForm({ record }: { record: Form16 }) {
         }
       />
 
+      {saveError && <div role="alert" className="brutal-thin p-sm text-on-error-container bg-error-container">{saveError}</div>}
       <div className="bg-brand-yellow brutal p-4 mb-lg flex items-start gap-3 min-w-0 max-w-full">
         <Icon name="auto_awesome" className="mt-1" />
         <div>
@@ -387,7 +391,7 @@ function ReviewForm({ record }: { record: Form16 }) {
                   <span className="font-bold text-lg">{formatCurrency(verified + TAX_CONFIG['2025-26'].STANDARD_DEDUCTION.Old)}</span>
                 </div>
               </div>
-              
+
               <div className="bg-white border-[3px] border-on-surface p-4 flex flex-col justify-between">
                 <div>
                   <p className="font-bold uppercase text-sm mb-2">New Regime</p>
@@ -501,7 +505,7 @@ function ReviewForm({ record }: { record: Form16 }) {
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-4 pt-lg border-t-[3px] border-on-surface mt-lg">
-          <Button variant="white" type="button" onClick={() => save('list')}>
+          <Button variant="white" type="button" disabled={saving} onClick={() => save('list')}>
             Save as Draft
           </Button>
           <Button
@@ -509,7 +513,7 @@ function ReviewForm({ record }: { record: Form16 }) {
             type="button"
             block
             className="sm:flex-1 sm:text-right"
-            onClick={() => save('recommend')}
+            disabled={saving} onClick={() => save('recommend')}
           >
             Save and Continue to Tax Recommendation
             <Icon name="arrow_forward" className="text-xl align-middle ml-2" />

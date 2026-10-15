@@ -8,12 +8,15 @@ const Investment = require('../../models/investment.model');
 const Insurance = require('../../models/insurance.model');
 const EMILoan = require('../../models/loan.model');
 const EducationPayment = require('../../models/education.model');
+const { buildListFilter } = require('../../utils/scope');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { geminiRateLimiter } = require('../../middleware/rateLimiter.middleware');
 const { extractForm16, generateRecommendation, normalizeForm16 } = require('../../services/gemini.service');
-const { annualize, aggregateDeductions } = require('../../services/tax.service');
+const { aggregateDeductions } = require('../../services/tax.service');
 const { fromForm16 } = require('../../services/taxEngine.service');
+const { TAX_CONFIG, DEFAULT_FY } = require('../../services/taxConfig');
 
+const CALCULATION_VERSION = '2026-10-15-paid-fy-v1';
 const router = express.Router();
 router.use(isAuthenticated);
 
@@ -24,8 +27,11 @@ const upload = multer({
 });
 
 // Form16 is keyed by userId (no familyAccountId), so owner = creator or an admin.
-function ownsForm16(req, doc) {
-  return doc.userId.equals(req.user._id) || req.user.role === 'admin';
+async function ownsForm16(req, doc) {
+  if (doc.userId.equals(req.user._id)) return true;
+  if (req.user.role !== 'admin' || !req.user.familyAccountId) return false;
+  const User = require('../../models/user.model');
+  return Boolean(await User.exists({ _id: doc.userId, familyAccountId: req.user.familyAccountId, isActive: true }));
 }
 
 // normalizeForm16 (from gemini.service) coerces comma/₹-formatted numeric
@@ -50,36 +56,36 @@ function ownsForm16(req, doc) {
 // computeTax. The Review page calls this on mount and stores the result in
 // TaxpayerContext.deductions before rendering the deduction list.
 // =============================================================================
-router.get('/:id/deductions-preview', async (req, res, next) => {
+const deductionsPreview = async (req, res, next) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(404).json({ error: 'Not found' });
     }
     const form16 = await Form16.findById(req.params.id);
     if (!form16) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, form16)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, form16)) return res.status(403).json({ error: 'Forbidden' });
 
     // If already finalized, return the stored array — never re-merge.
-    if (form16.isFinalized && form16.finalizedDeductions) {
+    if (req.method !== 'POST' && form16.isFinalized && form16.finalizedDeductions) {
       return res.json({ deductions: form16.finalizedDeductions, isFinalized: true });
     }
 
     // Aggregate deductions from all investment/insurance/loan/education records.
-    const agg = await aggregateDeductions(form16.userId);
-    const education = await EducationPayment.find({ memberId: form16.userId });
-    const eduTuition = education.reduce(
-      (s, e) => s + annualize(e.amount, e.frequency),
-      0,
-    );
+    const draft = req.method === 'POST' ? normalizeForm16({ ...(form16.toObject ? form16.toObject() : form16), ...req.body, userId: form16.userId }) : form16;
+    if (!TAX_CONFIG[draft.financialYear || DEFAULT_FY]) return res.status(422).json({ error: 'Tax calculation is not configured for this financial year' });
+    const agg = await aggregateDeductions(form16.userId, draft.financialYear);
+    const eduTuition = 0; // Education paid amounts are already included by FY in aggregateDeductions.
 
     // Build the canonical context using the SAME logic as the recommendation flow.
-    const ctx = fromForm16(form16, { recordsAgg: agg, eduTuition });
+    const ctx = fromForm16(draft, { recordsAgg: agg, eduTuition });
 
     res.json({ deductions: ctx.deductions, isFinalized: false });
   } catch (err) {
     next(err);
   }
-});
+};
+router.get('/:id/deductions-preview', deductionsPreview);
+router.post('/:id/deductions-preview', deductionsPreview);
 
 // POST /api/form16/upload — PDF -> Gemini extraction.
 router.post(
@@ -95,16 +101,18 @@ router.post(
     // Keep the same Form 16 identity for this user/FY so the stale hook marks
     // any cached recommendation stale. Uploading a replacement never deletes a
     // document before its linked recommendation can be invalidated.
+    const extractedYear = String(data.financialYear || '').replace(/^FY\s*/i, '').trim();
+    const financialYear = /^\d{4}-\d{2}$/.test(extractedYear) ? extractedYear : '2025-26';
     const updatePayload = {
       ...data,
       userId: req.user._id,
       sourceType: 'PDF',
       pdfReference: req.file.originalname,
-      financialYear: '2025-26'
+      financialYear
     };
     
     const doc = await Form16.findOneAndUpdate(
-      { userId: req.user._id, financialYear: '2025-26' },
+      { userId: req.user._id, financialYear },
       {
         $set: { ...updatePayload, isFinalized: false, isEdited: false },
         $unset: { finalizedDeductions: 1 },
@@ -136,7 +144,7 @@ router.post('/:id/duplicate', async (req, res, next) => {
   try {
     const src = await Form16.findById(req.params.id);
     if (!src) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, src)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, src)) return res.status(403).json({ error: 'Forbidden' });
     const copy = src.toObject();
     delete copy._id;
     delete copy.__v;
@@ -165,10 +173,11 @@ router.get('/:id/recommendation', geminiRateLimiter, async (req, res, next) => {
     }
     const form16 = await Form16.findById(req.params.id);
     if (!form16) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, form16)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, form16)) return res.status(403).json({ error: 'Forbidden' });
 
+    if (!TAX_CONFIG[form16.financialYear || DEFAULT_FY]) return res.status(422).json({ error: 'Tax calculation is not configured for this financial year' });
     const existing = await TaxRecommendation.findOne({ form16Id: form16._id });
-    if (existing && !existing.isStale) return res.json(existing);
+    if (existing && existing.calculationVersion === CALCULATION_VERSION && !existing.isStale && existing.taxSavingSuggestions.every(s => s.section && s.suggestionType)) return res.json(existing);
 
     const financials = {
       income: await Income.find({ memberId: form16.userId }),
@@ -202,12 +211,8 @@ router.get('/:id/recommendation', geminiRateLimiter, async (req, res, next) => {
       agg = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section24: 0, totalDeductions: 0 };
       eduTuition = 0;
     } else {
-      agg = await aggregateDeductions(form16.userId);
-      const education = await EducationPayment.find({ memberId: form16.userId });
-      eduTuition = education.reduce(
-        (s, e) => s + annualize(e.amount, e.frequency),
-        0,
-      );
+      agg = await aggregateDeductions(form16.userId, form16.financialYear);
+      eduTuition = 0; // Already included once in aggregateDeductions.
     }
 
     const rec = await generateRecommendation(form16, financials, agg, eduTuition, overrideDeductions);
@@ -235,6 +240,7 @@ router.get('/:id/recommendation', geminiRateLimiter, async (req, res, next) => {
         userId: form16.userId,
         form16Id: form16._id,
         ...rec,
+        calculationVersion: CALCULATION_VERSION,
         totalDeductions: canonicalTotalDeductions,
         deductionBreakdown,
         isStale: false,
@@ -251,7 +257,8 @@ router.get('/:id/recommendation', geminiRateLimiter, async (req, res, next) => {
 // GET /api/form16 — list user's Form 16 records.
 router.get('/', async (req, res, next) => {
   try {
-    const items = await Form16.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    const { memberId } = await buildListFilter(req);
+    const items = await Form16.find({ userId: memberId }).sort({ createdAt: -1 });
     res.json(items);
   } catch (err) {
     next(err);
@@ -266,7 +273,7 @@ router.get('/:id', async (req, res, next) => {
     }
     const doc = await Form16.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
     res.json(doc);
   } catch (err) {
     next(err);
@@ -284,10 +291,11 @@ router.patch('/:id', async (req, res, next) => {
     }
     const doc = await Form16.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
     if (req.body.isFinalized === true && req.body.finalizedDeductions) {
       doc.isFinalized = true;
-      doc.finalizedDeductions = req.body.finalizedDeductions;
+      const recordsAgg = await aggregateDeductions(doc.userId, doc.financialYear);
+      doc.finalizedDeductions = fromForm16(doc, { recordsAgg }).deductions;
       doc.isEdited = true; // mark stale so recommendation is regenerated
     }
     await doc.save();
@@ -305,10 +313,12 @@ router.put('/:id', async (req, res, next) => {
     }
     const doc = await Form16.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
-    const { userId, sourceType, originalForm16Id, pdfReference, _id, ...updates } = req.body;
+    if (!await ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
+    const { userId, sourceType, originalForm16Id, pdfReference, _id, isFinalized, finalizedDeductions, taxpayerContext, ...updates } = req.body;
     normalizeForm16(updates);
     Object.assign(doc, updates);
+    doc.isFinalized = false;
+    doc.finalizedDeductions = null;
     doc.isEdited = true; // triggers the stale hook on save
     await doc.save();
     res.json(doc);
@@ -325,7 +335,7 @@ router.delete('/:id', async (req, res, next) => {
     }
     const doc = await Form16.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Not found' });
-    if (!ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await ownsForm16(req, doc)) return res.status(403).json({ error: 'Forbidden' });
     await TaxRecommendation.deleteMany({ form16Id: doc._id });
     await doc.deleteOne();
     res.json({ message: 'deleted' });

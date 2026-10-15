@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -39,6 +41,7 @@ function pickName(raw: Record<string, unknown>): string {
 
 function normalizeInvestment(raw: Record<string, unknown>): Investment {
   return {
+    taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
     memberId: String(raw.memberId ?? ''),
     investmentType: ((raw.investmentType as InvestmentType) ?? 'other'),
@@ -98,6 +101,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
   const [endDate, setEndDate] = useState(initial?.endDate ?? '')
   const [status, setStatus] = useState(initial?.status ?? 'Active')
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
 
   // stock
   const [ticker, setTicker] = useState(initial?.ticker ?? '')
@@ -152,6 +156,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       endDate: endDate || undefined,
       status,
       notes: notes || undefined,
+      taxPayments,
     }
     if (type === 'stock') payload.stockName = title
     else if (type === 'mf_sip') payload.fundName = title
@@ -191,7 +196,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save investment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save investment.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -377,6 +382,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
           </Select>
         </Field>
       </div>
+      <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
@@ -496,21 +502,21 @@ export function Investments() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Investment | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/investments', {
         params: { type: tab === 'all' ? undefined : tab },
       })
+      setError(null)
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeInvestment))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load investments.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load investments.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [tab])
 
   useEffect(() => {
     load()
@@ -523,7 +529,7 @@ export function Investments() {
       await apiClient.delete(`/investments/${inv.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete investment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete investment.'
       setError(msg)
     }
   }

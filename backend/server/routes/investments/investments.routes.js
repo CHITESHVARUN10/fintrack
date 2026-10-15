@@ -40,7 +40,7 @@ function currentValueOf(d) {
 // GET /api/investments/summary — invested vs current value grouped by type.
 router.get('/summary', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     const docs = await Investment.find(filter);
     const byType = {};
     let totalInvested = 0;
@@ -65,7 +65,7 @@ router.get('/summary', async (req, res, next) => {
 // GET /api/investments (optional ?type= filter)
 router.get('/', async (req, res, next) => {
   try {
-    const filter = buildListFilter(req);
+    const filter = await buildListFilter(req);
     if (req.query.type) filter.investmentType = req.query.type;
     const items = await Investment.find(filter).sort({ createdAt: -1 });
     res.json(items);

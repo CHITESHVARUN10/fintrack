@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext'
 import { dashboardService } from '../services/api'
 import { motion } from 'framer-motion'
 import { useAsync } from '../hooks/useAsync'
@@ -22,8 +23,8 @@ function normalizeTo100(entries: { label: string; value: number }[], total: numb
   const raws = entries.map(e => ({ label: e.label, value: e.value, raw: (e.value / total) * 100 }))
   const floors = raws.map(r => Math.floor(r.raw))
   const remainders = raws.map((r, i) => ({ idx: i, frac: r.raw - floors[i] }))
-  let sumFloors = floors.reduce((a, b) => a + b, 0)
-  let remaining = 100 - sumFloors
+  const sumFloors = floors.reduce((a, b) => a + b, 0)
+  const remaining = 100 - sumFloors
   // Sort by fractional part descending to distribute remaining points
   remainders.sort((a, b) => b.frac - a.frac)
   const resultPercents = [...floors]
@@ -57,9 +58,11 @@ function daysUntil(iso: string): number {
 }
 
 export function Dashboard() {
-  const { data, loading, error } = useAsync(() => dashboardService.getSummary(), [])
+  const { activeMemberId, user, isAdmin } = useAuth()
+  const selectedMember = isAdmin && activeMemberId !== user?.id ? activeMemberId : undefined
+  const { data, loading, error } = useAsync(() => dashboardService.getSummary(selectedMember), [selectedMember])
 
-  if (loading || !data) return <LoadingBlock label="Loading dashboard…" />
+  if (loading) return <LoadingBlock label="Loading dashboard…" />
   if (error)
     return (
       <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
@@ -67,13 +70,15 @@ export function Dashboard() {
       </div>
     )
 
+  if (!data) return <div>No dashboard data available.</div>
+
   // Use transaction data for individual (current month) — fallback to old burn breakdown
   const txCategoryEntries: { label: string; value: number }[] =
     (data.transactionCategoryEntries && data.transactionCategoryEntries.length > 0
       ? data.transactionCategoryEntries
-      : Object.entries(data.monthlyBurnBreakdown).map(([label, value]) => ({ label, value: value as number }))) as any
+      : Object.entries(data.monthlyBurnBreakdown).map(([label, value]) => ({ label, value: value as number })))
   const burnEntries = txCategoryEntries
-    .map((e: any) => [e.label, e.value] as [string, number])
+    .map((e) => [e.label, e.value] as [string, number])
     .filter(([, v]) => v > 0)
   const burnTotal = burnEntries.reduce((s, [, v]) => s + v, 0)
   const maxBurn = Math.max(...burnEntries.map(([, v]) => v), 1)

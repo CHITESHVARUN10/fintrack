@@ -6,9 +6,12 @@ const { normalizeVendorKey, resolveCategory, upsertFromCategory, resolveProduct,
 const { predictCategory } = require('./categoryEngine.service');
 
 function validateCandidate(c) {
-  if (!c.amountPaise || c.amountPaise <= 0) throw Object.assign(new Error('amountPaise required'), { status: 400 });
-  if (!c.occurredAt) throw Object.assign(new Error('occurredAt required'), { status: 400 });
+  if (!Number.isSafeInteger(c.amountPaise) || c.amountPaise <= 0) throw Object.assign(new Error('amountPaise required'), { status: 400 });
+  if (!c.occurredAt || !Number.isFinite(new Date(c.occurredAt).getTime())) throw Object.assign(new Error('occurredAt required'), { status: 400 });
   if (!c.type) throw Object.assign(new Error('type required'), { status: 400 });
+  for (const field of ['categorySplit', 'lineItems']) {
+    if (c[field]?.length && (c[field].some(item => !Number.isSafeInteger(item.amountPaise) || item.amountPaise <= 0) || c[field].reduce((sum, item) => sum + item.amountPaise, 0) !== c.amountPaise)) throw Object.assign(new Error(`${field} amounts must add up to amountPaise`), { status: 400 });
+  }
   const types = ['EXPENSE','INCOME','INTERNAL_TRANSFER','CASH_WITHDRAWAL','CASH_EXPENSE'];
   if (!types.includes(c.type)) throw Object.assign(new Error('Invalid type'), { status: 400 });
 }
@@ -17,35 +20,45 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
   validateCandidate(candidate);
   const fp = fingerprint || fingerprintCandidate(candidate);
 
+  const exactIdentity = Boolean(candidate.transactionIdExt || candidate.utr || candidate.metadata?.timePrecision !== 'day');
+
   // Batch idempotency: same fingerprint+batch → return existing
-  if (batchId) {
-    const dup = await SourceRecord.findOne({ familyId, batchId, fingerprint: fp });
+  if (batchId && exactIdentity) {
+    const dup = await SourceRecord.findOne({ familyId, createdBy, batchId, fingerprint: fp });
     if (dup) {
       const tx = await Transaction.findById(dup.transactionId);
       return { transaction: tx, sourceRecord: dup, deduped: true };
     }
   }
 
+  // Cross-batch exact identity uses type, minute, recipient and external references.
+  // Date-only rows remain separate/reviewable; amount and calendar day alone
+  // are never sufficient to discard a new row.
   // Cross-batch exact-duplicate detection: the identical row (amount + day
   // + upi/utr/tx-id) already imported from an EARLIER upload → map the new
   // row onto the existing transaction instead of creating a duplicate.
   // This is what makes re-uploading the full month's CSV collapse cleanly
   // onto the partial import done weeks earlier, even when the CSV carries
   // no UPI/UTR columns.
-  const priorDup = await SourceRecord.findOne({
+  const priorDup = exactIdentity && await SourceRecord.findOne({
+    createdBy,
     familyId,
     fingerprint: fp,
     batchId: { $ne: batchId || '' },
   }).lean();
   if (priorDup) {
     const tx = await Transaction.findById(priorDup.transactionId);
-    if (tx) return { transaction: tx, sourceRecord: priorDup, deduped: true };
+    if (tx && tx.status !== 'VOIDED') {
+      const sr = await SourceRecord.create({ transactionId: tx._id, familyId, createdBy, source, rawPayload, parsedFields: candidate, batchId, fingerprint: fp, upiId: candidate.upiId, transactionIdExt: candidate.transactionIdExt, utr: candidate.utr, confidence: 100 });
+      await Transaction.updateOne({ _id: tx._id }, { $addToSet: { sourceIds: sr._id } });
+      return { transaction: tx, sourceRecord: sr, deduped: true };
+    }
   }
 
   // Search recent candidates for reconciliation
   const windowFrom = new Date(new Date(candidate.occurredAt).getTime() - 2*86400000);
   const windowTo = new Date(new Date(candidate.occurredAt).getTime() + 2*86400000);
-  const recent = await Transaction.find({ familyId, amountPaise: candidate.amountPaise, occurredAt: { $gte: windowFrom, $lte: windowTo }, status: { $ne: 'VOIDED' } }).lean();
+  const recent = await Transaction.find({ familyId, createdBy, type: candidate.type, amountPaise: candidate.amountPaise, occurredAt: { $gte: windowFrom, $lte: windowTo }, status: { $ne: 'VOIDED' } }).lean();
   // SourceRecord has no occurredAt — pull signals by the matching
   // transactions' ids instead (the old query could never match anything,
   // which silently disabled UPI/UTR reconciliation for every import).
@@ -61,7 +74,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
   let best = null; let bestScore = 0; let bestLevel = 'NONE';
   for (const tx of recent) {
     const signals = txSignals.get(String(tx._id)) || {};
-    const sc = scoreCandidate(candidate, { amountPaise: tx.amountPaise, occurredAt: tx.occurredAt, upiId: signals.upi, utr: signals.utr, transactionIdExt: signals._extTx });
+    const sc = scoreCandidate(candidate, { amountPaise: tx.amountPaise, occurredAt: tx.occurredAt, type: tx.type, recipient: tx.recipient, metadata: tx.metadata, upiId: signals.upi, utr: signals.utr, transactionIdExt: signals._extTx });
     if (sc.confidence > bestScore) { bestScore = sc.confidence; best = tx; bestLevel = sc.level; }
   }
 
@@ -75,7 +88,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
       const rUpi = candidate.upiId||candidate.recipient?.upiId||null;
       const rLabel = candidate.recipient?.name||rUpi||rVk;
       const rCats = candidate.categorySplit && candidate.categorySplit.length ? candidate.categorySplit.map(function(s){ return s.category; }) : (candidate.category && candidate.category!=='Other' ? [candidate.category] : []);
-      if(rVk||rUpi) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert reconciled]', e.message); });
+      if(candidate.visibility !== 'PRIVATE' && (rVk||rUpi)) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert reconciled]', e.message); });
     } catch(e){ console.warn('[vendor reconciled]', e.message); }
     const tx = await Transaction.findById(best._id);
     return { transaction: tx, sourceRecord: sr, reconciled: true, level: bestLevel };
@@ -83,7 +96,8 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
 
   if (decision === 'REVIEW' && best) {
     const tx = await Transaction.create({
-      familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
+      subscriptionRef: candidate.subscriptionRef || undefined, loanRef: candidate.loanRef || undefined, loanMeta: candidate.loanMeta, categorySplit: candidate.categorySplit,
+    familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
       occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory||undefined, productName: candidate.productName||undefined, lineItems: candidate.lineItems||undefined, sender: candidate.sender, recipient: candidate.recipient,
       familyTransfer: candidate.familyTransfer, cashLeg: candidate.cashLeg, visibility: candidate.visibility || 'FAMILY', status: 'PENDING_REVIEW', confidence: bestScore, candidateOf: best._id, batchId, fingerprint: fp, metadata: candidate.metadata,
     });
@@ -94,7 +108,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
       const rUpi = candidate.upiId||candidate.recipient?.upiId||null;
       const rLabel = candidate.recipient?.name||rUpi||rVk;
       const rCats = candidate.categorySplit && candidate.categorySplit.length ? candidate.categorySplit.map(function(s){ return s.category; }) : (candidate.category && candidate.category!=='Other' ? [candidate.category] : []);
-      if(rVk||rUpi) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert review]', e.message); });
+      if(candidate.visibility !== 'PRIVATE' && (rVk||rUpi)) await upsertFromCategory({ familyId, createdBy, vendorKey:rVk, upiId:rUpi, label:rLabel, categories: rCats, amountPaise: candidate.amountPaise }).catch(function(e){ console.warn('[vendor upsert review]', e.message); });
     } catch(e){ console.warn('[vendor review]', e.message); }
     return { transaction: tx, sourceRecord: sr, pendingReview: true, candidateOf: best._id, level: bestLevel };
   }
@@ -144,6 +158,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     }
   } catch {}
   const tx = await Transaction.create({
+    subscriptionRef: candidate.subscriptionRef || undefined, loanRef: candidate.loanRef || undefined, loanMeta: candidate.loanMeta, categorySplit: candidate.categorySplit,
     familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
     occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory || undefined, productName: candidate.productName || undefined, productRef: candidate.productRef || undefined,
     lineItems: candidate.lineItems || undefined,
@@ -165,7 +180,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     } else if (candidate.productName){
       productsForVendor = [{ name: candidate.productName, category: candidate.category, subcategory: candidate.subcategory, typicalAmountPaise: candidate.amountPaise }];
     }
-    if ((vk || upi)) {
+    if (candidate.visibility !== 'PRIVATE' && (vk || upi)) {
       const vendorDoc = await upsertFromCategory({ familyId, createdBy, vendorKey: vk, upiId: upi, label, categories: cats, category: candidate.category, products: productsForVendor.length? productsForVendor: undefined, amountPaise: candidate.amountPaise });
       if (vendorDoc && tx) { tx.recipientVendorRef = vendorDoc._id; await tx.save().catch(function(){}); }
     }

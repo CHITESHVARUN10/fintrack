@@ -4,25 +4,29 @@
 
 // Build a list filter scoped to the requesting user. Admins may pass
 // ?memberId=<id> to scope to a specific family member.
-function buildListFilter(req) {
-  if (req.user.role === 'admin' && req.query.memberId) {
-    return { memberId: req.query.memberId };
+async function buildListFilter(req) {
+  const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : req.user._id;
+  if (String(memberId) !== String(req.user._id)) {
+    const User = require('../models/user.model');
+    const member = req.user.familyAccountId && await User.exists({ _id: memberId, familyAccountId: req.user.familyAccountId, isActive: true });
+    if (!member) throw Object.assign(new Error('Member not in your family'), { status: 403 });
   }
-  return { memberId: req.user._id };
+  return { memberId, familyAccountId: req.user.familyAccountId || null };
+}
+
+function sameId(a, b) {
+  return Boolean(a && b && String(a._id || a) === String(b._id || b));
 }
 
 function canModify(req, doc) {
   if (!doc || !req.user) return false;
-  const userMemberId = req.user._id ? String(req.user._id) : '';
-  const docMemberId = doc.memberId ? String(doc.memberId) : '';
-  if (docMemberId && userMemberId && docMemberId === userMemberId) return true;
+  if (!sameId(req.user.familyAccountId, doc.familyAccountId || doc.familyId)) return false;
+  return sameId(doc.memberId, req.user._id) || req.user.role === 'admin';
+}
 
-  const userFamilyId = req.user.familyAccountId ? String(req.user.familyAccountId) : '';
-  const docFamilyId = doc.familyAccountId ? String(doc.familyAccountId) : doc.familyId ? String(doc.familyId) : '';
-  if (userFamilyId && docFamilyId && userFamilyId === docFamilyId) {
-    return true;
-  }
-  return false;
+// Ledger mutations belong exclusively to their creator, including admin requests.
+function canModifyTransaction(req, tx) {
+  return Boolean(tx && sameId(tx.familyId, req.user.familyAccountId) && sameId(tx.createdBy, req.user._id));
 }
 
 // For Transaction ledger: PRIVATE transactions are only visible to creator (or admin via explicit include)
@@ -46,4 +50,4 @@ function shouldIncludePrivate(req, tx) {
   return false;
 }
 
-module.exports = { buildListFilter, canModify, buildTransactionVisibilityFilter, shouldIncludePrivate };
+module.exports = { buildListFilter, canModify, canModifyTransaction, sameId, buildTransactionVisibilityFilter, shouldIncludePrivate };

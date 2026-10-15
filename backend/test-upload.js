@@ -1,3 +1,4 @@
+if (process.env.RUN_LIVE_INTEGRATION_TESTS === 'true') {
 const fs = require('fs');
 const path = require('path');
 
@@ -9,3 +10,5 @@ async function run() {
   // Or I can just simulate calling the function directly.
 }
 run();
+
+}

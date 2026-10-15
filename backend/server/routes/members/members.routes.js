@@ -25,6 +25,7 @@ router.delete('/:id', async (req, res, next) => {
     if (String(member.familyAccountId) !== String(req.user.familyAccountId)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+    if (String(member._id) === String(req.user._id) || member.role === 'admin') return res.status(400).json({ error: 'Cannot deactivate the family admin' });
     member.isActive = false;
     await member.save();
     res.json({ message: 'deactivated', user: sanitizeUser(member) });

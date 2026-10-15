@@ -1,3 +1,4 @@
+import type { LedgerTransaction, LinkedTransactions, LoanSchedule, PaymentSuggestion, TransactionList, TransactionDetail, FamilyAnalytics, ImportResult, ApiMember, DuplicateGroup, RawLoan } from '../types/api'
 // Service layer for FinStack. Every call goes through the central `apiClient`
 // instance (see ./apiClient) with `withCredentials`, so cookies/sessions work
 // end-to-end through the Vite proxy to the Express backend.
@@ -9,7 +10,6 @@ import type {
   AppNotification,
   DashboardSummary,
   EducationPayment,
-  EMILoan,
   FamilyMember,
   Form16,
   Form16Regime,
@@ -29,8 +29,8 @@ import type {
 } from '../types'
 
 export const dashboardService = {
-  getSummary: (): Promise<DashboardSummary> =>
-    apiClient.get('/dashboard').then((r) => r.data),
+  getSummary: (memberId?: string): Promise<DashboardSummary> =>
+    apiClient.get(memberId ? `/dashboard/member/${memberId}` : '/dashboard').then((r) => r.data),
 }
 
 export const incomeService = {
@@ -48,7 +48,7 @@ export const subscriptionService = {
     apiClient.put(`/subscriptions/${id}`, payload).then((r) => r.data),
   delete: (id: string): Promise<void> =>
     apiClient.delete(`/subscriptions/${id}`).then(() => undefined),
-  getTransactions: (id: string): Promise<{ linked: any[]; suggestions: any[]; totalPaidPaise: number; totalCount: number }> =>
+  getTransactions: (id: string): Promise<{ linked: LedgerTransaction[]; suggestions: LedgerTransaction[]; totalPaidPaise: number; totalCount: number }> =>
     apiClient.get(`/subscriptions/${id}/transactions`).then((r) => r.data),
   linkTransaction: (id: string, payload: { transactionId: string }) =>
     apiClient.post(`/subscriptions/${id}/link-transaction`, payload).then((r) => r.data),
@@ -56,7 +56,7 @@ export const subscriptionService = {
     apiClient.post(`/subscriptions/${id}/unlink-transaction`, payload).then((r) => r.data),
   recordPayment: (id: string, payload: { amount?: number; date?: string; mode?: string; notes?: string; transactionId?: string }) =>
     apiClient.post(`/subscriptions/${id}/record-payment`, payload).then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: any[] }> =>
+  suggestions: (): Promise<{ suggestions: PaymentSuggestion[] }> =>
     apiClient.get('/subscriptions/suggestions').then((r) => r.data),
   applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/subscriptions/${id}/apply-suggestion`, payload).then((r) => r.data),
@@ -67,7 +67,7 @@ export const subscriptionService = {
 export const recurringService = {
   list: (): Promise<RecurringPayment[]> =>
     apiClient.get('/recurring').then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/recurring/suggestions').then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: PaymentSuggestion[] }> => apiClient.get('/recurring/suggestions').then((r) => r.data),
   applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/recurring/${id}/apply-suggestion`, payload).then((r) => r.data),
   dismissSuggestion: (id: string) =>
@@ -82,10 +82,10 @@ export const investmentService = {
 }
 
 export const loanService = {
-  list: (): Promise<EMILoan[]> => apiClient.get('/loans').then((r) => r.data),
-  get: (id: string): Promise<EMILoan> => apiClient.get(`/loans/${id}`).then((r) => r.data),
-  getSchedule: (id: string): Promise<any> => apiClient.get(`/loans/${id}/schedule`).then((r) => r.data),
-  getTransactions: (id: string): Promise<any> => apiClient.get(`/loans/${id}/transactions`).then((r) => r.data),
+  list: (): Promise<RawLoan[]> => apiClient.get('/loans').then((r) => r.data),
+  get: (id: string): Promise<RawLoan> => apiClient.get(`/loans/${id}`).then((r) => r.data),
+  getSchedule: (id: string): Promise<LoanSchedule> => apiClient.get(`/loans/${id}/schedule`).then((r) => r.data),
+  getTransactions: (id: string): Promise<LinkedTransactions> => apiClient.get(`/loans/${id}/transactions`).then((r) => r.data),
   linkTransaction: (id: string, payload: { transactionId: string; isPrepayment?: boolean }) =>
     apiClient.post(`/loans/${id}/link-transaction`, payload).then((r) => r.data),
   unlinkTransaction: (id: string, payload: { transactionId: string }) =>
@@ -94,7 +94,7 @@ export const loanService = {
     apiClient.post(`/loans/${id}/record-prepayment`, payload).then((r) => r.data),
   calculate: (payload: { principal: number; rate: number; tenureMonths: number; startDate?: string; emiDate?: number }) =>
     apiClient.post('/loans/calculate', payload).then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: any[] }> => apiClient.get('/loans/suggestions').then((r) => r.data),
+  suggestions: (): Promise<{ suggestions: PaymentSuggestion[] }> => apiClient.get('/loans/suggestions').then((r) => r.data),
   applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
     apiClient.post(`/loans/${id}/apply-suggestion`, payload).then((r) => r.data),
   dismissSuggestion: (id: string) =>
@@ -150,7 +150,7 @@ export const taxService = {
 // Backend Notification docs use Mongo `_id`; normalize so `id` stays consistent
 // across the UI (the `AppNotification` type uses `id`, not `_id`).
 export function normalizeNotification(raw: Record<string, unknown>): AppNotification {
-  const { _id, __v, ...rest } = raw
+  const rest = { ...raw }; delete rest._id; delete rest.__v
   return {
     ...(rest as unknown as Omit<AppNotification, 'id'>),
     id: String(raw._id ?? raw.id),
@@ -214,9 +214,9 @@ export const familyService = {
   me: () => apiClient.get('/families/me').then((r) => r.data),
   join: (inviteCode: string) => apiClient.post('/families/join', { inviteCode }).then((r) => r.data),
   members: (familyId: string) =>
-    apiClient.get(`/families/${familyId}/members`).then((r) => {
-      const data = r.data as { family?: unknown; members?: Record<string, unknown>[] }
-      if (data?.members) data.members = data.members.map((m) => normalizeMember(m)) as unknown as typeof data.members
+    apiClient.get<{ family?: unknown; members: ApiMember[] }>(`/families/${familyId}/members`).then((r) => {
+      const data = r.data
+      if (data?.members) data.members = data.members.map((m) => normalizeMember(m as unknown as Record<string, unknown>)) as typeof data.members
       return r.data
     }),
   requests: (familyId: string) => apiClient.get(`/families/${familyId}/requests`).then((r) => r.data),
@@ -229,8 +229,8 @@ export const familyService = {
 
 export const transactionService = {
   list: (params?: Record<string, string | number | boolean>) =>
-    apiClient.get('/transactions', { params }).then((r) => r.data),
-  get: (id: string) => apiClient.get(`/transactions/${id}`).then((r) => r.data),
+    apiClient.get<TransactionList>('/transactions', { params }).then((r) => r.data),
+  get: (id: string) => apiClient.get<TransactionDetail>(`/transactions/${id}`).then((r) => r.data),
   create: (payload: Record<string, unknown>) => apiClient.post('/transactions', payload).then((r) => r.data),
   update: (id: string, payload: Record<string, unknown>) => apiClient.patch(`/transactions/${id}`, payload).then((r) => r.data),
   resolve: (id: string, action: 'merge' | 'keepSeparate', targetId?: string) =>
@@ -238,11 +238,11 @@ export const transactionService = {
   bulkMergeDuplicates: (ids: string[]) =>
     apiClient.post('/transactions/bulk-merge-duplicates', { ids }).then((r) => r.data),
   duplicateGroups: (params?: Record<string, string | number | boolean>) =>
-    apiClient.get('/transactions/duplicate-groups', { params }).then((r) => r.data),
+    apiClient.get<{ groups: DuplicateGroup[]; scanned: number }>('/transactions/duplicate-groups', { params }).then((r) => r.data),
 }
 
 export const analyticsService = {
-  family: (params: Record<string,string>)=> apiClient.get('/analytics/family', { params }).then(r=> r.data),
+  family: (params: Record<string,string>)=> apiClient.get<FamilyAnalytics>('/analytics/family', { params }).then(r=> r.data),
 }
 export const recipientService = {
   list: (params?: Record<string,string>)=> apiClient.get('/recipients', { params }).then(r=> r.data),
@@ -254,12 +254,12 @@ export const importService = {
   bank: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
-    return apiClient.post('/imports/bank', fd).then((r) => r.data)
+    return apiClient.post<ImportResult>('/imports/bank', fd).then((r) => r.data)
   },
   screenshot: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
-    return apiClient.post('/imports/screenshot', fd).then((r) => r.data)
+    return apiClient.post<ImportResult>('/imports/screenshot', fd).then((r) => r.data)
   },
   batch: (id: string) => apiClient.get(`/imports/batches/${id}`).then((r) => r.data),
 }
@@ -268,7 +268,7 @@ export const importService = {
 // type (and all call sites) stay unchanged.
 export function normalizeForm16(raw: Record<string, unknown>): Form16 {
   const id = String(raw._id ?? raw.id)
-  const { _id, __v, ...rest } = raw
+  const rest = { ...raw }; delete rest._id; delete rest.__v
   return {
     ...(rest as unknown as Omit<Form16, 'id'>),
     id,
@@ -276,9 +276,9 @@ export function normalizeForm16(raw: Record<string, unknown>): Form16 {
 }
 
 export const form16Service = {
-  list: (): Promise<Form16[]> =>
+  list: (memberId?: string): Promise<Form16[]> =>
     apiClient
-      .get('/form16')
+      .get('/form16', { params: memberId ? { memberId } : undefined })
       .then((r) => (r.data ?? []).map((f: Record<string, unknown>) => normalizeForm16(f))),
 
   get: (id: string): Promise<Form16 | undefined> =>
@@ -299,7 +299,7 @@ export const form16Service = {
     apiClient.post('/form16/manual', {}).then((r) => normalizeForm16(r.data)),
 
   update: (id: string, patch: Partial<Form16>): Promise<Form16 | undefined> => {
-    const { id: _omit, ...body } = patch
+    const body = { ...patch }; delete body.id
     return apiClient
       .put(`/form16/${id}`, body)
       .then((r) => (r.data ? normalizeForm16(r.data) : undefined))
@@ -315,8 +315,8 @@ export const form16Service = {
   // Returns the COMPLETE merged DeductionLineItem array from all three sources
   // (Form16 OCR + Investment Records + User Manual). Called by the Review page
   // on mount to populate TaxpayerContext.deductions before rendering.
-  getDeductionsPreview: (id: string): Promise<{ deductions: import('../types').DeductionLineItem[]; isFinalized: boolean }> =>
-    apiClient.get(`/form16/${id}/deductions-preview`).then((r) => r.data),
+  getDeductionsPreview: (id: string, draft?: Partial<Form16>): Promise<{ deductions: import('../types').DeductionLineItem[]; isFinalized: boolean }> =>
+    (draft ? apiClient.post(`/form16/${id}/deductions-preview`, draft) : apiClient.get(`/form16/${id}/deductions-preview`)).then((r) => r.data),
 
   // PATCH /api/form16/:id — store isFinalized + finalizedDeductions.
   // Called when the user clicks "Save and Continue" on the Review page.
@@ -346,9 +346,15 @@ export const form16Service = {
     const newTaxable = Number(rec.newTaxableIncome ?? 0)
 
     const suggestions: TaxSavingSuggestion[] = (
-      (rec.taxSavingSuggestions as Array<{ suggestion?: string; potentialSaving?: number }>) ?? []
+      (rec.taxSavingSuggestions as Array<{ suggestion?: string; potentialSaving?: number; section?: string; suggestionType?: string; amount?: number; savingsType?: string; savingsAmount?: number | null; displayMessage?: string }>) ?? []
     ).map((s, i) => ({
       id: `sug-${i}`,
+      section: s.section || '',
+      suggestionType: s.suggestionType || 'INFORMATIONAL',
+      amount: s.amount,
+      savingsType: s.savingsType,
+      savingsAmount: s.savingsAmount,
+      displayMessage: s.displayMessage,
       title: s.suggestion ?? '',
       detail: s.suggestion ?? '',
       icon: 'savings',

@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import type { PaymentSuggestion } from '../types/api'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
@@ -117,7 +119,7 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save subscription.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save subscription.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -266,29 +268,24 @@ export function Subscriptions() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Subscription | null>(null)
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<PaymentSuggestion[]>([])
   const [suggLoading, setSuggLoading] = useState(false)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/subscriptions', {
         params: { frequency: freq },
       })
+      setError(null)
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeSubscription))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load subscriptions.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load subscriptions.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freq])
+  }), [freq])
 
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {
@@ -298,26 +295,24 @@ export function Subscriptions() {
     }
   })
 
-  const loadSuggestions = () => {
-    setSuggLoading(true)
-    apiClient
-      .get('/subscriptions/suggestions')
-      .then((r: any) => {
+  const loadSuggestions = useCallback(() => {
+apiClient
+      .get<{ suggestions: PaymentSuggestion[] }>('/subscriptions/suggestions')
+      .then((r) => {
         const raw = r.data?.suggestions || []
-        const filtered = raw.filter((s: any) => !dismissedIds.includes(s.id))
+        const filtered = raw.filter((s) => !dismissedIds.includes(s.id))
         setSuggestions(filtered)
       })
       .catch(() => {})
       .finally(() => setSuggLoading(false))
-  }
+  }, [dismissedIds])
 
   useEffect(() => {
     load()
     loadSuggestions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freq])
+  }, [load, loadSuggestions])
 
-  const handleAcceptSuggestion = async (s: any) => {
+  const handleAcceptSuggestion = async (s: PaymentSuggestion) => {
     try {
       await apiClient.post(`/subscriptions/${s.id}/apply-suggestion`, {
         acceptAmount: s.suggested?.amount ?? s.current?.amount,
@@ -326,21 +321,21 @@ export function Subscriptions() {
       })
       setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
       load()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Failed to accept suggestion')
     }
   }
 
-  const handleDismissSuggestion = async (s: any) => {
+  const handleDismissSuggestion = async (s: PaymentSuggestion) => {
     const nextDismissed = [...dismissedIds, s.id]
     setDismissedIds(nextDismissed)
     try {
       localStorage.setItem('fintrack_dismissed_subs', JSON.stringify(nextDismissed))
-    } catch {}
+    } catch { /* Storage or optional suggestions may be unavailable. */ }
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
     try {
       await apiClient.post(`/subscriptions/${s.id}/dismiss-suggestion`)
-    } catch {}
+    } catch { /* Storage or optional suggestions may be unavailable. */ }
   }
 
   const handleDelete = async (sub: Subscription) => {
@@ -349,7 +344,7 @@ export function Subscriptions() {
       await apiClient.delete(`/subscriptions/${sub.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete subscription.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete subscription.'
       setError(msg)
     }
   }
@@ -401,7 +396,7 @@ export function Subscriptions() {
           <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="lightbulb" /> Ledger Link — Suggestions from Transactions {suggLoading && <span className="text-xs opacity-60">(checking...)</span>}</h3>
           <div className="text-xs opacity-80 mb-sm">We detected payments matching your subscriptions. Accept to update your billing schedule and automatically link matching transactions to subscription payment history.</div>
           <div className="flex flex-col gap-sm">
-            {suggestions.map((s:any)=> (
+            {suggestions.map((s)=> (
               <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs min-w-0">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs min-w-0">
                   <span className="font-bold break-words min-w-0">{s.name}</span>

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import type { ApiMember, FamilyAnalytics } from '../types/api'
+import { useCallback, useEffect, useState } from 'react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { analyticsService, familyService } from '../services/api'
 import { apiClient } from '../services/apiClient'
@@ -10,7 +11,7 @@ import {
 
 const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)']
 
-function brutalTooltipStyle(): any {
+function brutalTooltipStyle(): import('react').CSSProperties {
   return {
     background: 'var(--bg-card)',
     border: '1px solid var(--border)',
@@ -22,7 +23,7 @@ function brutalTooltipStyle(): any {
   }
 }
 // Only show outer label for slices >=5% to avoid collision; small slices rely on legend/tooltip
-function pieLabelThreshold(props: any, threshold = 5) {
+function pieLabelThreshold(props: { payload?: Partial<import('../types/api').SpendRow>; percent?: number; name?: string | number; category?: string; vendor?: string; mode?: string }, threshold = 5) {
   const pct = props.payload?.sharePct ?? (props.percent != null ? props.percent * 100 : 0)
   if (pct < threshold) return null
   const name = props.name ?? props.payload?.name ?? props.category ?? props.vendor ?? props.mode ?? ''
@@ -33,9 +34,9 @@ function pieLabelThreshold(props: any, threshold = 5) {
 export function FamilyDashboard(){
   const [from, setFrom] = useState(()=> new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10))
   const [to, setTo] = useState(()=> new Date().toISOString().slice(0,10))
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<FamilyAnalytics | null>(null)
   const [loading, setLoading] = useState(false)
-  const [members, setMembers] = useState<any[]>([])
+  const [members, setMembers] = useState<ApiMember[]>([])
   const [selMembers, setSelMembers] = useState<string[]>([])
   const [selModes, setSelModes] = useState<string[]>([])
 
@@ -43,27 +44,26 @@ export function FamilyDashboard(){
     apiClient.get('/families/me').then(r=> {
       const fid = r.data?.family?._id
       if (!fid) return null
-      return familyService.members(fid).then((d:any)=> {
+      return familyService.members(fid).then((d)=> {
         const raw = d.members||[]
         // Normalize _id -> id so selection logic doesn't break (both buttons sharing undefined id was the bug)
-        const normalized = raw.map((m:any)=> ({ ...m, id: String(m.id ?? m._id ?? ''), _id: String(m._id ?? m.id ?? '') }))
+        const normalized = raw.map((m)=> ({ ...m, id: String(m.id ?? m._id ?? ''), _id: String(m._id ?? m.id ?? '') }))
         setMembers(normalized)
       })
     }).catch(()=>{})
   },[])
 
-  function load(){
-    setLoading(true)
+  const load = useCallback(() => {
     const params: Record<string,string> = {}
     if(from) params.from=from
     if(to) params.to=to
     if(selMembers.length) params.members=selMembers.join(',')
     if(selModes.length) params.modes=selModes.join(',')
     analyticsService.family(params).then(setData).finally(()=> setLoading(false))
-  }
-  useEffect(()=>{ load() },[])
+  }, [from, to, selMembers, selModes])
+  useEffect(()=>{ load() },[load])
 
-  const s = data?.summary
+  const s = data?.summary || { actualExpenditurePaise: 0, internalTransfersPaise: 0, cashWithdrawalsPaise: 0, totalMovementPaise: 0, cashRemainingPaise: 0, cashSpentPaise: 0, cashWithdrawnPaise: 0 }
 
   return (
     <div className="flex flex-col gap-md min-w-0">
@@ -73,7 +73,7 @@ export function FamilyDashboard(){
         <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">To<input type="date" value={to} onChange={e=> setTo(e.target.value)} className="brutal-thin px-sm py-xs max-w-full" /></label>
         <div className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Members
           <div className="flex flex-wrap gap-xs">
-            {members.map((m:any)=> {
+            {members.map((m)=> {
               const active = selMembers.includes(m.id)
               return <button key={m.id} onClick={()=> setSelMembers(p=> active? p.filter(x=> x!==m.id): [...p,m.id])} className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${active?'bg-brand-yellow':'bg-white'}`}>{m.name}</button>
             })}
@@ -107,10 +107,10 @@ export function FamilyDashboard(){
                 <div className="h-[260px] min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
-                        {data.byMemberShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
+                        {data.byMemberShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.name]} />
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.name]} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -123,10 +123,10 @@ export function FamilyDashboard(){
                 <div className="h-[260px] min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
-                        {data.byCategoryShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
+                        {data.byCategoryShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.category]} />
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.category]} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -138,10 +138,10 @@ export function FamilyDashboard(){
                 <div className="h-[260px] min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
-                        {data.byVendorShare.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
+                        {data.byVendorShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any, _n:any, p:any)=> [`${formatCurrency(v)} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.vendor]} />
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.vendor]} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -196,7 +196,7 @@ export function FamilyDashboard(){
                       <YAxis type="category" dataKey="category" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} width={90} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
                       <Tooltip contentStyle={brutalTooltipStyle()} />
                       <Bar dataKey="spend" name="Spend ₹" stroke="var(--border)" strokeWidth={2}>
-                        {data.byCategory.map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                        {data.byCategory.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
@@ -224,7 +224,7 @@ export function FamilyDashboard(){
               <h3 className="font-bold uppercase mb-sm">Top Vendors</h3>
               {(data.topVendors||[]).length===0 ? <div className="text-sm opacity-60">No vendors.</div> : (
                 <div className="flex flex-col gap-xs min-w-0">
-                  {data.topVendors.map((v:any,i:number)=> (
+                  {data.topVendors.map((v, i)=> (
                     <div key={v.vendor} className="flex justify-between items-center gap-sm brutal-thin px-sm py-xs bg-surface-container-low min-w-0">
                       <span className="text-xs font-bold truncate pr-sm min-w-0">{i+1}. {v.vendor}</span>
                       <span className="text-xs font-bold whitespace-nowrap">{formatCurrency(v.spend)} <span className="opacity-60">×{v.count}</span></span>
@@ -242,10 +242,10 @@ export function FamilyDashboard(){
                 <div className="h-[260px] min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props:any)=> pieLabelThreshold(props,5)}>
-                        {(data.byModeShare||data.byMode).map((_:any,i:number)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
+                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
+                        {(data.byModeShare||data.byMode).map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
                       </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v:any,_n:any,p:any)=> [`${formatCurrency(v)}${p.payload.sharePct? ` (${p.payload.sharePct.toFixed(1)}%)`:''}`, p.payload.mode]} />
+                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))}${p.payload.sharePct? ` (${p.payload.sharePct.toFixed(1)}%)`:''}`, p.payload.mode]} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -255,7 +255,7 @@ export function FamilyDashboard(){
               <h3 className="font-bold uppercase mb-sm">Member × Vendor (top)</h3>
               {(data.byMemberByVendor||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
                 <div className="flex flex-col gap-xs max-h-[260px] overflow-auto min-w-0">
-                  {data.byMemberByVendor.slice(0,20).map((r:any)=> (
+                  {data.byMemberByVendor.slice(0,20).map((r)=> (
                     <div key={`${r.memberId}-${r.vendor}`} className="flex justify-between items-center gap-sm brutal-thin px-sm py-xs bg-surface-container-low min-w-0">
                       <span className="text-xs font-bold truncate pr-sm min-w-0">{r.memberName} → {r.vendor}</span>
                       <span className="text-xs font-bold whitespace-nowrap">{formatCurrency(r.spend)} <span className="opacity-60">×{r.count}</span></span>
@@ -274,7 +274,7 @@ export function FamilyDashboard(){
                 <div className="overflow-x-auto min-w-0">
                 <div className="grid gap-xs min-w-[560px]" style={{ gridTemplateColumns: `repeat(${Math.min(14, data.heatmap.length)}, minmax(0,1fr))` }}>
                   {(() => {
-                    const vals = data.heatmap.map((h:any)=> h.spendPaise).filter((v:number)=> v>0).sort((a:number,b:number)=> a-b)
+                    const vals = data.heatmap.map((h)=> h.spendPaise).filter((v:number)=> v>0).sort((a:number,b:number)=> a-b)
                     // quantile breaks for 5-step palette (p20,p40,p60,p80) else fallback to linear
                     const q = (arr:number[], pct:number)=> {
                       if(!arr.length) return 0
@@ -291,9 +291,9 @@ export function FamilyDashboard(){
                       { bg:'var(--heat-6)', fg:'var(--heat-inverse)' }, // q80-max
                     ]
                     const hiDate = data.highestDay?.date
-                    return data.heatmap.map((h:any)=> {
+                    return data.heatmap.map((h)=> {
                       const v=h.spendPaise
-                      let level=0
+                      let level: number
                       if(v===0) level=0
                       else if(v<=q20) level=1
                       else if(v<=q40) level=2

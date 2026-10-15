@@ -9,9 +9,13 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []) {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
-    fn()
-      .then((res) => active && setData(res))
+    Promise.resolve().then(() => {
+      if (!active) return undefined
+      setLoading(true)
+      setError(null)
+      return fn()
+    })
+      .then((res) => { if (active && res !== undefined) setData(res) })
       .catch((e) => active && setError(String(e)))
       .finally(() => active && setLoading(false))
     return () => {

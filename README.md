@@ -76,7 +76,7 @@ fintrack/
 
 ## 🚀 Prerequisites
 
-- **Node.js** 18+ (Node 20+ recommended)
+- **Node.js** 20.19+ (Node 22.12+ recommended for the frontend)
 - **MongoDB** — local instance or a connection string (Atlas, etc.)
 - A **Google Gemini API key** (see [Environment Variables](#-environment-variables))
 - An **SMTP** account if you want transactional emails (optional)
@@ -201,10 +201,11 @@ noted. Health check: `GET /api/health`.
 
 ## 🖥️ Frontend Notes
 
-The frontend's `src/services/api.ts` has a `USE_MOCK` flag (currently `true`) that
-serves data from `src/data/mock.ts`. Set `USE_MOCK = false` to use the live backend
-via the Axios instance (`baseURL: '/api'`, `withCredentials: true`). All call sites
-use the same service interface, so flipping the flag requires no UI changes.
+The frontend's `src/services/api.ts` calls the live API through the shared Axios client (`withCredentials: true`). Local development proxies `/api` to the backend. For hosted builds, set `VITE_API_URL` before building.
+
+Transactions may be changed only by their creator. Administrators can view authorized family finances and Form 16 records, but cannot edit another member's ledger transactions or access another family's records. Revoked memberships and inactive accounts are checked on subsequent requests.
+
+For supplemental tax deductions, use **Paid amounts for tax** on investment, insurance, loan, and education forms. Specify the financial year, section, and actual amount paid. Existing portfolio balances and scheduled EMIs/premiums are preserved as tracking data but are no longer treated automatically as paid deductions. Form 16 fields and finalized snapshots remain separate.
 
 ---
 
@@ -215,6 +216,7 @@ use the same service interface, so flipping the flag requires no UI changes.
 ```bash
 npm run dev     # start with auto-reload (node --watch)
 npm start       # start the production server
+npm test        # offline backend regression tests
 ```
 
 **Frontend**
@@ -224,6 +226,7 @@ npm run dev      # Vite dev server
 npm run build    # type-check + production build
 npm run lint     # ESLint
 npm run preview  # preview the production build
+npm test         # frontend regression tests
 ```
 
 ---

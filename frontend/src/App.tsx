@@ -9,48 +9,50 @@ import { Layout } from './components/layout/Layout'
 // Route-level code splitting — each page is its own chunk, so the first
 // paint only ships the shell; heavy pages (recharts, reports) load on
 // navigation.
-const pageModules: Promise<unknown>[] = []
-const load = (mod: Promise<unknown>, exportName: string) => {
-  pageModules.push(mod)
-  return lazy(() => (mod as Promise<Record<string, ComponentType>>).then((m) => ({ default: m[exportName] })))
+const pageModules: Array<() => Promise<unknown>> = []
+const load = (loader: () => Promise<unknown>, exportName: string) => {
+  let pending: Promise<Record<string, ComponentType>> | undefined
+  const getModule = () => pending ??= loader() as Promise<Record<string, ComponentType>>
+  pageModules.push(getModule)
+  return lazy(() => getModule().then((m) => ({ default: m[exportName] })))
 }
 
-const Landing = load(import('./pages/Landing'), 'Landing')
-const Login = load(import('./pages/Login'), 'Login')
-const Register = load(import('./pages/Register'), 'Register')
-const AcceptInvite = load(import('./pages/AcceptInvite'), 'AcceptInvite')
-const PrivacyPolicy = load(import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
-const Docs = load(import('./pages/Docs'), 'Docs')
+const Landing = load(() => import('./pages/Landing'), 'Landing')
+const Login = load(() => import('./pages/Login'), 'Login')
+const Register = load(() => import('./pages/Register'), 'Register')
+const AcceptInvite = load(() => import('./pages/AcceptInvite'), 'AcceptInvite')
+const PrivacyPolicy = load(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
+const Docs = load(() => import('./pages/Docs'), 'Docs')
 
-const Dashboard = load(import('./pages/Dashboard'), 'Dashboard')
-const Income = load(import('./pages/Income'), 'Income')
-const AddIncome = load(import('./pages/AddIncome'), 'AddIncome')
-const Subscriptions = load(import('./pages/Subscriptions'), 'Subscriptions')
-const SubscriptionDetail = load(import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
-const Recurring = load(import('./pages/Recurring'), 'Recurring')
-const Investments = load(import('./pages/Investments'), 'Investments')
-const Loans = load(import('./pages/Loans'), 'Loans')
-const LoanDetail = load(import('./pages/LoanDetail'), 'LoanDetail')
-const Insurance = load(import('./pages/Insurance'), 'Insurance')
-const Education = load(import('./pages/Education'), 'Education')
-const Tax = load(import('./pages/Tax'), 'Tax')
-const Reports = load(import('./pages/Reports'), 'Reports')
-const Family = load(import('./pages/Family'), 'Family')
-const FamilyCreateJoin = load(import('./pages/FamilyCreateJoin'), 'FamilyCreateJoin')
-const Notifications = load(import('./pages/Notifications'), 'Notifications')
-const Transactions = load(import('./pages/Transactions'), 'Transactions')
-const ImportPage = load(import('./pages/ImportPage'), 'ImportPage')
-const FamilyDashboard = load(import('./pages/FamilyDashboard'), 'FamilyDashboard')
-const Vendors = load(import('./pages/Vendors'), 'Vendors')
-const VendorDetail = load(import('./pages/VendorDetail'), 'VendorDetail')
-const Budgets = load(import('./pages/Budgets'), 'Budgets')
-const Settings = load(import('./pages/Settings'), 'Settings')
-const Form16List = load(import('./pages/Form16List'), 'Form16List')
-const Form16Upload = load(import('./pages/Form16Upload'), 'Form16Upload')
-const Form16Processing = load(import('./pages/Form16Processing'), 'Form16Processing')
-const Form16Review = load(import('./pages/Form16Review'), 'Form16Review')
-const TaxRecommendation = load(import('./pages/TaxRecommendation'), 'TaxRecommendation')
-const RecommendationLoading = load(import('./pages/RecommendationLoading'), 'RecommendationLoading')
+const Dashboard = load(() => import('./pages/Dashboard'), 'Dashboard')
+const Income = load(() => import('./pages/Income'), 'Income')
+const AddIncome = load(() => import('./pages/AddIncome'), 'AddIncome')
+const Subscriptions = load(() => import('./pages/Subscriptions'), 'Subscriptions')
+const SubscriptionDetail = load(() => import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
+const Recurring = load(() => import('./pages/Recurring'), 'Recurring')
+const Investments = load(() => import('./pages/Investments'), 'Investments')
+const Loans = load(() => import('./pages/Loans'), 'Loans')
+const LoanDetail = load(() => import('./pages/LoanDetail'), 'LoanDetail')
+const Insurance = load(() => import('./pages/Insurance'), 'Insurance')
+const Education = load(() => import('./pages/Education'), 'Education')
+const Tax = load(() => import('./pages/Tax'), 'Tax')
+const Reports = load(() => import('./pages/Reports'), 'Reports')
+const Family = load(() => import('./pages/Family'), 'Family')
+const FamilyCreateJoin = load(() => import('./pages/FamilyCreateJoin'), 'FamilyCreateJoin')
+const Notifications = load(() => import('./pages/Notifications'), 'Notifications')
+const Transactions = load(() => import('./pages/Transactions'), 'Transactions')
+const ImportPage = load(() => import('./pages/ImportPage'), 'ImportPage')
+const FamilyDashboard = load(() => import('./pages/FamilyDashboard'), 'FamilyDashboard')
+const Vendors = load(() => import('./pages/Vendors'), 'Vendors')
+const VendorDetail = load(() => import('./pages/VendorDetail'), 'VendorDetail')
+const Budgets = load(() => import('./pages/Budgets'), 'Budgets')
+const Settings = load(() => import('./pages/Settings'), 'Settings')
+const Form16List = load(() => import('./pages/Form16List'), 'Form16List')
+const Form16Upload = load(() => import('./pages/Form16Upload'), 'Form16Upload')
+const Form16Processing = load(() => import('./pages/Form16Processing'), 'Form16Processing')
+const Form16Review = load(() => import('./pages/Form16Review'), 'Form16Review')
+const TaxRecommendation = load(() => import('./pages/TaxRecommendation'), 'TaxRecommendation')
+const RecommendationLoading = load(() => import('./pages/RecommendationLoading'), 'RecommendationLoading')
 
 // Route-transition placeholder shown while a page chunk streams in.
 function PageFallback() {
@@ -69,7 +71,7 @@ function PageFallback() {
 function useIdleRoutePrefetch() {
   useEffect(() => {
     const kickoff = () => {
-      pageModules.forEach((p) => p.catch(() => {}))
+      pageModules.forEach((p) => p().catch(() => {}))
     }
     const timer = window.setTimeout(kickoff, 1500)
     return () => window.clearTimeout(timer)

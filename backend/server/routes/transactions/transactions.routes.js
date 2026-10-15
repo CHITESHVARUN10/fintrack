@@ -5,7 +5,7 @@ let SourceRecord;
 try { SourceRecord = require('../../models/sourcerecord.model'); } catch {}
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { ingest, computeLedgerSummary } = require('../../services/transactionEngine.service');
-const { canModify } = require('../../utils/scope');
+const { canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -79,7 +79,7 @@ router.get('/compare', async (req, res, next) => {
     if (!requireFamily(req, res)) return;
     const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 4);
     if (ids.length < 2) return res.status(400).json({ error: 'Provide at least 2 ids' });
-    const items = await Transaction.find({ _id: { $in: ids }, familyId: req.user.familyAccountId }).populate('createdBy', 'name email').lean();
+    const items = await Transaction.find({ _id: { $in: ids }, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
     const sourcesByTx = {};
     for (const t of items) {
       sourcesByTx[String(t._id)] = await SourceRecord.find({ transactionId: t._id }).lean();
@@ -167,13 +167,13 @@ router.get('/duplicate-groups', async (req, res, next) => {
       const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('recipientVendorRef').populate('subscriptionRef').populate('loanRef');
       if (!tx) return res.status(404).json({ error: 'Not found' });
       if (String(tx.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Forbidden' });
-      if (tx.visibility === 'PRIVATE' && String(tx.createdBy?._id || tx.createdBy) !== String(req.user._id) && req.user.role !== 'admin') {
+      if (tx.visibility === 'PRIVATE' && String(tx.createdBy?._id || tx.createdBy) !== String(req.user._id)) {
         return res.status(403).json({ error: 'Private transaction' });
       }
       const sources = await SourceRecord.find({ transactionId: tx._id });
       let candidateOfTx = null;
       if (tx.candidateOf) {
-        candidateOfTx = await Transaction.findById(tx.candidateOf).populate('createdBy', 'name email').lean();
+        candidateOfTx = await Transaction.findOne({ _id: tx.candidateOf, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
       }
       res.json({ transaction: tx, sources, candidateOfTx });
     } catch (err) { next(err); }
@@ -216,6 +216,16 @@ router.get('/duplicate-groups', async (req, res, next) => {
       });
     const { error, value } = schema.validate(req.body);
     if (error) return res.status(400).json({ error: 'Validation failed', details: error.details.map(d=> d.message) });
+    for (const [field, model] of [['loanRef', '../../models/loan.model'], ['subscriptionRef', '../../models/subscription.model']]) {
+      if (value[field]) {
+        const linked = await require(model).findById(value[field]);
+        if (!linked || !canModify(req, linked)) return res.status(403).json({ error: 'Forbidden linked record' });
+      }
+    }
+    if (value.familyTransfer?.toUserId) {
+      const member = await require('../../models/user.model').exists({ _id: value.familyTransfer.toUserId, familyAccountId: req.user.familyAccountId, isActive: true });
+      if (!member || String(value.familyTransfer.toUserId) === String(req.user._id)) return res.status(400).json({ error: 'Choose another active member of your family' });
+    }
     const candidate = { ...value, occurredAt: new Date(value.occurredAt) };
     if (candidate.type==='INTERNAL_TRANSFER' && candidate.familyTransfer?.toUserId) {
       candidate.familyTransfer.fromUserId = req.user._id;
@@ -242,7 +252,8 @@ router.post('/bulk-categorize', async (req, res, next) => {
       ],
     };
     // if not familyView and not admin, only own Others
-    const doFamily = familyView === true || familyView === 'true';
+    // Categorization changes transactions, so it is always creator-scoped.
+    const doFamily = false;
     if (!doFamily) {
       filter.createdBy = req.user._id;
       // remove the visibility $or and keep only category $or, since we already filter by own
@@ -312,7 +323,7 @@ router.post('/bulk-categorize', async (req, res, next) => {
     try {
       const tx = await Transaction.findById(req.params.id);
       if (!tx) return res.status(404).json({ error: 'Not found' });
-      if (String(tx.createdBy) !== String(req.user._id) && req.user.role!=='admin') return res.status(403).json({ error: 'Forbidden' });
+      if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Forbidden' });
       // Validate subscriptionRef belongs to same family if provided
       if (req.body.subscriptionRef) {
         const Subscription = require('../../models/subscription.model');
@@ -328,6 +339,11 @@ router.post('/bulk-categorize', async (req, res, next) => {
         if (!canModify(req, loan)) return res.status(403).json({ error: 'Forbidden loan' });
         if (!req.body.loanMeta) req.body.loanMeta = { isLoanPayment: true, isPrepayment: false };
       }
+      if (req.body.recipientVendorRef) {
+        const vendor = await require('../../models/recipientdirectory.model').findById(req.body.recipientVendorRef);
+        if (!vendor || String(vendor.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Vendor not in family' });
+      }
+      if (tx.loanMeta?.isPrepayment && ['loanRef', 'loanMeta', 'type'].some(key => req.body[key] !== undefined)) return res.status(409).json({ error: 'Recorded prepayments cannot be relinked or reclassified' });
       if (req.body.subscriptionRef === '' || req.body.subscriptionRef === null) req.body.subscriptionRef = null;
       if (req.body.loanRef === '' || req.body.loanRef === null) req.body.loanRef = null;
       const allowed = ['category','subcategory','productName','productRef','subscriptionRef','loanRef','loanMeta','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
@@ -378,9 +394,11 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
     if (error) return res.status(400).json({ error: error.message });
     const docs = await Transaction.find({
       _id: { $in: value.ids },
+      createdBy: req.user._id,
       familyId: req.user.familyAccountId,
       status: { $ne: 'VOIDED' },
     });
+    if (docs.some(tx => tx.loanMeta?.isPrepayment)) return res.status(409).json({ error: 'Recorded prepayments cannot be merged' });
     if (docs.length < 2) return res.status(400).json({ error: 'Select at least 2 valid transactions' });
     const groups = new Map();
     for (const d of docs) {
@@ -441,6 +459,7 @@ router.post('/:id/resolve', async (req, res, next) => {
   try {
     const tx = await Transaction.findById(req.params.id);
     if (!tx) return res.status(404).json({ error: 'Not found' });
+    if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
     if (tx.status!=='PENDING_REVIEW') return res.status(400).json({ error: 'Not pending review' });
     const action = req.body.action;
     if (action==='keepSeparate') {
@@ -451,6 +470,9 @@ router.post('/:id/resolve', async (req, res, next) => {
       if (!targetId) return res.status(400).json({ error: 'targetId required' });
       const target = await Transaction.findById(targetId);
       if (!target) return res.status(404).json({ error: 'Target not found' });
+      if (!canModifyTransaction(req, target)) return res.status(403).json({ error: 'Forbidden target' });
+      if (String(tx._id) === String(target._id) || tx.type !== target.type || tx.amountPaise !== target.amountPaise || target.status === 'VOIDED') return res.status(400).json({ error: 'Incompatible merge target' });
+      if (tx.loanMeta?.isPrepayment || target.loanMeta?.isPrepayment) return res.status(409).json({ error: 'Recorded prepayments cannot be merged' });
       // Move source records to target
       await SourceRecord.updateMany({ transactionId: tx._id }, { transactionId: target._id });
       const srs = await SourceRecord.find({ transactionId: target._id });

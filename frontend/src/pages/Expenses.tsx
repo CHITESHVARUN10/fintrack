@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -84,7 +85,7 @@ function ExpenseForm({ initial, onSaved, onCancel }: ExpenseFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save expense.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save expense.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -190,24 +191,22 @@ export function Expenses() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<AdHocExpense | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/expenses')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeExpense))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load expenses.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load expenses.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (exp: AdHocExpense) => {
     if (!window.confirm(`Delete "${exp.title}"?`)) return
@@ -215,7 +214,7 @@ export function Expenses() {
       await apiClient.delete(`/expenses/${exp.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete expense.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete expense.'
       setError(msg)
     }
   }

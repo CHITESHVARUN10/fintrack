@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -95,7 +96,7 @@ function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save payment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save payment.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -200,24 +201,22 @@ export function Recurring() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<RecurringPayment | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/recurring')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeRecurring))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load payments.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load payments.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (p: RecurringPayment) => {
     if (!window.confirm(`Delete "${p.title}"?`)) return
@@ -225,7 +224,7 @@ export function Recurring() {
       await apiClient.delete(`/recurring/${p.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete payment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete payment.'
       setError(msg)
     }
   }

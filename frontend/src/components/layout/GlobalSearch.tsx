@@ -1,3 +1,4 @@
+import type { LedgerTransaction, Vendor, RawLoan, RawSubscription, RawInvestment, Budget, ApiMember } from '../../types/api'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
@@ -33,7 +34,7 @@ function saveRecent(q: string) {
     const arr = loadRecent()
     const next = [q.trim(), ...arr.filter(x => x.toLowerCase() !== q.trim().toLowerCase())].slice(0, MAX_RECENT)
     localStorage.setItem(RECENT_KEY, JSON.stringify(next))
-  } catch {}
+  } catch { /* Storage or optional suggestions may be unavailable. */ }
 }
 
 function highlight(text: string, query: string) {
@@ -76,25 +77,21 @@ function scoreItem(item: SearchItem, tokens: string[]): number | null {
   return score
 }
 
-export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }: { open: boolean; onClose: () => void; initialQuery?: string; onQueryChange?: (q: string) => void }) {
+export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }: { open: boolean; onClose: () => void; initialQuery?: string; onQueryChange: (q: string) => void }) {
   const navigate = useNavigate()
-  const [query, setQuery] = useState(initialQuery)
+  const query = initialQuery
+  const setQuery = onQueryChange
   const [activeIdx, setActiveIdx] = useState(0)
   const [recent, setRecent] = useState<string[]>(() => loadRecent())
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<SearchItem[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { if (open) setQuery(initialQuery) }, [open, initialQuery])
-  // bubble palette edits back to header so the nav input stays in sync
-  useEffect(() => { if (open) onQueryChange?.(query) }, [query, open, onQueryChange])
-  useEffect(() => { if (open) { setTimeout(() => inputRef.current?.focus(), 50); setActiveIdx(0) } }, [open])
   useEffect(() => {
-    if (open) {
-      const r = loadRecent()
-      setRecent(r)
-    }
+    if (!open) return
+    const timer = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
   }, [open])
 
   // fetch data once when opened (and cache)
@@ -102,7 +99,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     if (!open) return
     if (items.length) return // already loaded
     let cancelled = false
-    setLoading(true)
 
     // static pages
     const pageItems: SearchItem[] = navItems.map(n => ({
@@ -126,10 +122,10 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     async function fetchAll() {
       const results: SearchItem[] = [...allStatic]
       try {
-        const txRes: any = await apiClient.get('/transactions', { params: { familyView: true } }).then(r => r.data).catch(() => ({ items: [] }))
-        const txItems: any[] = txRes.items || txRes || []
+        const txRes = await apiClient.get<{ items: LedgerTransaction[] }>('/transactions', { params: { familyView: true } }).then(r => r.data).catch(() => ({ items: [] }))
+        const txItems = txRes.items
         // cap to 120 recent for search perf
-        txItems.slice(0, 120).forEach((t: any) => {
+        txItems.slice(0, 120).forEach((t) => {
           const name = t.recipient?.name || t.upiId || t.utr || t.type || 'Transaction'
           const amount = t.amountPaise != null ? `₹${(t.amountPaise/100).toLocaleString('en-IN')}` : ''
           const cat = t.category || ''
@@ -146,12 +142,12 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             rawKeywords: [name, cat, mode],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const vRes: any = await apiClient.get('/recipients', { params: { limit: 100 } }).then(r => r.data).catch(() => ({ items: [] }))
-        const vItems: any[] = vRes.items || vRes || []
-        vItems.slice(0, 80).forEach((v: any) => {
+        const vRes = await apiClient.get<{ items: Vendor[] }>('/recipients', { params: { limit: 100 } }).then(r => r.data).catch(() => ({ items: [] }))
+        const vItems = vRes.items
+        vItems.slice(0, 80).forEach((v) => {
           results.push({
             id: `vendor-${v._id}`,
             group: 'Vendors',
@@ -163,12 +159,12 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             rawKeywords: [v.label, v.vendorKey],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const sRes: any = await apiClient.get('/subscriptions').then(r => r.data).catch(() => [])
-        const sItems: any[] = Array.isArray(sRes) ? sRes : (sRes.items || [])
-        sItems.slice(0, 50).forEach((s: any) => {
+        const sRes = await apiClient.get<RawSubscription[]>('/subscriptions').then(r => r.data).catch(() => [])
+        const sItems = sRes
+        sItems.slice(0, 50).forEach((s) => {
           results.push({
             id: `sub-${s._id || s.id}`,
             group: 'Subscriptions',
@@ -180,12 +176,12 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             rawKeywords: [s.name],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const lRes: any = await apiClient.get('/loans').then(r => r.data).catch(() => [])
-        const lItems: any[] = Array.isArray(lRes) ? lRes : (lRes.items || [])
-        lItems.slice(0, 50).forEach((l: any) => {
+        const lRes = await apiClient.get<RawLoan[]>('/loans').then(r => r.data).catch(() => [])
+        const lItems = lRes
+        lItems.slice(0, 50).forEach((l) => {
           results.push({
             id: `loan-${l._id || l.id}`,
             group: 'Loans',
@@ -197,52 +193,52 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             rawKeywords: [l.loanName, l.lender],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const iRes: any = await apiClient.get('/investments').then(r => r.data).catch(() => [])
-        const iItems: any[] = Array.isArray(iRes) ? iRes : (iRes.items || [])
-        iItems.slice(0, 50).forEach((inv: any) => {
+        const iRes = await apiClient.get<RawInvestment[]>('/investments').then(r => r.data).catch(() => [])
+        const iItems = iRes
+        iItems.slice(0, 50).forEach((inv) => {
           results.push({
             id: `inv-${inv._id || inv.id}`,
             group: 'Investments',
-            title: inv.name || inv.type || 'Investment',
-            subtitle: `${inv.type || ''} · ₹${inv.amount || inv.currentValue || ''}`.trim(),
+            title: inv.name || inv.investmentType || 'Investment',
+            subtitle: `${inv.investmentType || ''} · ₹${inv.totalInvested || inv.currentValue || ''}`.trim(),
             icon: 'trending_up',
             to: `/investments`,
-            keywords: `${inv.name} ${inv.type}`.toLowerCase(),
-            rawKeywords: [inv.name],
+            keywords: `${inv.name} ${inv.investmentType}`.toLowerCase(),
+            rawKeywords: [inv.name || inv.investmentType],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const bRes: any = await apiClient.get('/budgets').then(r => r.data).catch(() => [])
+        const bRes = await apiClient.get<{ items: Budget[] }>('/budgets').then(r => r.data).catch(() => ({ items: [] }))
         // budgets may be object
-        const bItems: any[] = Array.isArray(bRes) ? bRes : (bRes.budgets || bRes.items || [])
-        bItems.slice(0, 30).forEach((b: any) => {
-          if (!b.category && !b.name) return
+        const bItems = bRes.items
+        bItems.slice(0, 30).forEach((b) => {
+          if (!b.category && !b.scope) return
           results.push({
             id: `budget-${b._id || b.category}`,
             group: 'Budgets',
-            title: b.category || b.name || 'Budget',
-            subtitle: b.limit ? `Limit ₹${b.limit}` : '',
+            title: b.category || b.scope || 'Budget',
+            subtitle: b.amountPaise ? `Limit ₹${b.amountPaise / 100}` : '',
             icon: 'savings',
             to: `/budgets`,
-            keywords: `${b.category || b.name}`.toLowerCase(),
-            rawKeywords: [b.category],
+            keywords: `${b.category || b.scope}`.toLowerCase(),
+            rawKeywords: [b.category || b.scope],
           })
         })
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       // Family members via /families/me + /families/:id/members is handled via members list if available
       try {
-        const fam: any = await apiClient.get('/families/me').then(r => r.data).catch(() => null)
-        const fid = fam?.family?._id || fam?.familyAccountId || fam?._id
+        const fam = await apiClient.get<{ family?: { _id: string } }>('/families/me').then(r => r.data).catch(() => null)
+        const fid = fam?.family?._id
         if (fid) {
-          const memRes: any = await apiClient.get(`/families/${fid}/members`).then(r => r.data).catch(() => ({ members: [] }))
-          const mems: any[] = memRes.members || memRes || []
-          mems.slice(0, 30).forEach((m: any) => {
+          const memRes = await apiClient.get<{ members: ApiMember[] }>(`/families/${fid}/members`).then(r => r.data).catch(() => ({ members: [] }))
+          const mems = memRes.members || []
+          mems.slice(0, 30).forEach((m) => {
             results.push({
               id: `member-${m._id || m.id}`,
               group: 'Family',
@@ -255,7 +251,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             })
           })
         }
-      } catch {}
+      } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       return results
     }
@@ -279,7 +275,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     const scored: Array<SearchItem & { score: number }> = []
     for (const it of items) {
       const s = scoreItem(it, tokens)
-      if (s !== null && s > 0) scored.push({ ...it, score: s } as any)
+      if (s !== null && s > 0) scored.push({ ...it, score: s })
     }
     scored.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
     return scored
@@ -393,7 +389,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
                 <div className="text-xs font-bold uppercase tracking-wider mb-sm">Quick links</div>
                 <div className="grid grid-cols-2 gap-xs">
                   {navItems.slice(0, 8).map(n => (
-                    <button key={n.to} onClick={() => handleSelect({ id: n.to, group: 'Pages', title: n.label, icon: n.icon, to: n.to, keywords: '' } as any)} className="brutal-thin bg-white px-sm py-sm text-xs font-bold flex items-center gap-xs hover:bg-brand-yellow text-left">
+                    <button key={n.to} onClick={() => handleSelect({ id: n.to, group: 'Pages', title: n.label, icon: n.icon, to: n.to, keywords: '', rawKeywords: [] })} className="brutal-thin bg-white px-sm py-sm text-xs font-bold flex items-center gap-xs hover:bg-brand-yellow text-left">
                       <Icon name={n.icon} className="text-base" />{n.label}
                     </button>
                   ))}

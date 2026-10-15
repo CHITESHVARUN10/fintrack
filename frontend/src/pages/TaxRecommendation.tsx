@@ -7,85 +7,21 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
-import type { RegimeTrace, DeductionLineItem, CalculationTraceStep } from '../types'
-import { TAX_CONFIG } from '../lib/tax'
+import type { RegimeTrace, DeductionLineItem, CalculationTraceStep, TaxSavingSuggestion } from '../types'
 
 // ----- logic utilities --------------------------------------------------------
 
-function computeSuggestionSavings(suggestion: any, data: any, taxConfig: any) {
-  if (suggestion.suggestionType === 'RESOLVE_DUPLICATE') {
-    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk && d.source === 'FORM16_OCR');
-    const excludedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && d.duplicateRisk);
-    
-    const appliedAmount = appliedItem ? appliedItem.amount : 0;
-    const excludedAmount = excludedItem ? excludedItem.amount : 0;
-    
-    let limit = 0;
-    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80D_SELF;
-    if (suggestion.section.toUpperCase() === '80C') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80C_GROUP;
-    
-    if (appliedAmount >= limit) {
-      return {
-        savingsType: 'NONE_LIMIT_REACHED',
-        savingsAmount: null,
-        displayMessage: `No additional tax benefit available. Your Form 16 already claims ${formatCurrency(appliedAmount)} under Section ${suggestion.section} which is the full statutory limit. The additional ${formatCurrency(excludedAmount)} from your investment records was excluded to prevent a duplicate claim.`,
-      };
-    }
-  }
-
-  if (suggestion.suggestionType === 'REGIME_INAPPLICABLE' && data.recommendedRegime === 'New') {
-    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase());
-    const amount = appliedItem ? appliedItem.amount : suggestion.amount || 0;
-    
-    const oldTax = data.regimes?.old?.totalTax || 0;
-    const newTax = data.regimes?.new?.totalTax || 0;
-    const diff = oldTax - newTax;
-    let switchNote = '';
-    if (diff < 0) switchNote = ' (Switching to the Old Regime is recommended).';
-    else switchNote = ` (However, the New Regime still saves you ${formatCurrency(Math.abs(diff))} overall).`;
-    
-    return {
-      savingsType: 'NONE_WRONG_REGIME',
-      savingsAmount: null,
-      displayMessage: `This deduction is not available under the New Regime. If you switch to the Old Regime and it produces a lower overall liability this deduction would reduce your taxable income by ${formatCurrency(amount)}.${switchNote}`,
-    };
-  }
-
-  let savingsAmount = 0;
-  if (suggestion.suggestionType === 'CLAIM_AVAILABLE' || suggestion.suggestionType === 'CONFIRM_SUBTYPE') {
-    const appliedItem = data.deductionLineItems?.find((d: any) => d.section.toUpperCase() === suggestion.section.toUpperCase() && !d.duplicateRisk);
-    const appliedAmount = appliedItem ? appliedItem.amount : 0;
-    
-    let limit = Infinity;
-    if (suggestion.section.toUpperCase() === '80D') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80D_SELF;
-    else if (suggestion.section.toUpperCase() === '80C') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80C_GROUP;
-    else if (suggestion.section.toUpperCase() === '80CCD1B') limit = taxConfig['2025-26'].DEDUCTION_CAPS.SECTION_80CCD1B;
-    
-    const unclaimed = limit === Infinity ? suggestion.amount || 0 : Math.max(0, limit - appliedAmount);
-    
-    let marginalRate = 0;
-    if (data.regimes?.old?.slabBreakdown) {
-      const breakdown = data.regimes.old.slabBreakdown;
-      for (let i = breakdown.length - 1; i >= 0; i--) {
-        if (breakdown[i].tax > 0) {
-          marginalRate = breakdown[i].rate;
-          break;
-        }
-      }
-    }
-    savingsAmount = Math.round(unclaimed * marginalRate);
-  }
-
+function computeSuggestionSavings(suggestion: TaxSavingSuggestion) {
   return {
-    savingsType: 'ACTIONABLE',
-    savingsAmount,
-    displayMessage: '', 
-  };
+    savingsType: suggestion.savingsType || 'ACTIONABLE',
+    savingsAmount: suggestion.savingsAmount ?? suggestion.potentialSaving ?? 0,
+    displayMessage: suggestion.displayMessage || '',
+  }
 }
 
-function sortSuggestions(suggestions: any[]) {
+function sortSuggestions(suggestions: TaxSavingSuggestion[]) {
   return suggestions.slice().sort((a, b) => {
-    const getTier = (s: any) => {
+    const getTier = (s: TaxSavingSuggestion) => {
       const type = s.suggestionType;
       if (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(type)) return 1;
       if (['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(type)) return 2;
@@ -94,7 +30,7 @@ function sortSuggestions(suggestions: any[]) {
     const tA = getTier(a);
     const tB = getTier(b);
     if (tA !== tB) return tA - tB;
-    
+
     if (tA === 1 || tA === 3) {
       return (a.section || '').localeCompare(b.section || '');
     }
@@ -733,11 +669,11 @@ export function TaxRecommendation() {
             // Client-side last-resort dedup guard (Final 3% Part 2).
             const rawSuggestions = data.taxSavingSuggestions || [];
             // PERMANENT DEDUP GUARD — do not remove. This catches any future regression.
-            let finalSuggestions = Array.from(new Map((rawSuggestions || []).filter((s: any) => s && s.section).map((s: any) => [s.section.toLowerCase().replace(/[^a-z0-9]/g, '') + (s.suggestionType || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s])).values());
-            
+            let finalSuggestions = Array.from(new Map((rawSuggestions || []).filter((s) => s && s.section).map((s) => [s.section.toLowerCase().replace(/[^a-z0-9]/g, '') + (s.suggestionType || '').toLowerCase().replace(/[^a-z0-9]/g, ''), s])).values());
+
             // Map computeSuggestionSavings to compute savingsAmount for sorting and display
-            finalSuggestions = finalSuggestions.map((s: any) => {
-              const savings = computeSuggestionSavings(s, data, TAX_CONFIG);
+            finalSuggestions = finalSuggestions.map((s) => {
+              const savings = computeSuggestionSavings(s);
               return { ...s, ...savings };
             });
 
@@ -746,13 +682,13 @@ export function TaxRecommendation() {
             let currentTier = -1;
             const elements: ReactNode[] = [];
 
-            sortedSuggestions.forEach((s: any, idx) => {
+            sortedSuggestions.forEach((s, idx) => {
               const getTier = (type: string) => {
                 if (['CONFIRM_SUBTYPE', 'RESOLVE_DUPLICATE', 'VERIFY_AMOUNT', 'OCR_AMBIGUITY'].includes(type)) return 1;
                 if (['INVEST_TO_CLAIM', 'CLAIM_AVAILABLE', 'INCREASE_CONTRIBUTION'].includes(type)) return 2;
                 return 3;
               };
-              
+
               const tier = getTier(s.suggestionType);
               if (tier !== currentTier) {
                 currentTier = tier;
@@ -760,7 +696,7 @@ export function TaxRecommendation() {
                 if (tier === 1) dividerText = 'Action Required';
                 else if (tier === 2) dividerText = 'Potential Savings';
                 else if (tier === 3) dividerText = 'For Your Information';
-                
+
                 elements.push(
                   <div key={`divider-${tier}`} className="w-full flex items-center gap-4 py-4 mt-2">
                     <div className="h-px bg-on-surface/20 flex-1"></div>
@@ -785,8 +721,8 @@ export function TaxRecommendation() {
                   <div className="bg-surface-container-low brutal-thin flex justify-between items-center p-3">
                     <span className="font-bold uppercase">Potential Savings:</span>
                     <span className="font-mono-data font-bold">
-                      {s.savingsType === 'NONE_LIMIT_REACHED' || s.savingsType === 'NONE_WRONG_REGIME' 
-                        ? '₹0' 
+                      {s.savingsType === 'NONE_LIMIT_REACHED' || s.savingsType === 'NONE_WRONG_REGIME'
+                        ? '₹0'
                         : formatCurrency(s.savingsAmount || 0)}
                     </span>
                   </div>

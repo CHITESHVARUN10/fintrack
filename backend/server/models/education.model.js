@@ -20,6 +20,7 @@ const educationPaymentSchema = new mongoose.Schema(
     startDate: { type: Date },
     endDate: { type: Date },
     forMember: { type: String },
+    taxPayments: { type: [require('./taxpayment.schema')], default: [] },
     notes: { type: String },
   },
   { timestamps: true },

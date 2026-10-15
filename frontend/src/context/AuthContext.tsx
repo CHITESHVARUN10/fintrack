@@ -21,6 +21,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>
   register: (name: string, email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshSession: () => Promise<void>
   removeMember: (id: string) => Promise<void>
 }
 
@@ -156,6 +157,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const refreshSession = async () => {
+    const response = await apiClient.get('/auth/me')
+    const current = normalizeUser(response.data.user)
+    setUser(current)
+    if (!current) { setMembers([]); setActiveMemberId(''); return }
+    setActiveMemberId(current.id)
+    if (current.familyAccountId) {
+      const family = await apiClient.get(`/families/${current.familyAccountId}/members`)
+      setMembers((family.data.members || []).map(normalizeMember))
+    } else setMembers([current])
+  }
+
   const register = async (name: string, email: string, password: string) => {
     // Backend register does not create a session, so auto-login afterwards.
     await apiClient.post('/auth/register', { name, email, password })
@@ -198,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         removeMember,
+        refreshSession,
       }}
     >
       {children}

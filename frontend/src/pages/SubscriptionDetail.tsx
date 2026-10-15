@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import type { LedgerTransaction } from '../types/api'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -60,44 +62,44 @@ export function SubscriptionDetail() {
   const [error, setError] = useState<string | null>(null)
 
   // Linked transactions & suggestions
-  const [linkedTxs, setLinkedTxs] = useState<any[]>([])
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [linkedTxs, setLinkedTxs] = useState<LedgerTransaction[]>([])
+  const [suggestions, setSuggestions] = useState<LedgerTransaction[]>([])
   const [totalPaidPaise, setTotalPaidPaise] = useState(0)
 
   // Modals
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false)
   const [editing, setEditing] = useState(false)
 
-  const loadData = async () => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
+  const loadData = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
+
+if (!id) return
     try {
       const [subRes, txRes] = await Promise.all([
         subscriptionService.get(id),
         subscriptionService.getTransactions(id).catch(() => ({ linked: [], suggestions: [], totalPaidPaise: 0 })),
       ])
-      setSubscription(normalizeSubscription(subRes as any))
+      setSubscription(normalizeSubscription(subRes as unknown as Record<string, unknown>))
       setLinkedTxs(txRes.linked || [])
       setSuggestions(txRes.suggestions || [])
       setTotalPaidPaise(txRes.totalPaidPaise || 0)
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       setError(err?.response?.data?.error || 'Could not load subscription details.')
     } finally {
       setLoading(false)
     }
-  }
+  }), [id])
 
   useEffect(() => {
     loadData()
-  }, [id])
+  }, [loadData])
 
   const handleDelete = async () => {
     if (!subscription || !window.confirm(`Delete "${subscription.name}"?`)) return
     try {
       await subscriptionService.delete(subscription.id)
       navigate('/subscriptions')
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not delete subscription.')
     }
   }
@@ -107,7 +109,7 @@ export function SubscriptionDetail() {
     try {
       await subscriptionService.unlinkTransaction(subscription.id, { transactionId: txId })
       loadData()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not unlink transaction.')
     }
   }
@@ -117,7 +119,7 @@ export function SubscriptionDetail() {
     try {
       await subscriptionService.linkTransaction(subscription.id, { transactionId: txId })
       loadData()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not link transaction.')
     }
   }
@@ -128,7 +130,7 @@ export function SubscriptionDetail() {
     try {
       await subscriptionService.update(subscription.id, { status: nextStatus })
       loadData()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       alert(err?.response?.data?.error || 'Could not update status.')
     }
   }
@@ -295,7 +297,7 @@ export function SubscriptionDetail() {
               💡 Suggested Transactions ({suggestions.length} matching payments found in ledger)
             </span>
             <div className="flex flex-col gap-xs max-h-36 overflow-auto">
-              {suggestions.map((s: any) => {
+              {suggestions.map((s) => {
                 const sAmt = s.amountPaise ? s.amountPaise / 100 : 0
                 return (
                   <div
@@ -340,7 +342,7 @@ export function SubscriptionDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-on-surface/10">
-                {linkedTxs.map((t: any) => {
+                {linkedTxs.map((t) => {
                   const amt = t.amountPaise ? t.amountPaise / 100 : 0
                   const madeBy = typeof t.createdBy === 'object' && t.createdBy ? t.createdBy.name : '—'
                   return (
@@ -452,7 +454,7 @@ function EditSubscriptionForm({
     try {
       await subscriptionService.update(subscription.id, payload)
       onSaved()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       setError(err?.response?.data?.error || 'Could not update subscription.')
     } finally {
       setLoading(false)

@@ -116,7 +116,7 @@ app.use('/api', (req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[express] Unhandled error:', err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+  res.status(err.status || (['ValidationError', 'CastError'].includes(err.name) ? 400 : 500)).json({ error: err.message || 'Internal server error' });
 });
 
 module.exports = app;

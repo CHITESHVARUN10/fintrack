@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -76,7 +77,7 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save income.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save income.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -182,24 +183,22 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   const [open, setOpen] = useState(initialAddOpen)
   const [editing, setEditing] = useState<Income | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/income')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeIncome))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load income.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load income.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (inc: Income) => {
     if (!window.confirm(`Delete "${inc.title}"?`)) return
@@ -207,7 +206,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
       await apiClient.delete(`/income/${inc.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete income.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete income.'
       setError(msg)
     }
   }

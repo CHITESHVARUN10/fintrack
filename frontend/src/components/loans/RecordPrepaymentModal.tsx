@@ -1,3 +1,5 @@
+import type { LedgerTransaction } from '../../types/api'
+import { toApiError } from '../../lib/apiError'
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -32,34 +34,33 @@ export function RecordPrepaymentModal({
   const [error, setError] = useState<string | null>(null)
 
   // Link transaction candidates
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [loadingTxs, setLoadingTxs] = useState(false)
+  const [transactions, setTransactions] = useState<LedgerTransaction[]>([])
+  const [loadingTxs, setLoadingTxs] = useState(true)
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (initialAmount) {
-      setAmount(String(initialAmount))
-    }
-  }, [initialAmount])
+  const [previousAmount, setPreviousAmount] = useState(initialAmount)
+  if (previousAmount !== initialAmount) {
+    setPreviousAmount(initialAmount)
+    setAmount(initialAmount ? String(initialAmount) : '')
+  }
 
   useEffect(() => {
     if (!open) return
-    setLoadingTxs(true)
     // Fetch both suggestions and recent expense transactions in family
     Promise.all([
       loanService.getTransactions(loan.id).catch(() => ({ suggestions: [] })),
-      apiClient.get('/transactions', { params: { familyView: 'true', type: 'EXPENSE', limit: 40 } }).catch(() => ({ data: { items: [] } })),
+      apiClient.get<{ items: LedgerTransaction[] }>('/transactions', { params: { familyView: 'true', type: 'EXPENSE', limit: 40 } }).catch(() => ({ data: { items: [] } })),
     ])
       .then(([loanTxData, allTxData]) => {
         const suggs = loanTxData.suggestions || []
-        const general = allTxData.data?.items || allTxData.data || []
+        const general = allTxData.data.items || []
         // merge and deduplicate by _id, preferring unlinked ones
-        const combined = [...suggs, ...general.filter((g: any) => !suggs.some((s: any) => s._id === g._id) && !g.loanRef)]
+        const combined = [...suggs, ...general.filter((g) => !suggs.some((s) => s._id === g._id) && !g.loanRef)]
         setTransactions(combined.slice(0, 30))
         if (combined.length > 0) {
           // If any candidate matches initialAmount, pre-select it
           const match = initialAmount
-            ? combined.find((t: any) => Math.abs(t.amountPaise / 100 - initialAmount) < 1)
+            ? combined.find((t) => Math.abs(t.amountPaise / 100 - initialAmount) < 1)
             : combined[0]
           if (match) setSelectedTxId(match._id)
         } else {
@@ -105,7 +106,7 @@ export function RecordPrepaymentModal({
 
       onPrepaymentRecorded()
       onClose()
-    } catch (err: any) {
+    } catch (caught: unknown) { const err = toApiError(caught);
       setError(err?.response?.data?.error || err.message || 'Failed to record prepayment.')
     } finally {
       setLoading(false)
@@ -184,7 +185,7 @@ export function RecordPrepaymentModal({
               </div>
             ) : (
               <div className="brutal bg-white overflow-auto max-h-60 flex flex-col divide-y divide-on-surface/10">
-                {transactions.map((tx: any) => {
+                {transactions.map((tx) => {
                   const isSelected = selectedTxId === tx._id
                   const txAmt = tx.amountPaise ? tx.amountPaise / 100 : 0
                   return (

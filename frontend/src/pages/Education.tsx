@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
+import { toApiError } from '../lib/apiError'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Button } from '../components/ui/Button'
@@ -29,6 +31,7 @@ const FREQUENCIES: EducationFrequency[] = [
 // `EducationPayment` type (and all call sites) stay unchanged.
 function normalizeEducation(raw: Record<string, unknown>): EducationPayment {
   return {
+    taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
     memberId: String(raw.memberId ?? ''),
     title: (raw.title as string) ?? '',
@@ -71,6 +74,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
     initial?.endDate ? initial.endDate.slice(0, 10) : '',
   )
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,6 +93,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       notes: notes || undefined,
+      taxPayments,
     }
     try {
       if (initial) {
@@ -98,7 +103,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
       }
       onSaved()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not save payment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not save payment.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -186,6 +191,7 @@ function EducationForm({ initial, onSaved, onCancel }: EducationFormProps) {
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </Field>
       </div>
+      <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
       <Field label="Notes">
         <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
@@ -208,24 +214,22 @@ export function Education() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<EducationPayment | null>(null)
 
-  const load = async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(() => Promise.resolve().then(async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/education')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeEducation))
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not load education.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not load education.'
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const handleDelete = async (edu: EducationPayment) => {
     if (!window.confirm(`Delete "${edu.title}"?`)) return
@@ -233,7 +237,7 @@ export function Education() {
       await apiClient.delete(`/education/${edu.id}`)
       await load()
     } catch (err: unknown) {
-      const msg = (err as any)?.response?.data?.error ?? 'Could not delete payment.'
+      const msg = toApiError(err).response?.data?.error ?? 'Could not delete payment.'
       setError(msg)
     }
   }

@@ -38,6 +38,7 @@ router.post('/', async (req, res, next) => {
     const { error, value } = schema.validate(req.body);
     if (error) return validationError(res, error);
 
+    if (req.user.familyAccountId) return res.status(409).json({ error: 'Already in a family' });
     const inviteCode = await uniqueInviteCode();
     const family = new FamilyAccount({
       name: value.name,
@@ -78,6 +79,7 @@ router.post('/join', async (req, res, next) => {
     const { error, value } = schema.validate(req.body);
     if (error) return validationError(res, error);
 
+    if (req.user.familyAccountId) return res.status(409).json({ error: 'Leave your current family before joining another' });
     const code = value.inviteCode.trim().toUpperCase();
     const family = await FamilyAccount.findOne({ inviteCode: code });
     if (!family) return res.status(404).json({ error: 'Invalid invite code' });
@@ -114,7 +116,7 @@ router.get('/:id/members', async (req, res, next) => {
     const family = await FamilyAccount.findById(req.params.id);
     if (!family) return res.status(404).json({ error: 'Family not found' });
     const isMember = String(req.user.familyAccountId) === String(family._id);
-    if (!isMember && req.user.role !== 'admin') {
+    if (!isMember) {
       const m = await FamilyMembership.findOne({ userId: req.user._id, familyId: family._id, status: 'ACTIVE' });
       if (!m) return res.status(403).json({ error: 'Not a member of this family' });
     }
@@ -131,10 +133,10 @@ router.get('/:id/requests', async (req, res, next) => {
   try {
     const family = await FamilyAccount.findById(req.params.id);
     if (!family) return res.status(404).json({ error: 'Family not found' });
-    if (String(family.adminId) !== String(req.user._id) && req.user.role !== 'admin') {
+    if (String(family.adminId) !== String(req.user._id) || String(req.user.familyAccountId) !== String(family._id)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
-    const requests = await FamilyMembership.find({ familyId: family._id, status: 'PENDING' }).populate('userId');
+    const requests = await FamilyMembership.find({ familyId: family._id, status: 'PENDING' }).populate('userId', 'name email isActive');
     res.json({ family, requests });
   } catch (err) { next(err); }
 });
@@ -148,7 +150,7 @@ router.patch('/:id/requests/:membershipId', async (req, res, next) => {
 
     const family = await FamilyAccount.findById(req.params.id);
     if (!family) return res.status(404).json({ error: 'Family not found' });
-    if (String(family.adminId) !== String(req.user._id) && req.user.role !== 'admin') {
+    if (String(family.adminId) !== String(req.user._id) || String(req.user.familyAccountId) !== String(family._id)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
@@ -159,12 +161,14 @@ router.patch('/:id/requests/:membershipId', async (req, res, next) => {
     if (membership.status !== 'PENDING') return res.status(409).json({ error: `Already ${membership.status}` });
 
     if (value.action === 'accept') {
+      const applicant = await User.findById(membership.userId);
+      if (!applicant || (applicant.familyAccountId && String(applicant.familyAccountId) !== String(family._id))) return res.status(409).json({ error: 'User is already in another family' });
       membership.status = 'ACTIVE';
       membership.reviewedBy = req.user._id;
       membership.reviewedAt = new Date();
       await membership.save();
       await FamilyAccount.findByIdAndUpdate(family._id, { $addToSet: { members: membership.userId } });
-      await User.findByIdAndUpdate(membership.userId, { familyAccountId: family._id, isActive: true });
+      await User.findByIdAndUpdate(membership.userId, { familyAccountId: family._id, isActive: true, role: 'member' });
     } else {
       membership.status = 'REJECTED';
       membership.reviewedBy = req.user._id;
@@ -180,7 +184,7 @@ router.delete('/:id/members/:userId', async (req, res, next) => {
   try {
     const family = await FamilyAccount.findById(req.params.id);
     if (!family) return res.status(404).json({ error: 'Family not found' });
-    if (String(family.adminId) !== String(req.user._id) && req.user.role !== 'admin') {
+    if (String(family.adminId) !== String(req.user._id) || String(req.user.familyAccountId) !== String(family._id)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     if (String(req.params.userId) === String(family.adminId)) {
@@ -192,6 +196,7 @@ router.delete('/:id/members/:userId', async (req, res, next) => {
     membership.removedAt = new Date();
     await membership.save();
     await FamilyAccount.findByIdAndUpdate(family._id, { $pull: { members: req.params.userId } });
+    await User.updateOne({ _id: req.params.userId, familyAccountId: family._id }, { $set: { familyAccountId: null, role: 'member' } });
     res.json({ membership });
   } catch (err) { next(err); }
 });
@@ -201,7 +206,7 @@ router.post('/:id/rotate-code', async (req, res, next) => {
   try {
     const family = await FamilyAccount.findById(req.params.id);
     if (!family) return res.status(404).json({ error: 'Family not found' });
-    if (String(family.adminId) !== String(req.user._id) && req.user.role !== 'admin') {
+    if (String(family.adminId) !== String(req.user._id) || String(req.user.familyAccountId) !== String(family._id)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     family.inviteCode = await uniqueInviteCode();

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { cn } from '../../lib/cn'
 import { Icon } from './Icon'
 import { CountUp } from './CountUp'
-import { staggerItem } from '../motion'
+import { staggerItem } from '../motion/tokens'
 import { formatCurrency } from '../../lib/format'
 
 interface StatCardProps {

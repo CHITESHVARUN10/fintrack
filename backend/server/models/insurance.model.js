@@ -24,6 +24,7 @@ const insuranceSchema = new mongoose.Schema(
     policyNumber: { type: String },
     status: { type: String, enum: ['Active', 'Lapsed', 'Matured', 'Claimed'] },
     tax80C: { type: Boolean },
+    taxPayments: { type: [require('./taxpayment.schema')], default: [] },
     notes: { type: String },
   },
   { timestamps: true },

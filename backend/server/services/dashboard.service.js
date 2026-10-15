@@ -50,11 +50,11 @@ function nextOccurrence(dayOfMonth, lookaheadDays = 7, base = new Date()) {
 async function buildDashboard(userId) {
   const [incomes, subs, recs, invs, loans, insurances, edus] = await Promise.all([
     Income.find({ memberId: userId }),
-    Subscription.find({ memberId: userId, status: { $ne: 'Cancelled' } }),
+    Subscription.find({ memberId: userId, status: 'Active' }),
     RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId, status: { $ne: 'Closed' } }),
-    Insurance.find({ memberId: userId, status: { $ne: 'Lapsed' } }),
+    EMILoan.find({ memberId: userId, status: 'Active' }),
+    Insurance.find({ memberId: userId, status: 'Active' }),
     EducationPayment.find({ memberId: userId }),
   ]);
 
@@ -64,7 +64,8 @@ async function buildDashboard(userId) {
     recs.reduce((s, x) => s + (x.amount || 0), 0) +
     loans.reduce((s, x) => s + (x.emiAmount || 0), 0) +
     invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0) +
-    insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0);
+    insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0) +
+    edus.reduce((s, x) => s + eduMonthlyAmount(x), 0);
 
   const netMonthlyFlow = monthlyIncome - monthlyObligations;
 
@@ -84,14 +85,17 @@ async function buildDashboard(userId) {
       }
     }
   };
-  pushUpcoming(subs, (s) => s.billingDate, 'subscription', (s) => subMonthlyAmount(s));
+  pushUpcoming(subs.filter(s => s.frequency !== 'yearly'), (s) => s.billingDate, 'subscription', (s) => subMonthlyAmount(s));
   pushUpcoming(loans, (l) => l.emiDate, 'loan', (l) => l.emiAmount || 0);
-  pushUpcoming(
-    insurances,
-    (i) => (i.nextDueDate ? i.nextDueDate.getDate() : null),
-    'insurance',
-    (i) => insuranceMonthlyAmount(i),
-  );
+  const nowDue = new Date();
+  const dueLimit = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate() + 8);
+  const dueStart = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate());
+  for (const [items, type, dateField, amountField] of [[insurances, 'insurance', 'nextDueDate', 'premiumAmount'], [subs.filter(s => s.frequency === 'yearly'), 'subscription', 'nextRenewalDate', 'amount']]) {
+    for (const item of items) {
+      const dueDate = item[dateField] && new Date(item[dateField]);
+      if (dueDate && dueDate >= dueStart && dueDate < dueLimit) upcoming.push({ type, id: item._id, name: item.name || item.policyName, amount: item[amountField] || 0, dueDate });
+    }
+  }
   pushUpcoming(
     invs.filter((x) => x.investmentType === 'mf_sip'),
     (x) => x.sipDate,
@@ -192,11 +196,11 @@ async function buildDashboard(userId) {
 async function buildMemberSummary(userId) {
   const [incomes, subs, recs, invs, loans, insurances, edus] = await Promise.all([
     Income.find({ memberId: userId }),
-    Subscription.find({ memberId: userId, status: { $ne: 'Cancelled' } }),
+    Subscription.find({ memberId: userId, status: 'Active' }),
     RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId, status: { $ne: 'Closed' } }),
-    Insurance.find({ memberId: userId, status: { $ne: 'Lapsed' } }),
+    EMILoan.find({ memberId: userId, status: 'Active' }),
+    Insurance.find({ memberId: userId, status: 'Active' }),
     EducationPayment.find({ memberId: userId }),
   ]);
 
