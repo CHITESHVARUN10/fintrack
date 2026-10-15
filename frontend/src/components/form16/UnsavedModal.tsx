@@ -1,5 +1,6 @@
 import { Icon } from '../ui/Icon'
 import { Button } from '../ui/Button'
+import { OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../ui/Overlay'
 
 interface UnsavedModalProps {
   open: boolean
@@ -11,11 +12,13 @@ export function UnsavedModal({ open, onStay, onLeave }: UnsavedModalProps) {
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/40"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       onClick={onStay}
     >
+      <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} aria-hidden="true" />
       <div
-        className="bg-white border-[3px] border-on-surface shadow-brutal w-full max-w-[480px] relative"
+        className="relative bg-white border-[3px] border-on-surface shadow-brutal w-full max-w-[480px]"
+        style={OPAQUE_PANEL_STYLE}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Red accent bar */}

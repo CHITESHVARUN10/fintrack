@@ -125,16 +125,18 @@
     --nb-yellow: #FFE500;
     --nb-flash-from: #111114;
 
-    /* Legacy color aliases — flip with .dark so legacy classes theme correctly */
-    --c-white: var(--bg-card);
-    --c-bg: var(--bg-page);
-    --c-surface-base: var(--bg-surface);
-    --c-surface-lowest: var(--bg-card);
-    --c-surface-low: var(--bg-input);
-    --c-surface: var(--bg-surface);
-    --c-surface-high: var(--bg-elevated);
-    --c-surface-variant: var(--bg-elevated);
-    --c-surface-highest: var(--bg-elevated);
+    /* Legacy color aliases — flip with .dark so legacy classes theme correctly.
+       ALL must be rgb channel triplets: the Tailwind config wraps them in
+       rgb(var(--x) / <alpha>) — a hex var here would be invalid there. */
+    --c-white: 25 25 30;               /* == var(--bg-card) #19191e */
+    --c-bg: 10 10 10;                  /* == var(--bg-page) #0a0a0a */
+    --c-surface-base: 13 13 16;        /* == var(--bg-surface) #0d0d10 */
+    --c-surface-lowest: 25 25 30;      /* == var(--bg-card) #19191e */
+    --c-surface-low: 19 19 23;         /* == var(--bg-input) #131317 */
+    --c-surface: 13 13 16;             /* == var(--bg-surface) #0d0d10 */
+    --c-surface-high: 38 38 45;        /* == var(--bg-elevated) #26262d */
+    --c-surface-variant: 38 38 45;
+    --c-surface-highest: 38 38 45;
     --c-on-surface: 245 245 242;
     --c-on-surface-variant: 179 179 171;
     --c-outline-variant: 84 84 90;

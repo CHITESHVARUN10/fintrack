@@ -68,11 +68,11 @@ export function RecommendationLoading() {
             </div>
           </div>
         </div>
-        <div className="absolute inset-0 bg-on-surface/80 backdrop-blur-sm pointer-events-none" />
+        <div className="absolute inset-0 bg-black/60 pointer-events-none" style={{ backgroundColor: 'rgba(10,10,10,0.8)' }} />
       </div>
 
       {/* Dialog sits above the blur */}
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 min-w-0">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 min-w-0" role="dialog" aria-modal="true">
         <RetroLoader
           steps={STEPS.map((s) => s.label)}
           step={step}

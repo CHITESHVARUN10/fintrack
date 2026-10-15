@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { OPAQUE_PANEL_STYLE } from './Overlay'
 
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
@@ -71,8 +72,8 @@ export function RetroLoader({
   const fun = useScramble(funMessages[funIdx] ?? '')
 
   return (
-    <main className="w-full max-w-2xl bg-white brutal flex flex-col overflow-hidden">
-      <header className="p-xl pb-6 bg-white relative overflow-hidden border-b-[3px] border-on-surface">
+    <main className="w-full max-w-2xl bg-white brutal flex flex-col overflow-hidden" style={OPAQUE_PANEL_STYLE}>
+      <header className="p-xl pb-6 bg-white relative overflow-hidden border-b-[3px] border-on-surface" style={OPAQUE_PANEL_STYLE}>
         <div className="flex justify-center items-center gap-2 mb-2">
           <span className="font-bold text-2xl uppercase tracking-tighter">FinStack</span>
           <Icon name="document_scanner" className="text-3xl" filled />

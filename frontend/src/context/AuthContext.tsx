@@ -50,6 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
 
+  // If any authenticated API call comes back 401 (session expired/replaced),
+  // drop the in-memory user so AuthGuard routes back to /login instead of
+  // leaving pages silently unauthenticated. See apiClient interceptor.
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setUser(null)
+      setMembers([])
+      setActiveMemberId('')
+    }
+    window.addEventListener('fintrack:session-expired', onSessionExpired)
+    return () =>
+      window.removeEventListener('fintrack:session-expired', onSessionExpired)
+  }, [])
+
   // Check the session once on mount via GET /api/auth/me, then load the
   // family member list for ANY member of a family (not admin-only) via /families/:id/members
   // so non-admin can also see the full household.

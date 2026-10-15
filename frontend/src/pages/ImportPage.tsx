@@ -5,14 +5,16 @@ import { importService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
+import { OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
 
 type HistoryItem = { batchId: string; fileName?: string; source: string; total: number; created: number; reconciled: number; pendingReview: number; deduped: number; failed: number; status: string; createdAt: string; createdBy?: { name: string; email: string } }
 
 function SuccessOverlay({ show, summary, onClose }: { show: boolean; summary?: string; onClose: () => void }) {
   if (!show) return null
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/70 p-md">
-      <div className="bg-white brutal max-w-md max-w-[calc(100vw-2rem)] w-full max-h-[90vh] overflow-y-auto p-lg sm:p-xl flex flex-col items-center gap-md animate-[scaleIn_0.35s_ease] min-w-0">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-md" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={onClose} aria-hidden="true" />
+      <div className="relative bg-white brutal max-w-md max-w-[calc(100vw-2rem)] w-full max-h-[90vh] overflow-y-auto p-lg sm:p-xl flex flex-col items-center gap-md animate-[scaleIn_0.35s_ease] min-w-0" style={OPAQUE_PANEL_STYLE}>
         <div className="w-20 h-20 rounded-full bg-brand-yellow border-[3px] border-on-surface flex items-center justify-center animate-[pop_0.45s_cubic-bezier(0.34,1.56,0.64,1)]">
           <Icon name="check" className="text-4xl" />
         </div>

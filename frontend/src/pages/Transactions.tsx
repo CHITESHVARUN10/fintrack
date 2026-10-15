@@ -5,6 +5,7 @@ import { transactionService, familyService, loanService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
+import { OPAQUE_HEADER_STYLE, OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
 
 type Tx = { _id: string; type: string; mode: string; amountPaise: number; category?: string; subcategory?: string; productName?: string; status: string; occurredAt: string; recipient?: { name?: string; upiId?: string }; sender?: { name?: string }; createdBy?: { name: string; email: string } | string; candidateOf?: string; confidence?: number; utr?: string; upiId?: string; visibility?: string }
 
@@ -26,6 +27,21 @@ const TYPE_STYLES: Record<string, string> = {
 
 function money(paise?: number) { return `₹${((paise || 0) / 100).toLocaleString('en-IN')}` }
 function fmtDate(iso: string) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
+function fmtDay(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+function monthBounds(y: number, m: number) { return { first: fmtDay(new Date(y, m, 1)), last: fmtDay(new Date(y, m + 1, 0)) } }
+function parseMonthBase(fromDate: string): { y: number; m: number } {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(fromDate)
+  if (m) {
+    const y = Number(m[1]); const mo = Number(m[2]) - 1
+    if (y >= 2000 && y <= 2100 && mo >= 0 && mo < 12) return { y, m: mo }
+  }
+  const now = new Date()
+  return { y: now.getFullYear(), m: now.getMonth() }
+}
+function monthLabel(fromDate: string) {
+  const { y, m } = parseMonthBase(fromDate)
+  return new Date(y, m, 1).toLocaleString('en-IN', { month: 'short', year: 'numeric' })
+}
 
 export function Transactions() {
   const { isAdmin } = useAuth()
@@ -144,6 +160,82 @@ export function Transactions() {
     setSelectedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else { if (n.size >= 4) return n; n.add(id) } return n })
   }
 
+  // Duplicate-review selection mode (separate from compare selection, no 4-limit)
+  const [reviewMode, setReviewMode] = useState(false)
+  const [reviewSearchMode, setReviewSearchMode] = useState<'manual' | 'auto'>('manual')
+  const [dupSelected, setDupSelected] = useState<Set<string>>(new Set())
+  const [dupMergeLoading, setDupMergeLoading] = useState(false)
+  const [dupMergeResult, setDupMergeResult] = useState<any>(null)
+  const [autoGroups, setAutoGroups] = useState<any[]>([])
+  const [autoLoading, setAutoLoading] = useState(false)
+  const [autoError, setAutoError] = useState<string | null>(null)
+
+  function toggleDupSelect(id: string) {
+    setDupSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  const dupGroups = useMemo(() => {
+    if (dupSelected.size === 0) return []
+    const byId = new Map(items.map((t) => [t._id, t]))
+    const groups = new Map<string, { type: string; amountPaise: number; count: number }>()
+    for (const id of dupSelected) {
+      const t = byId.get(id)
+      if (!t) continue
+      const key = `${t.type}:${t.amountPaise}`
+      const g = groups.get(key) || { type: t.type, amountPaise: t.amountPaise, count: 0 }
+      g.count += 1
+      groups.set(key, g)
+    }
+    return Array.from(groups.values()).sort((a, b) => b.count - a.count)
+  }, [dupSelected, items])
+
+  async function mergeDupSelected() {
+    if (dupSelected.size < 2 || dupMergeLoading) return
+    setDupMergeLoading(true)
+    setDupMergeResult(null)
+    try {
+      const res = await transactionService.bulkMergeDuplicates(Array.from(dupSelected))
+      setDupMergeResult(res)
+      setDupSelected(new Set())
+      load()
+    } catch (e: any) {
+      setDupMergeResult({ error: e?.response?.data?.error || e.message || 'Bulk merge failed' })
+    } finally { setDupMergeLoading(false) }
+  }
+
+  async function findAutoGroups() {
+    setAutoLoading(true)
+    setAutoError(null)
+    try {
+      const params: Record<string, string> = { familyView: String(familyView) }
+      if (fromDate) params.from = fromDate
+      if (toDate) params.to = toDate
+      const res = await transactionService.duplicateGroups(params)
+      setAutoGroups(res.groups || [])
+    } catch (e: any) {
+      setAutoError(e?.response?.data?.error || e.message || 'Auto search failed')
+    } finally { setAutoLoading(false) }
+  }
+
+  function toggleAutoGroup(group: any) {
+    const ids = (group.items || []).map((i: any) => String(i._id))
+    setDupSelected((prev) => {
+      const n = new Set(prev)
+      const allIn = ids.every((id: string) => n.has(id))
+      if (allIn) ids.forEach((id: string) => n.delete(id))
+      else ids.forEach((id: string) => n.add(id))
+      return n
+    })
+  }
+
+  // Auto-find scans the current month scope independently of the list's
+  // status filter, so entering review never blanks the table.
+  useEffect(() => {
+    if (!reviewMode || reviewSearchMode !== 'auto') return
+    findAutoGroups()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewMode, reviewSearchMode, fromDate, toDate, familyView])
+
   async function doCompare() {
     if (selectedIds.size < 2) return
     const res = await apiClient.get('/transactions/compare', { params: { ids: Array.from(selectedIds).join(',') } })
@@ -158,7 +250,9 @@ export function Transactions() {
 
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkResult, setBulkResult] = useState<any>(null)
+  const [bulkResolveLoading, setBulkResolveLoading] = useState(false)
   const otherCount = useMemo(() => items.filter((t) => !t.category || t.category === 'Other').length, [items])
+  const pendingCount = useMemo(() => items.filter((t) => t.status === 'PENDING_REVIEW').length, [items])
   async function bulkCategorize() {
     if (otherCount === 0) return
     setBulkLoading(true)
@@ -172,6 +266,38 @@ export function Transactions() {
     } finally { setBulkLoading(false) }
   }
 
+  function selectAllVisiblePending() {
+    setSelectedIds(new Set(filtered.filter((t) => t.status === 'PENDING_REVIEW').map((t) => t._id)))
+  }
+
+  async function bulkKeepSeparate() {
+    if (selectedIds.size === 0 || bulkResolveLoading) return
+    setBulkResolveLoading(true)
+    try {
+      for (const id of Array.from(selectedIds)) {
+        try { await transactionService.resolve(id, 'keepSeparate') } catch { /* skip non-pending */ }
+      }
+      setSelectedIds(new Set())
+      setCompareData(null)
+      load()
+    } finally { setBulkResolveLoading(false) }
+  }
+
+  async function quickMerge(id: string) {
+    try {
+      await transactionService.resolve(id, 'merge')
+      load()
+    } catch {
+      // No candidate or already resolved — open detail so user can decide
+      setDetailId(id)
+    }
+  }
+
+  async function quickKeepSeparate(id: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    try { await transactionService.resolve(id, 'keepSeparate'); load() } catch { setDetailId(id) }
+  }
+
   return (
     <div className="min-w-0">
       <PageHeader title="Transactions" subtitle="Manual entry + family ledger. Transfers and withdrawals don't inflate spend." />
@@ -179,20 +305,61 @@ export function Transactions() {
         <button onClick={() => setFamilyView(false)} className={`brutal px-md py-xs font-bold uppercase text-sm ${!familyView ? 'bg-brand-yellow' : 'bg-white'}`}>My</button>
         <button onClick={() => setFamilyView(true)} className={`brutal px-md py-xs font-bold uppercase text-sm ${familyView ? 'bg-brand-yellow' : 'bg-white'}`}>Family</button>
         {isAdmin && <span className="text-xs opacity-60">Admin sees full family ledger</span>}
+        <button
+          type="button"
+          onClick={() => {
+            if (reviewMode) {
+              setReviewMode(false)
+              setDupSelected(new Set())
+              setDupMergeResult(null)
+              setAutoGroups([])
+              setAutoError(null)
+            } else {
+              setReviewMode(true)
+              setDupSelected(new Set())
+              setDupMergeResult(null)
+              // Keep the month's rows visible for manual select — do NOT force
+              // status=PENDING_REVIEW here (that emptied Sept when nothing was
+              // pending in that month). Auto-find scans independently.
+              setStatusFilter('')
+            }
+          }}
+          title="Enter duplicate review: rows become selectable, then merge selected"
+          className={`brutal px-md py-xs font-bold uppercase text-sm ${reviewMode ? 'bg-brand-yellow' : 'bg-white'}`}
+        >
+          {reviewMode ? '✓ Reviewing…' : `⚠ Review duplicates${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+        </button>
         <div className="flex flex-col sm:flex-row flex-wrap gap-sm sm:items-center w-full sm:w-auto sm:ml-auto min-w-0">
+          <div className="flex items-center gap-xs" role="group" aria-label="Month navigation">
+            <button
+              type="button"
+              onClick={() => { const b = parseMonthBase(fromDate); const d = new Date(b.y, b.m - 1, 1); const r = monthBounds(d.getFullYear(), d.getMonth()); setFromDate(r.first); setToDate(r.last) }}
+              title="Previous month"
+              aria-label="Previous month"
+              className="brutal-thin px-sm py-xs text-sm font-bold bg-white hover:bg-brand-yellow"
+            >
+              ‹
+            </button>
+            <span className="brutal-thin px-sm py-xs text-xs font-bold uppercase bg-white whitespace-nowrap min-w-[92px] text-center" title="Currently viewed month">{monthLabel(fromDate)}</span>
+            <button
+              type="button"
+              onClick={() => { const b = parseMonthBase(fromDate); const d = new Date(b.y, b.m + 1, 1); const r = monthBounds(d.getFullYear(), d.getMonth()); setFromDate(r.first); setToDate(r.last) }}
+              title="Next month"
+              aria-label="Next month"
+              className="brutal-thin px-sm py-xs text-sm font-bold bg-white hover:bg-brand-yellow"
+            >
+              ›
+            </button>
+          </div>
           <input type="date" value={fromDate} onChange={(e)=> setFromDate(e.target.value)} className="brutal-thin px-sm py-xs text-sm w-full sm:w-auto max-w-full min-w-0" title="From" />
           <input type="date" value={toDate} onChange={(e)=> setToDate(e.target.value)} className="brutal-thin px-sm py-xs text-sm w-full sm:w-auto max-w-full min-w-0" title="To" />
           <button
             type="button"
             onClick={() => {
               const now = new Date()
-              const y = now.getFullYear()
-              const m = now.getMonth()
-              const first = new Date(y, m, 1)
-              const last = new Date(y, m + 1, 0)
-              const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-              setFromDate(fmt(first))
-              setToDate(fmt(last))
+              const r = monthBounds(now.getFullYear(), now.getMonth())
+              setFromDate(r.first)
+              setToDate(r.last)
             }}
             title="Set date range to current month (1st to 28/29/30/31st)"
             className="brutal-thin px-sm py-xs text-xs font-bold uppercase bg-white hover:bg-brand-yellow whitespace-nowrap"
@@ -260,6 +427,112 @@ export function Transactions() {
         </div>
       )}
 
+      {reviewMode ? (
+        <div className="brutal bg-brand-yellow p-sm mb-md flex flex-col gap-sm min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-sm sm:justify-between min-w-0">
+            <span className="text-sm font-bold min-w-0 break-words">
+              Review duplicates{dupSelected.size > 0 ? ` — ${dupSelected.size} selected` : ''}
+            </span>
+            <div className="flex flex-wrap items-center gap-sm">
+              <label className="flex items-center gap-xs text-xs font-bold uppercase">
+                Search
+                <select
+                  value={reviewSearchMode}
+                  onChange={(e) => setReviewSearchMode(e.target.value as 'manual' | 'auto')}
+                  className="brutal-thin px-sm py-xs text-xs font-bold uppercase bg-white"
+                >
+                  <option value="manual">Manual select</option>
+                  <option value="auto">Auto find</option>
+                </select>
+              </label>
+              {reviewSearchMode === 'manual' ? (
+                <>
+                  <button onClick={() => setDupSelected(new Set(filtered.map((t) => t._id)))} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Select all visible</button>
+                  <button onClick={() => setDupSelected(new Set())} disabled={dupSelected.size === 0} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">Clear</button>
+                </>
+              ) : (
+                <button onClick={findAutoGroups} disabled={autoLoading} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">
+                  {autoLoading ? 'Searching…' : 'Find duplicates'}
+                </button>
+              )}
+              <button onClick={mergeDupSelected} disabled={dupSelected.size < 2 || dupMergeLoading} className="brutal bg-on-surface text-white px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">
+                {dupMergeLoading ? 'Merging…' : `Merge selected (${dupSelected.size})`}
+              </button>
+              <button onClick={() => { setReviewMode(false); setDupSelected(new Set()); setDupMergeResult(null); setAutoGroups([]); setAutoError(null) }} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Exit review</button>
+            </div>
+          </div>
+          <div className="text-xs opacity-80">
+            {reviewSearchMode === 'manual'
+              ? 'Tap rows to select (no detail popup). Same type + same amount collapse into one (keeps earliest). E.g. 5× ₹500 + 5× ₹20 → one ₹500 and one ₹20.'
+              : 'Auto groups same type + amount within a 2-day window (same logic as import). Tick groups to select, then Merge.'}
+          </div>
+          {dupGroups.length > 0 && (
+            <div className="flex flex-wrap gap-xs">
+              {dupGroups.map((g) => (
+                <span key={`${g.type}:${g.amountPaise}`} className="brutal-thin bg-white px-xs py-0.5 text-xs font-bold">
+                  {money(g.amountPaise)} ×{g.count} → keep 1{g.count > 1 ? '' : ' (single)'}
+                </span>
+              ))}
+            </div>
+          )}
+          {reviewSearchMode === 'auto' && (
+            <div className="flex flex-col gap-xs">
+              {autoError && <div className="brutal-thin bg-white p-xs text-xs font-bold text-red-600">{autoError}</div>}
+              {!autoError && autoGroups.length === 0 && !autoLoading && (
+                <div className="text-xs opacity-80">No duplicate groups in this month scope — try another month or Manual select.</div>
+              )}
+              {autoGroups.map((g: any) => {
+                const ids = (g.items || []).map((i: any) => String(i._id))
+                const allIn = ids.length > 0 && ids.every((id: string) => dupSelected.has(id))
+                return (
+                  <div key={g.key + String(g.items?.[0]?._id)} className="brutal-thin bg-white p-sm flex flex-col gap-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-sm">
+                      <span className="text-xs font-bold uppercase">
+                        {money(g.amountPaise)} · {g.type} ×{g.items.length}
+                        <span className="ml-xs opacity-60">{g.reason === 'CANDIDATE_LINK' ? 'engine-linked' : 'same amount ±2d'}</span>
+                      </span>
+                      <button onClick={() => toggleAutoGroup(g)} className={`brutal px-sm py-xs text-xs font-bold uppercase ${allIn ? 'bg-brand-yellow' : 'bg-white'}`}>
+                        {allIn ? '✓ Selected' : 'Select group'}
+                      </button>
+                    </div>
+                    <div className="text-[11px] opacity-70">
+                      {(g.items || []).slice(0, 6).map((i: any) => `${fmtDate(i.occurredAt)} ${i.status}`).join(' · ')}
+                      {(g.items || []).length > 6 ? ` +${(g.items || []).length - 6} more` : ''}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {dupMergeResult && (
+            <div className="brutal-thin bg-white p-sm text-xs">
+              {dupMergeResult.error ? (
+                <span className="font-bold text-red-600">{dupMergeResult.error}</span>
+              ) : (
+                <span className="font-bold">
+                  Merged into {dupMergeResult.kept} group(s), voided {dupMergeResult.voided}
+                  {(dupMergeResult.groups || []).slice(0, 5).map((g: any) => ` · ${((g.amountPaise || 0) / 100).toLocaleString('en-IN')} ×${g.count}`).join('')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      ) : statusFilter === 'PENDING_REVIEW' && (
+        <div className="brutal bg-white p-sm mb-md flex flex-col sm:flex-row sm:items-center gap-sm sm:justify-between min-w-0">
+          <span className="text-sm font-bold min-w-0 break-words">
+            {pendingCount > 0 ? `${pendingCount} possible duplicate(s) need review` : 'No pending duplicates in this view'}
+            {selectedIds.size > 0 ? ` — ${selectedIds.size} selected` : ''}
+          </span>
+          <div className="flex flex-wrap gap-sm">
+            <button onClick={selectAllVisiblePending} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-brand-yellow">Select all visible</button>
+            <button onClick={bulkKeepSeparate} disabled={selectedIds.size === 0 || bulkResolveLoading} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase disabled:opacity-50">
+              {bulkResolveLoading ? 'Resolving…' : `Keep separate${selectedIds.size ? ` (${selectedIds.size})` : ''}`}
+            </button>
+            <button onClick={() => { setSelectedIds(new Set()); setStatusFilter('') }} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Clear</button>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleCreate} className="brutal bg-white p-md flex flex-wrap gap-sm mb-md items-end min-w-0 [&>label]:min-w-0 [&_input]:max-w-full [&_select]:max-w-full">
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Amount ₹<input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="brutal-thin px-sm py-xs" placeholder="500" /></label>
         <label className="flex flex-col text-xs font-bold uppercase gap-1">Type<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="brutal-thin px-sm py-xs"><option>EXPENSE</option><option>INCOME</option><option>INTERNAL_TRANSFER</option><option>CASH_WITHDRAWAL</option><option>CASH_EXPENSE</option></select></label>
@@ -305,7 +578,7 @@ export function Transactions() {
         </div>
       )}
 
-      {loading ? <div className="text-sm p-md brutal bg-white">Loading…</div> : filtered.length === 0 ? <div className="brutal bg-white p-md text-sm">No transactions yet.</div> : (
+      {loading ? <div className="text-sm p-md brutal bg-white">Loading…</div> : filtered.length === 0 ? <div className="brutal bg-white p-md text-sm">{items.length === 0 ? 'No transactions yet.' : 'No transactions match these filters — clear status/search or pick another month.'}</div> : (
         <div className="brutal bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-sm">
@@ -314,26 +587,33 @@ export function Transactions() {
                 {filtered.map((t) => {
                   const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy as any).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
                   const isActive = detailId===t._id
+                  const isDupSelected = dupSelected.has(t._id)
                   return (
-                    <tr key={t._id} className={`border-t-2 border-on-surface/20 cursor-pointer ${isActive? 'bg-brand-yellow hover:bg-brand-yellow ring-2 ring-on-surface ring-inset': 'hover:bg-surface-container-low/60'}`} onClick={() => setDetailId(t._id)}>
-                      <td className="px-sm py-xs" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedIds.has(t._id)} onChange={() => toggleSelect(t._id)} /></td>
+                    <tr key={t._id} className={`border-t-2 border-on-surface/20 cursor-pointer ${isDupSelected ? 'bg-brand-yellow hover:bg-brand-yellow ring-2 ring-on-surface ring-inset' : isActive? 'bg-brand-yellow hover:bg-brand-yellow ring-2 ring-on-surface ring-inset': 'hover:bg-surface-container-low/60'}`} onClick={() => { if (reviewMode) toggleDupSelect(t._id); else setDetailId(t._id) }}>
+                      <td className="px-sm py-xs" onClick={(e) => e.stopPropagation()}>
+                        {reviewMode ? (
+                          <input type="checkbox" checked={isDupSelected} onChange={() => toggleDupSelect(t._id)} onClick={(e) => e.stopPropagation()} aria-label="Select as duplicate" />
+                        ) : (
+                          <input type="checkbox" checked={selectedIds.has(t._id)} onChange={() => toggleSelect(t._id)} onClick={(e) => e.stopPropagation()} aria-label="Select for compare" />
+                        )}
+                      </td>
                       <td className="px-sm py-xs whitespace-nowrap">{fmtDate(t.occurredAt)}</td>
                       <td className="px-sm py-xs font-medium">{madeBy}</td>
                       <td className="px-sm py-xs"><span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${TYPE_STYLES[t.type] || 'bg-white'}`}>{t.type.replace('_', ' ')}</span></td>
                       <td className="px-sm py-xs font-bold whitespace-nowrap">{money(t.amountPaise)}</td>
                       <td className="px-sm py-xs">{t.mode}</td>
-                      <td className="px-sm py-xs" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-sm py-xs">
                         {catEditId === t._id ? (
-                          <span className="flex gap-xs items-center">
-                            <select value={catEditVal} onChange={(e) => setCatEditVal(e.target.value)} className="brutal-thin px-xs py-0.5 text-xs">{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-                            <button onClick={() => saveCategory(t._id)} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold">Save</button>
-                            <button onClick={() => setCatEditId(null)} className="brutal bg-white px-xs py-0.5 text-xs font-bold">Cancel</button>
+                          <span className="flex gap-xs items-center" onClick={(e) => e.stopPropagation()}>
+                            <select value={catEditVal} onChange={(e) => setCatEditVal(e.target.value)} onClick={(e) => e.stopPropagation()} className="brutal-thin px-xs py-0.5 text-xs">{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+                            <button onClick={(e) => { e.stopPropagation(); saveCategory(t._id) }} className="brutal bg-brand-yellow px-xs py-0.5 text-xs font-bold">Save</button>
+                            <button onClick={(e) => { e.stopPropagation(); setCatEditId(null) }} className="brutal bg-white px-xs py-0.5 text-xs font-bold">Cancel</button>
                           </span>
                         ) : (
-                          <button onClick={() => { setCatEditId(t._id); setCatEditVal(t.category || 'Other') }} className="brutal-thin px-xs py-0.5 text-xs bg-white hover:bg-brand-yellow">{t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}</button>
+                          <button onClick={(e) => { e.stopPropagation(); setCatEditId(t._id); setCatEditVal(t.category || 'Other') }} className="brutal-thin px-xs py-0.5 text-xs bg-white hover:bg-brand-yellow">{t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}</button>
                         )}
                       </td>
-                      <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
+                      <td className="px-sm py-xs text-xs">
                         {(t as any).loanRef ? (
                           <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block" title={typeof (t as any).loanRef==='object'? (t as any).loanRef.loanName: 'Loan'}>
                             {(t as any).loanMeta?.isPrepayment ? '⭐ Prepay' : 'Loan EMI'}: {typeof (t as any).loanRef==='object' ? ((t as any).loanRef.loanName||'Loan') : 'Linked'}
@@ -346,12 +626,19 @@ export function Transactions() {
                           <span className="opacity-30">—</span>
                         )}
                       </td>
-                      <td className="px-sm py-xs text-xs" onClick={(e)=> e.stopPropagation()}>
+                      <td className="px-sm py-xs text-xs">
                         <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${t.visibility==='PRIVATE'?'bg-on-surface text-white':'bg-white'}`}>{t.visibility||'FAMILY'}</span>
                       </td>
-                      <td className="px-sm py-xs" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-sm py-xs">
                         <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${STATUS_STYLES[t.status] || 'bg-white'}`}>{t.status.replace('_', ' ')}</span>
-                        {t.status === 'PENDING_REVIEW' && <button onClick={async () => { await transactionService.resolve(t._id, 'keepSeparate'); load() }} className="ml-xs brutal-thin bg-white px-xs py-0.5 text-xs font-bold hover:bg-brand-yellow">Keep separate</button>}
+                        {reviewMode ? (
+                          <button onClick={(e) => { e.stopPropagation(); setDetailId(t._id) }} title="Open detail without leaving review" className="ml-xs brutal-thin bg-white px-xs py-0.5 text-xs font-bold hover:bg-brand-yellow">View</button>
+                        ) : t.status === 'PENDING_REVIEW' && (
+                          <span className="inline-flex gap-xs ml-xs" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => quickMerge(t._id)} title="Merge into its duplicate candidate" className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold hover:bg-white">Merge</button>
+                            <button onClick={(e) => quickKeepSeparate(t._id, e)} title="Keep as separate transaction" className="brutal-thin bg-white px-xs py-0.5 text-xs font-bold hover:bg-brand-yellow">Keep separate</button>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )
@@ -363,10 +650,10 @@ export function Transactions() {
       )}
 
       {detail && (()=>{ const idx=filtered.findIndex((x:any)=> x._id===detailId); const prevId= idx>0? filtered[idx-1]._id: null; const nextId= idx>=0 && idx<filtered.length-1? filtered[idx+1]._id: null; return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-on-surface/40" onClick={() => setDetailId(null)} />
-          <div className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-lg bg-white brutal max-h-[90vh] overflow-y-auto min-w-0">
-            <div className="sticky top-0 bg-white border-b-[3px] border-on-surface p-md flex flex-col gap-sm">
+        <div className="fixed inset-0 z-[100] flex justify-end" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={() => setDetailId(null)} aria-hidden="true" />
+          <div className="relative w-full max-w-[calc(100vw-2rem)] sm:max-w-lg bg-white brutal h-screen max-h-screen overflow-y-auto min-w-0" style={OPAQUE_PANEL_STYLE}>
+            <div className="sticky top-0 bg-white border-b-[3px] border-on-surface p-md flex flex-col gap-sm z-10" style={OPAQUE_HEADER_STYLE}>
               <div className="flex justify-between items-center">
                 <h3 className="font-bold uppercase tracking-tight">Transaction Detail</h3>
                 <button onClick={() => setDetailId(null)} className="brutal bg-white w-8 h-8 flex items-center justify-center"><Icon name="close" /></button>

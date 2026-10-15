@@ -1,14 +1,19 @@
 const mongoose = require('mongoose');
 
-const URI =
-  process.env.MONGODB_URI ||
+// Atlas cluster takes precedence in EVERY environment (dev included) —
+// dev and prod share one database by design, so all data persists in
+// Atlas rather than the local instance. Local Mongo is only a fallback
+// when no Atlas URI is configured at all.
+const mongoUri =
   process.env.mongo_uri_production ||
+  process.env.MONGODB_ATLAS_URI ||
+  process.env.MONGODB_URI ||
   process.env.mongo_uri ||
-  'mongodb://localhost:27017/fintrack';
+  'mongodb://127.0.0.1:27017/fintrack';
 
 async function connectDB() {
   try {
-    await mongoose.connect(URI);
+    await mongoose.connect(mongoUri);
     console.log(`[db] Connected to MongoDB (${mongoose.connection.name})`);
   } catch (err) {
     console.error('[db] MongoDB connection error:', err.message);
@@ -17,3 +22,4 @@ async function connectDB() {
 }
 
 module.exports = connectDB;
+module.exports.mongoUri = mongoUri;

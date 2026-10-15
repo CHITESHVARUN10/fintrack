@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
+import { OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
 
 type Vendor = {
   _id: string
@@ -231,9 +232,9 @@ export function Vendors(){
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-md">
-          <div className="absolute inset-0 bg-on-surface/40" onClick={()=> setShowCreate(false)} />
-          <div className="relative w-full max-w-xl max-w-[calc(100vw-2rem)] brutal bg-white p-md flex flex-col gap-sm max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-md" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={()=> setShowCreate(false)} aria-hidden="true" />
+          <div className="relative w-full max-w-xl max-w-[calc(100vw-2rem)] brutal bg-white p-md flex flex-col gap-sm max-h-[90vh] overflow-y-auto" style={OPAQUE_PANEL_STYLE}>
             <h3 className="font-bold uppercase">New Vendor</h3>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">Label* <input value={cLabel} onChange={e=> setCLabel(e.target.value)} placeholder="e.g. Dairy Guy" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
             <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID (or leave blank if using mode) <input value={cUpi} onChange={e=> setCUpi(e.target.value)} placeholder="dairyguy@upi" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>

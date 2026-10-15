@@ -88,6 +88,79 @@ router.get('/compare', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+  // GET /api/transactions/duplicate-groups — automatic suspected-duplicate finder.
+  // Groups non-voided transactions by type+amountPaise with occurredAt within
+  // a 2-day window (mirrors ingest reconciliation window), and annotates
+  // members that the engine already linked via candidateOf.
+router.get('/duplicate-groups', async (req, res, next) => {
+  try {
+    if (!requireFamily(req, res)) return;
+    const familyView = req.query.familyView !== 'false';
+    const filter = { familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' } };
+    if (!familyView) {
+      filter.createdBy = req.user._id;
+    } else {
+      filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] }];
+    }
+    if (req.query.from || req.query.to) {
+      filter.occurredAt = {};
+      if (req.query.from) filter.occurredAt.$gte = new Date(req.query.from);
+      if (req.query.to) {
+        const to = new Date(req.query.to);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to))) to.setHours(23, 59, 59, 999);
+        filter.occurredAt.$lte = to;
+      }
+    }
+    const items = await Transaction.find(filter).sort({ occurredAt: 1 }).limit(1000).lean();
+    const WINDOW_MS = 2 * 86400000;
+    const byKey = new Map();
+    for (const t of items) {
+      const key = `${t.type}:${t.amountPaise}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(t);
+    }
+    const groups = [];
+    for (const [key, arr] of byKey.entries()) {
+      if (arr.length < 2) continue;
+      let cluster = [arr[0]];
+      const flush = () => {
+        if (cluster.length > 1) {
+          const linked = cluster.filter((t) => t.candidateOf).length;
+          groups.push({
+            key,
+            type: cluster[0].type,
+            amountPaise: cluster[0].amountPaise,
+            reason: linked > 0 ? 'CANDIDATE_LINK' : 'AMOUNT_WINDOW',
+            items: cluster.map((t) => ({
+              _id: String(t._id),
+              amountPaise: t.amountPaise,
+              type: t.type,
+              mode: t.mode,
+              occurredAt: t.occurredAt,
+              status: t.status,
+              candidateOf: t.candidateOf ? String(t.candidateOf) : undefined,
+              recipient: t.recipient?.name || undefined,
+            })),
+          });
+        }
+        cluster = [];
+      };
+      for (let i = 1; i < arr.length; i++) {
+        const gap = new Date(arr[i].occurredAt).getTime() - new Date(cluster[cluster.length - 1].occurredAt).getTime();
+        if (gap <= WINDOW_MS) {
+          cluster.push(arr[i]);
+        } else {
+          flush();
+          cluster = [arr[i]];
+        }
+      }
+      flush();
+    }
+    groups.sort((a, b) => b.items.length - a.items.length);
+    res.json({ groups: groups.slice(0, 50), scanned: items.length });
+  } catch (err) { next(err); }
+});
+
   // GET /api/transactions/:id
   router.get('/:id', async (req, res, next) => {
     try {
@@ -289,6 +362,77 @@ router.post('/bulk-categorize', async (req, res, next) => {
     } catch(e){ console.warn('[patch vendor learn]', e.message); }
     await tx.save();
     res.json({ transaction: tx });
+  } catch (err) { next(err); }
+});
+
+// POST /api/transactions/bulk-merge-duplicates — user-selected ids are treated
+// as duplicates. Groups by type+amountPaise so e.g. 5x ₹500 + 5x ₹20 collapse
+// to one ₹500 and one ₹20 (keeps earliest occurredAt per group, voids rest).
+router.post('/bulk-merge-duplicates', async (req, res, next) => {
+  try {
+    if (!requireFamily(req, res)) return;
+    const schema = Joi.object({
+      ids: Joi.array().items(Joi.string().min(1)).min(2).max(100).required(),
+    });
+    const { error, value } = schema.validate(req.body || {});
+    if (error) return res.status(400).json({ error: error.message });
+    const docs = await Transaction.find({
+      _id: { $in: value.ids },
+      familyId: req.user.familyAccountId,
+      status: { $ne: 'VOIDED' },
+    });
+    if (docs.length < 2) return res.status(400).json({ error: 'Select at least 2 valid transactions' });
+    const groups = new Map();
+    for (const d of docs) {
+      const key = `${d.type}:${d.amountPaise}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(d);
+    }
+    const resultGroups = [];
+    let voided = 0;
+    const skipped = docs.length < value.ids.length ? value.ids.length - docs.length : 0;
+    for (const [key, arr] of groups.entries()) {
+      if (arr.length < 2) {
+        resultGroups.push({ key, type: arr[0].type, amountPaise: arr[0].amountPaise, count: 1, keptId: String(arr[0]._id), mergedIds: [] });
+        continue;
+      }
+      // Survivor: prefer already-reconciled/active, then earliest occurredAt
+      const rank = { RECONCILED: 0, ACTIVE: 1, PENDING_REVIEW: 2 };
+      arr.sort((a, b) => {
+        const r = (rank[a.status] ?? 3) - (rank[b.status] ?? 3);
+        if (r !== 0) return r;
+        const t = new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime();
+        if (t !== 0) return t;
+        return String(a._id).localeCompare(String(b._id));
+      });
+      const survivor = arr[0];
+      const rest = arr.slice(1);
+      const restIds = rest.map((d) => d._id);
+      if (SourceRecord) {
+        await SourceRecord.updateMany({ transactionId: { $in: restIds } }, { transactionId: survivor._id });
+        const srs = await SourceRecord.find({ transactionId: survivor._id });
+        survivor.sourceIds = srs.map((s) => s._id);
+      }
+      survivor.mergedFrom = [...(survivor.mergedFrom || []), ...restIds];
+      survivor.candidateOf = undefined;
+      if (survivor.status === 'PENDING_REVIEW') survivor.status = 'RECONCILED';
+      await survivor.save();
+      for (const d of rest) {
+        d.status = 'VOIDED';
+        d.candidateOf = undefined;
+        await d.save();
+        voided += 1;
+      }
+      resultGroups.push({
+        key,
+        type: survivor.type,
+        amountPaise: survivor.amountPaise,
+        count: arr.length,
+        keptId: String(survivor._id),
+        mergedIds: restIds.map(String),
+      });
+    }
+    res.json({ groups: resultGroups, kept: resultGroups.filter((g) => g.count > 1).length, voided, skipped });
   } catch (err) { next(err); }
 });
 

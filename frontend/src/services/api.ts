@@ -235,6 +235,10 @@ export const transactionService = {
   update: (id: string, payload: Record<string, unknown>) => apiClient.patch(`/transactions/${id}`, payload).then((r) => r.data),
   resolve: (id: string, action: 'merge' | 'keepSeparate', targetId?: string) =>
     apiClient.post(`/transactions/${id}/resolve`, { action, targetId }).then((r) => r.data),
+  bulkMergeDuplicates: (ids: string[]) =>
+    apiClient.post('/transactions/bulk-merge-duplicates', { ids }).then((r) => r.data),
+  duplicateGroups: (params?: Record<string, string | number | boolean>) =>
+    apiClient.get('/transactions/duplicate-groups', { params }).then((r) => r.data),
 }
 
 export const analyticsService = {

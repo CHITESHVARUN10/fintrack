@@ -29,9 +29,10 @@ export default {
         'error-container': 'rgb(var(--c-error-container) / <alpha-value>)',
         'on-error-container': 'rgb(var(--c-on-error-container) / <alpha-value>)',
         'outline-variant': 'rgb(var(--c-outline-variant) / <alpha-value>)',
-        // Tailwind default `white` remapped: bg-white = card surface,
-        // text-white handled by narrow overrides in index.css.
-        white: 'var(--c-white)',
+        // Tailwind default `white` remapped: bg-white = card surface.
+        // Channels format — a bare var() is invalid as a color and would
+        // resolve to transparent (the bug that made panels see-through).
+        white: 'rgb(var(--c-white) / <alpha-value>)',
         // Semantic design tokens — CSS variables switch with .dark
         'token-page': 'var(--bg-page)',
         'token-sidebar': 'var(--bg-sidebar)',

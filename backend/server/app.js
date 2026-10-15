@@ -3,6 +3,9 @@ const cors = require('cors');
 const session = require('express-session');
 const { MongoStore } = require('connect-mongo');
 const passport = require('./config/passport.config');
+const connectDB = require('./db');
+// Resolved once in db.js — Atlas-first in every environment.
+const mongoUri = connectDB.mongoUri;
 
 const app = express();
 
@@ -40,10 +43,7 @@ const isProd = process.env.NODE_ENV === 'production';
 // Secure cookies, which silently breaks login in production.
 if (isProd) app.set('trust proxy', 1);
 const sessionStore = new MongoStore({
-  mongoUrl:
-    process.env.MONGODB_URI ||
-    process.env.mongo_uri_production ||
-    process.env.mongo_uri,
+  mongoUrl: mongoUri,
   collectionName: 'sessions',
   ttl: 7 * 24 * 60 * 60, // 7 days
   autoRemove: 'native',

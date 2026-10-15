@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { AuthProvider } from './context/AuthContext'
@@ -9,8 +9,11 @@ import { Layout } from './components/layout/Layout'
 // Route-level code splitting — each page is its own chunk, so the first
 // paint only ships the shell; heavy pages (recharts, reports) load on
 // navigation.
-const load = (mod: Promise<unknown>, exportName: string) =>
-  lazy(() => (mod as Promise<Record<string, ComponentType>>).then((m) => ({ default: m[exportName] })))
+const pageModules: Promise<unknown>[] = []
+const load = (mod: Promise<unknown>, exportName: string) => {
+  pageModules.push(mod)
+  return lazy(() => (mod as Promise<Record<string, ComponentType>>).then((m) => ({ default: m[exportName] })))
+}
 
 const Landing = load(import('./pages/Landing'), 'Landing')
 const Login = load(import('./pages/Login'), 'Login')
@@ -58,9 +61,25 @@ function PageFallback() {
   )
 }
 
+// Prefetch every route chunk once the app is idle. Chunks are small
+// (9–50 KB), so this fetches the whole app in the background on the first
+// screen. Without it, a navigation whose chunk is still streaming inside
+// framer-motion's mode="wait" exit can suspend mid-transition and freeze
+// the route swap (blank content, stale page until hard reload).
+function useIdleRoutePrefetch() {
+  useEffect(() => {
+    const kickoff = () => {
+      pageModules.forEach((p) => p.catch(() => {}))
+    }
+    const timer = window.setTimeout(kickoff, 1500)
+    return () => window.clearTimeout(timer)
+  }, [])
+}
+
 
 function AnimatedRoutes() {
   const location = useLocation()
+  useIdleRoutePrefetch()
   return (
     <AnimatePresence mode="wait">
       <motion.main

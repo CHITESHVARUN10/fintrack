@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
 import { navItems } from './nav'
 import { apiClient } from '../../services/apiClient'
+import { OPAQUE_HEADER_STYLE, OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../ui/Overlay'
 
 type SearchItem = {
   id: string
@@ -344,11 +345,11 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4">
-      <div className="absolute inset-0 bg-on-surface/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative w-full max-w-[640px] brutal bg-white overflow-hidden flex flex-col max-h-[72vh] shadow-brutal">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={onClose} aria-hidden="true" />
+      <div className="relative w-full max-w-[640px] brutal bg-white overflow-hidden flex flex-col max-h-[72vh] shadow-brutal" style={OPAQUE_PANEL_STYLE}>
         {/* input row */}
-        <div className="flex items-center gap-sm p-sm border-b-[3px] border-on-surface bg-white shrink-0">
+        <div className="flex items-center gap-sm p-sm border-b-[3px] border-on-surface bg-white shrink-0" style={OPAQUE_HEADER_STYLE}>
           <Icon name="search" className="text-xl text-on-surface-variant" />
           <input
             ref={inputRef}

@@ -26,5 +26,6 @@ sourceRecordSchema.index({ batchId: 1 });
 sourceRecordSchema.index({ utr: 1 });
 sourceRecordSchema.index({ transactionIdExt: 1 });
 sourceRecordSchema.index({ fingerprint: 1 });
+sourceRecordSchema.index({ familyId: 1, fingerprint: 1 });
 
 module.exports = mongoose.model('SourceRecord', sourceRecordSchema);

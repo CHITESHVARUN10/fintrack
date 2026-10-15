@@ -5,7 +5,8 @@ const familyAccountSchema = new mongoose.Schema(
     name: { type: String },
     adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    inviteCode: { type: String, unique: true, sparse: true, index: true },
+    inviteCode: { type: String, unique: true, sparse: true },
+
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true },

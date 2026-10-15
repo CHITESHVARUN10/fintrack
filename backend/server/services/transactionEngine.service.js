@@ -26,11 +26,32 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     }
   }
 
+  // Cross-batch exact-duplicate detection: the identical row (amount + day
+  // + upi/utr/tx-id) already imported from an EARLIER upload → map the new
+  // row onto the existing transaction instead of creating a duplicate.
+  // This is what makes re-uploading the full month's CSV collapse cleanly
+  // onto the partial import done weeks earlier, even when the CSV carries
+  // no UPI/UTR columns.
+  const priorDup = await SourceRecord.findOne({
+    familyId,
+    fingerprint: fp,
+    batchId: { $ne: batchId || '' },
+  }).lean();
+  if (priorDup) {
+    const tx = await Transaction.findById(priorDup.transactionId);
+    if (tx) return { transaction: tx, sourceRecord: priorDup, deduped: true };
+  }
+
   // Search recent candidates for reconciliation
   const windowFrom = new Date(new Date(candidate.occurredAt).getTime() - 2*86400000);
   const windowTo = new Date(new Date(candidate.occurredAt).getTime() + 2*86400000);
   const recent = await Transaction.find({ familyId, amountPaise: candidate.amountPaise, occurredAt: { $gte: windowFrom, $lte: windowTo }, status: { $ne: 'VOIDED' } }).lean();
-  const sourceRecents = await SourceRecord.find({ familyId, occurredAt: { $gte: windowFrom, $lte: windowTo } }).lean().catch(()=>[]);
+  // SourceRecord has no occurredAt — pull signals by the matching
+  // transactions' ids instead (the old query could never match anything,
+  // which silently disabled UPI/UTR reconciliation for every import).
+  const sourceRecents = recent.length
+    ? await SourceRecord.find({ familyId, transactionId: { $in: recent.map((t) => t._id) } }).lean().catch(() => [])
+    : [];
   // Merge signals: map transaction id → upi/utr/tx
   const txSignals = new Map();
   for (const sr of sourceRecents) {
