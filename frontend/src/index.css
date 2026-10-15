@@ -7,17 +7,18 @@
    ================================================================ */
 @layer base {
   :root {
-    /* Light — existing FinStack light (neubrutalist) */
+    /* Light — FinStack neubrutalist light */
     --bg-page: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-header: #ffffff;
-    --bg-surface: #ffffff;           /* cards / panels */
+    --bg-surface: #ffffff;           /* chart canvas / flat panels */
     --bg-card: #ffffff;
     --bg-input: #ffffff;
     --bg-table-header: #1e1c10;
     --bg-table-row: #ffffff;
     --bg-table-row-alt: #faf3df;
     --bg-elevated: #f4eeda;
+    --bg-hover: #f4eeda;
     --text-primary: #1e1c10;
     --text-secondary: #4b4731;
     --text-muted: #7a7868;
@@ -25,6 +26,7 @@
     --border: #1e1c10;
     --border-subtle: rgba(30,28,16,0.18);
     --border-strong: #1e1c10;
+    --shadow: #1e1c10;               /* ink shadow in light */
     --accent: #FFE500;
     --accent-hover: #E6CE00;
     --accent-text: #1e1c10;
@@ -34,37 +36,71 @@
     --chart-4: #FF6B6B;
     --chart-5: #9b5de5;
     --chart-6: #00bbf9;
+    --chart-7: #6BCB77;
+    --chart-8: #4D96FF;
     --chart-grid: rgba(30,28,16,0.10);
     --chart-axis: #1e1c10;
+    --chart-axis-text: #333333;
+    /* Spend-heatmap ramp (light: cream → deep amber → ink) */
+    --heat-1: #ffffff;
+    --heat-2: #fff3a0;
+    --heat-3: #ffe500;
+    --heat-4: #d4a017;
+    --heat-5: #8a7a0a;
+    --heat-6: #1e1c10;
+    --heat-ink: #1e1c10;
+    --heat-inverse: #ffffff;
     --nb-yellow: #FFE500;
     --nb-flash-from: #1e1c10;
+
+    /* Legacy color aliases remapped in tailwind.config.js (rgb triplets support alpha) */
+    --c-white: 255 255 255;
+    --c-bg: 255 255 255;
+    --c-surface-base: 255 255 255;
+    --c-surface-lowest: 255 255 255;
+    --c-surface-low: 250 243 223;
+    --c-surface: 244 238 218;
+    --c-surface-high: 238 232 212;
+    --c-surface-variant: 233 226 207;
+    --c-surface-highest: 233 226 207;
+    --c-on-surface: 30 28 16;
+    --c-on-surface-variant: 75 71 49;
+    --c-outline-variant: 206 199 170;
+    --c-tertiary-container: 0 252 251;
+    --c-on-tertiary-container: 0 113 113;
+    --c-secondary-container: 226 226 226;
+    --c-on-secondary-container: 100 100 100;
+    --c-error-container: 255 218 214;
+    --c-on-error-container: 147 0 10;
+    --c-accent: 255 229 0;
     color-scheme: light;
   }
 
-  /* Strict dark hierarchy — per latest brutalism spec: near-black bg, off-white structure, accent shadow */
-  .dark {
-    --bg-page: #0D0D0D;
-    --bg-sidebar: #1F1F19;
-    --bg-header: #1F1F19;
-    --bg-surface: #0e0e0e;         /* chart canvas — very-near-black, not pure #000 */
-    --bg-card: #24231C;
-    --bg-input: #1B1B16;
-    --bg-table-header: #2A2920;
-    --bg-table-row: #1B1B16;
-    --bg-table-row-alt: #21201A;
-    --bg-elevated: #2D2C22;
-    --bg-hover: #2D2C22;
-    --text-primary: #f5f5f0;       /* off-white — stark, 15:1 on #0e0e0e */
-    --text-secondary: #AAA99A;
-    --text-muted: #b5b5ad;         /* must hit 4.5:1 against --surface */
-    --text-placeholder: #b5b5ad;
-    --border: #f5f5f0;             /* off-white structure — not black */
-    --border-subtle: rgba(245,245,240,0.18);
+  /* Polished neubrutalism dark — near-black page, layered charcoal cards,
+     accent-tinted structure lines, glowing accent shadow (not black). */
+  :root:where(.dark, [data-theme="dark"]) {
+    --bg-page: #0a0a0a;
+    --bg-sidebar: #111114;
+    --bg-header: #111114;
+    --bg-surface: #0d0d10;           /* chart canvas — very-near-black, not pure #000 */
+    --bg-card: #19191e;
+    --bg-input: #131317;
+    --bg-table-header: #23232a;
+    --bg-table-row: #131317;
+    --bg-table-row-alt: #17171c;
+    --bg-elevated: #26262d;
+    --bg-hover: #2b2b32;
+    --text-primary: #f5f5f2;         /* off-white — 15:1 on page */
+    --text-secondary: #b3b3ab;       /* 7:1 on card — comfortable reading */
+    --text-muted: #8f8f88;           /* 4.6:1 on card */
+    --text-placeholder: #8f8f88;
+    --border: rgba(255,229,0,0.34);  /* accent-tinted structure line */
+    --border-subtle: rgba(245,245,240,0.14);
     --border-strong: #f5f5f0;
-    --shadow: #FFE000;             /* accent shadow — not black */
+    --shadow: #FFE000;               /* glowing accent shadow — not black */
     --accent: #FFE500;
     --accent-hover: #E6CE00;
-    --accent-text: #0D0D0D;
+    --accent-text: #0a0a0a;
     /* Chart — boosted for dark (sat/light +10-15%) */
     --chart-1: #FFE500;
     --chart-2: #2EC4B6;
@@ -72,67 +108,44 @@
     --chart-4: #7B61FF;
     --chart-5: #FF7A45;
     --chart-6: #FFB347;
-    --chart-grid: rgba(255, 255, 255, 0.10);
-    --chart-axis: #d8d8d0;         /* axis text — 4.5:1 */
+    --chart-7: #6BCB77;
+    --chart-8: #4D96FF;
+    --chart-grid: rgba(255, 255, 255, 0.08);
+    --chart-axis: #d8d8d0;           /* axis text — 4.5:1 */
     --chart-axis-text: #d8d8d0;
+    /* Heatmap ramp (dark: near-black → deep amber → full accent) */
+    --heat-1: #131317;
+    --heat-2: #3a3410;
+    --heat-3: #6b5e08;
+    --heat-4: #b09012;
+    --heat-5: #e6c814;
+    --heat-6: #FFE500;
+    --heat-ink: #f5f5f2;
+    --heat-inverse: #0a0a0a;
     --nb-yellow: #FFE500;
-    --nb-flash-from: #1F1F19;
+    --nb-flash-from: #111114;
+
+    /* Legacy color aliases — flip with .dark so legacy classes theme correctly */
+    --c-white: var(--bg-card);
+    --c-bg: var(--bg-page);
+    --c-surface-base: var(--bg-surface);
+    --c-surface-lowest: var(--bg-card);
+    --c-surface-low: var(--bg-input);
+    --c-surface: var(--bg-surface);
+    --c-surface-high: var(--bg-elevated);
+    --c-surface-variant: var(--bg-elevated);
+    --c-surface-highest: var(--bg-elevated);
+    --c-on-surface: 245 245 242;
+    --c-on-surface-variant: 179 179 171;
+    --c-outline-variant: 84 84 90;
+    --c-tertiary-container: 36 56 58;
+    --c-on-tertiary-container: 126 221 214;
+    --c-secondary-container: 38 38 45;
+    --c-on-secondary-container: 179 179 171;
+    --c-error-container: 56 34 46;
+    --c-on-error-container: 242 160 184;
+    --c-accent: 255 229 0;
     color-scheme: dark;
-  }
-  /* Support data-theme attribute as alias for .dark (for explicit light/dark toggling) */
-  :root[data-theme="dark"] {
-    --bg-page: #0D0D0D;
-    --bg-sidebar: #1F1F19;
-    --bg-header: #1F1F19;
-    --bg-surface: #0e0e0e;
-    --bg-card: #24231C;
-    --bg-input: #1B1B16;
-    --bg-table-header: #2A2920;
-    --bg-table-row: #1B1B16;
-    --bg-table-row-alt: #21201A;
-    --bg-elevated: #2D2C22;
-    --bg-hover: #2D2C22;
-    --text-primary: #f5f5f0;
-    --text-secondary: #AAA99A;
-    --text-muted: #b5b5ad;
-    --text-placeholder: #b5b5ad;
-    --border: #f5f5f0;
-    --border-subtle: rgba(245,245,240,0.18);
-    --border-strong: #f5f5f0;
-    --shadow: #FFE000;
-    --accent: #FFE500;
-    --accent-hover: #E6CE00;
-    --accent-text: #0D0D0D;
-    --chart-grid: rgba(255, 255, 255, 0.10);
-    --chart-axis: #d8d8d0;
-    --chart-axis-text: #d8d8d0;
-    color-scheme: dark;
-  }
-  :root[data-theme="light"] {
-    --bg-page: #ffffff;
-    --bg-sidebar: #ffffff;
-    --bg-header: #ffffff;
-    --bg-surface: #ffffff;
-    --bg-card: #ffffff;
-    --bg-input: #ffffff;
-    --bg-table-header: #1e1c10;
-    --bg-table-row: #ffffff;
-    --bg-table-row-alt: #faf3df;
-    --bg-elevated: #f4eeda;
-    --text-primary: #1e1c10;
-    --text-secondary: #4b4731;
-    --text-muted: #4a4a4a;
-    --text-placeholder: #9b9a8e;
-    --border: #000000;
-    --border-subtle: rgba(0,0,0,0.12);
-    --border-strong: #000000;
-    --shadow: #000000;
-    --accent: #FFE500;
-    --accent-hover: #E6CE00;
-    --accent-text: #1e1c10;
-    --chart-grid: rgba(0, 0, 0, 0.12);
-    --chart-axis: #333333;
-    --chart-axis-text: #333333;
   }
 
   html,
@@ -356,35 +369,20 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 @keyframes nb-indeterminate { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
 
 /* ================================================================
-   DARK — subtle overrides using tokens (no !important rain, real hierarchy)
+   DARK — residual overrides only (what Tailwind remapping can't express)
+   Legacy surface/text/border container classes are remapped at the
+   Tailwind config level (see tailwind.config.js + --c-* variables above).
    ================================================================ */
 .dark body { color: var(--text-primary); background: var(--bg-page); }
 .dark #root { background: var(--bg-page); }
 
-/* Map legacy Tailwind surfaces to token surfaces — subtle, not bright */
-.dark .bg-white,
-.dark .bg-surface,
-.dark .bg-surface-container-lowest { background-color: var(--bg-card) !important; color: var(--text-primary); }
-.dark .bg-surface-container-low { background-color: var(--bg-input) !important; color: var(--text-primary); }
-.dark .bg-surface-container { background-color: var(--bg-surface) !important; }
-.dark .bg-surface-container-high { background-color: var(--bg-elevated) !important; }
-.dark .bg-surface-container-highest,
-.dark .bg-surface-variant { background-color: var(--bg-elevated) !important; }
-.dark .bg-background { background-color: var(--bg-page) !important; }
-
-/* Text tokens — preserve warm hierarchy, not pure white */
-.dark .text-on-surface { color: var(--text-primary) !important; }
-.dark .text-on-surface-variant { color: var(--text-secondary) !important; }
+/* text-white reads as text on dark/ink surfaces (bg-white is remapped separately) */
 .dark .text-white { color: var(--text-primary) !important; }
-.dark .text-on-surface-variant\/60,
-.dark .opacity-60 { color: var(--text-secondary); }
 .dark ::placeholder { color: var(--text-placeholder) !important; }
 
-/* Borders — brutal = stark off-white + accent shadow; subtle dividers = 1px rgba */
+/* Structure borders — accent-tinted warm lines keep the brutal look */
 .dark .border-on-surface { border-color: var(--border) !important; }
 .dark .border-outline-variant { border-color: var(--border-subtle) !important; }
-.dark .divide-on-surface\/10 > * + * { border-color: var(--border-subtle) !important; }
-.dark .divide-on-surface\/20 > * + * { border-color: var(--border-subtle) !important; }
 /* Keep 3px brutal width in dark — stark structure, not 1px */
 .dark .border-\[3px\],
 .dark .border-b-\[3px\],
@@ -396,8 +394,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .dark .border-b-2,
 .dark .border-t-2 { border-color: var(--border-subtle) !important; }
+.dark .border-2 { border-width: 1px !important; }
 
-/* Accent stays yellow but only where semantic */
+/* Ink-on-accent: yellow surfaces keep dark text */
 .dark .bg-brand-yellow {
   background-color: var(--accent) !important;
   color: var(--accent-text) !important;
@@ -409,22 +408,16 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   background-color: var(--accent-hover) !important;
   color: var(--accent-text) !important;
 }
-.dark .hover\:text-on-surface:hover { color: var(--text-primary) !important; }
 .dark .hover\:text-token-primary:hover { color: var(--text-primary) !important; }
 
-/* Tertiary/accent variants — muted in dark to not compete */
-.dark .bg-tertiary-container {
-  background-color: rgba(46,196,182,0.12) !important;
-  color: #7EDDD6 !important;
-  border-color: rgba(46,196,182,0.20) !important;
-}
-.dark .bg-error-container {
-  background-color: rgba(232,72,127,0.12) !important;
-  color: #F2A0B8 !important;
-  border-color: rgba(232,72,127,0.20) !important;
-}
+/* bg-on-surface ink inverts: dark ink → light for bars/buttons.
+   Table header rows (tr.bg-on-surface / thead) keep a distinct dark header. */
+.dark thead.bg-on-surface,
+.dark tr.bg-on-surface { background: var(--bg-table-header) !important; color: var(--text-secondary) !important; }
+.dark thead.bg-on-surface th { font-weight: 700; letter-spacing: 0.04em; }
+.dark .bg-on-surface:not(thead):not(th):not(tr) { background: var(--text-primary) !important; color: var(--bg-page) !important; }
 
-/* Inputs — use #1B1B16, placeholder secondary for WCAG */
+/* Inputs — token surface, WCAG placeholders */
 .dark input,
 .dark select,
 .dark textarea {
@@ -443,16 +436,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 
 /* Tables — header distinct, rows subtle */
-.dark thead.bg-on-surface { background: var(--bg-table-header) !important; }
-.dark thead.bg-on-surface th { color: var(--text-secondary) !important; font-weight: 700; letter-spacing: 0.04em; }
 .dark tbody tr { border-color: var(--border-subtle) !important; }
 .dark tbody tr:nth-child(odd) { background: var(--bg-table-row) !important; }
 .dark tbody tr:nth-child(even) { background: var(--bg-table-row-alt) !important; }
 .dark tbody tr:hover { background: var(--bg-hover) !important; }
-
-/* Cards — one surface, spacing + 1px border */
-.dark .brutal.bg-white,
-.dark [class*="Card"] .bg-white { background: var(--bg-card) !important; }
 
 /* Scrollbar dark */
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -471,33 +458,13 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .nb-skeleton-card { border-color: var(--border); background: var(--bg-surface); }
 .dark .nb-indeterminate { background: var(--bg-input); border-color: var(--border); }
 
-/* Yellow flash stays */
+/* Yellow flash stays; accent selection */
 .dark .nb-sidebar-fill { background: var(--accent); }
 .dark ::selection { background: var(--accent); color: var(--accent-text); }
 
 /* Focus yellow should not dominate in dark — keep input surface */
 .dark .focus\:bg-brand-yellow:focus { background: var(--bg-elevated) !important; color: var(--text-primary) !important; }
-/* Borders subtler in dark — 2px → 1px */
-.dark .border-2 { border-width: 1px !important; }
-/* General bg-on-surface (black in light) becomes high-contrast light in dark for bars/progress */
-.dark .bg-on-surface:not(thead):not(th) { background: var(--text-primary) !important; color: var(--bg-page) !important; }
 
-/* Legacy hardcoded dark colors → map to strict token hierarchy */
-.dark .bg-\[\#23231a\] { background: var(--bg-card) !important; }
-.dark .bg-\[\#2a2a1e\] { background: var(--bg-elevated) !important; }
-.dark .bg-\[\#1e1e16\] { background: var(--bg-input) !important; }
-.dark .bg-\[\#1a1a14\] { background: var(--bg-sidebar) !important; }
-.dark .bg-\[\#121212\] { background: var(--bg-page) !important; }
-.dark .bg-\[\#2f2f22\] { background: var(--bg-elevated) !important; }
-.dark .bg-\[\#0f0f0f\] { background: var(--bg-page) !important; }
-.dark .bg-\[\#332f00\] { background: rgba(255,229,0,0.07) !important; color: var(--text-secondary) !important; border-color: var(--border) !important; }
-.dark .bg-\[\#FFD600\] { background: var(--accent-hover) !important; }
-.dark .border-\[\#f5f0da\] { border-color: var(--border) !important; }
-.dark .text-\[\#f5f0da\] { color: var(--text-primary) !important; }
-.dark .text-\[\#b8b5a0\] { color: var(--text-secondary) !important; }
-.dark .text-\[\#9a998d\] { color: var(--text-muted) !important; }
-.dark .shadow-\[4px_4px_0_\#000\],
-.dark .shadow-\[4px_0_0_\#000\] { box-shadow: 0 1px 8px rgba(0,0,0,0.5) !important; }
 
 /* ---- Responsive safety nets (mobile) ---- */
 /* Never allow page-level horizontal scrolling; inner scroll regions

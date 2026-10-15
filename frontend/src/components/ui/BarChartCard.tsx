@@ -52,8 +52,8 @@ export function BarChartCard({
         <Legend
           wrapperStyle={{ fontWeight: 700, fontSize: 12, color: 'var(--text-secondary)' }}
         />
-        <Bar dataKey={incomeKey} name="Income" fill="var(--chart-1)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} />
-        <Bar dataKey={expenseKey} name="Expense" fill="var(--chart-2)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} />
+        <Bar dataKey={incomeKey} name="Income" fill="var(--chart-1)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} animationDuration={700} animationEasing="ease-out" />
+        <Bar dataKey={expenseKey} name="Expense" fill="var(--chart-2)" stroke="var(--bg-page)" strokeWidth={1} radius={[2,2,0,0]} animationDuration={700} animationEasing="ease-out" animationBegin={150} />
       </BarChart>
     </ResponsiveContainer>
   )

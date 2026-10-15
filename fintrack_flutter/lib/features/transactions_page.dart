@@ -86,17 +86,25 @@ class _TransactionsPageState extends State<TransactionsPage> {
   Future<void> add() async {
     final paise = (double.tryParse(amountCtrl.text) ?? 0) * 100;
     if (paise <= 0) return;
-    await ApiClient.dio.post('/transactions', data: {
-      'amountPaise': paise.round(),
-      'type': type,
-      'mode': mode,
-      'category': category,
-      'occurredAt': DateTime.now().toIso8601String(),
-      'recipient': recipientCtrl.text.isNotEmpty ? {'name': recipientCtrl.text} : null,
-    });
-    amountCtrl.clear();
-    recipientCtrl.clear();
-    await load();
+    try {
+      await ApiClient.dio.post('/transactions', data: {
+        'amountPaise': paise.round(),
+        'type': type,
+        'mode': mode,
+        'category': category,
+        'occurredAt': DateTime.now().toIso8601String(),
+        'recipient': recipientCtrl.text.isNotEmpty ? {'name': recipientCtrl.text} : null,
+      });
+      amountCtrl.clear();
+      recipientCtrl.clear();
+      await load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not add transaction. Check your connection.')),
+        );
+      }
+    }
   }
 
   void showDetail(Map txn) {

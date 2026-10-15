@@ -468,12 +468,15 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                   itemCount: heatmap.length,
                   itemBuilder: (c, i) {
                     final h = heatmap[i];
+                    // Null-tolerant numeric reads — backend may omit spendPaise.
+                    double spendOf(e) {
+                      final v = e['spendPaise'];
+                      return v is num ? v.toDouble() : (double.tryParse('$v') ?? 0);
+                    }
                     final max = heatmap
-                        .map((e) => (e['spendPaise'] as num).toDouble())
+                        .map(spendOf)
                         .reduce((a, b) => a > b ? a : b);
-                    final ratio = max > 0
-                        ? (h['spendPaise'] as num).toDouble() / max
-                        : 0;
+                    final ratio = max > 0 ? spendOf(h) / max : 0;
                     final bg = ratio > 0.66
                         ? FinStackColors.onSurface
                         : ratio > 0.33

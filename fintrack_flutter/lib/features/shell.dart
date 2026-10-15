@@ -26,31 +26,34 @@ import 'settings_page.dart';
 class _Dest {
   final String label;
   final IconData icon;
-  final Widget page;
+  final Widget Function() page;
   const _Dest(this.label, this.icon, this.page);
 }
 
-const _dests = [
-  _Dest('Overview', Icons.home, DashboardPage()),
-  _Dest('Transactions', Icons.receipt_long, TransactionsPage()),
-  _Dest('Income', Icons.wallet, IncomePage()),
-  _Dest('Family Dashboard', Icons.analytics, FamilyDashboardPage()),
-  _Dest('Members', Icons.group, FamilyPage()),
-  _Dest('Import', Icons.upload_file, ImportPageWidget()),
-  _Dest('Budgets', Icons.savings, BudgetsPage()),
-  _Dest('Vendors', Icons.store, VendorsPage()),
-  _Dest('Subscriptions', Icons.autorenew, SubscriptionsPage()),
-  _Dest('Recurring', Icons.event_repeat, RecurringPage()),
-  _Dest('Investments', Icons.trending_up, InvestmentsPage()),
-  _Dest('Loans', Icons.account_balance, LoansPage()),
-  _Dest('Insurance', Icons.health_and_safety, InsurancePage()),
-  _Dest('Education', Icons.school, EducationPage()),
-  _Dest('Tax', Icons.calculate, TaxPage()),
-  _Dest('Form 16', Icons.description, Form16Page()),
-  _Dest('Reports', Icons.bar_chart, ReportsPage()),
-  _Dest('Notifications', Icons.notifications, NotificationsPage()),
-  _Dest('Profile', Icons.person, ProfilePage()),
-  _Dest('Settings', Icons.settings, SettingsPage()),
+/// Page instances are created lazily by the shell — see visited-tracking
+/// in _ShellState so cold-start fires only the dashboard's requests, not
+/// 20 screens' worth at once.
+final _dests = [
+  _Dest('Overview', Icons.home, () => DashboardPage()),
+  _Dest('Transactions', Icons.receipt_long, () => TransactionsPage()),
+  _Dest('Income', Icons.wallet, () => IncomePage()),
+  _Dest('Family Dashboard', Icons.analytics, () => FamilyDashboardPage()),
+  _Dest('Members', Icons.group, () => FamilyPage()),
+  _Dest('Import', Icons.upload_file, () => ImportPageWidget()),
+  _Dest('Budgets', Icons.savings, () => BudgetsPage()),
+  _Dest('Vendors', Icons.store, () => VendorsPage()),
+  _Dest('Subscriptions', Icons.autorenew, () => SubscriptionsPage()),
+  _Dest('Recurring', Icons.event_repeat, () => RecurringPage()),
+  _Dest('Investments', Icons.trending_up, () => InvestmentsPage()),
+  _Dest('Loans', Icons.account_balance, () => LoansPage()),
+  _Dest('Insurance', Icons.health_and_safety, () => InsurancePage()),
+  _Dest('Education', Icons.school, () => EducationPage()),
+  _Dest('Tax', Icons.calculate, () => TaxPage()),
+  _Dest('Form 16', Icons.description, () => Form16Page()),
+  _Dest('Reports', Icons.bar_chart, () => ReportsPage()),
+  _Dest('Notifications', Icons.notifications, () => NotificationsPage()),
+  _Dest('Profile', Icons.person, () => ProfilePage()),
+  _Dest('Settings', Icons.settings, () => SettingsPage()),
 ];
 
 /// Real mobile-app navigation: hamburger (☰) opens a retractable drawer
@@ -63,9 +66,10 @@ class Shell extends ConsumerStatefulWidget {
 
 class _ShellState extends ConsumerState<Shell> {
   int idx = 0;
+  final Set<int> visited = {0};
 
   void _go(int i) {
-    setState(() => idx = i);
+    setState(() { idx = i; visited.add(i); });
     Navigator.of(context).pop();
   }
 
@@ -154,7 +158,16 @@ class _ShellState extends ConsumerState<Shell> {
           ),
         ),
       ),
-      body: IndexedStack(index: idx, children: _dests.map((d) => d.page).toList()),
+      body: IndexedStack(
+        index: idx,
+        // Lazily mount screens: an unvisited screen builds to an empty
+        // placeholder instead of running its initState fetches. Once
+        // visited, the screen stays alive (IndexedStack keeps state).
+        children: [
+          for (var i = 0; i < _dests.length; i++)
+            visited.contains(i) ? _dests[i].page() : const SizedBox.shrink(),
+        ],
+      ),
     );
   }
 }

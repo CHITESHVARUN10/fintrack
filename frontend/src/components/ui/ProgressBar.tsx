@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion'
 import { cn } from '../../lib/cn'
 
 export function ProgressBar({
@@ -14,7 +15,13 @@ export function ProgressBar({
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
   return (
     <div className={cn('h-4 border-2 border-on-surface bg-white overflow-hidden', className)}>
-      <div className={cn('h-full nb-progress-fill', color)} style={{ width: `${pct}%` }} />
+      <motion.div
+        className={cn('h-full origin-left', color)}
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        style={{ width: `${pct}%` }}
+        transition={{ type: 'spring', stiffness: 120, damping: 20, delay: 0.1 }}
+      />
     </div>
   )
 }

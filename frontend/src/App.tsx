@@ -1,45 +1,63 @@
+import { lazy, Suspense, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { AuthProvider } from './context/AuthContext'
 import { TaxpayerProvider } from './context/TaxpayerContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthGuard } from './components/layout/AuthGuard'
 import { Layout } from './components/layout/Layout'
-import { Landing } from './pages/Landing'
-import { Login } from './pages/Login'
-import { Register } from './pages/Register'
-import { Dashboard } from './pages/Dashboard'
-import { Income } from './pages/Income'
-import { AddIncome } from './pages/AddIncome'
-import { Subscriptions } from './pages/Subscriptions'
-import { SubscriptionDetail } from './pages/SubscriptionDetail'
-import { Recurring } from './pages/Recurring'
-import { Investments } from './pages/Investments'
-import { Loans } from './pages/Loans'
-import { LoanDetail } from './pages/LoanDetail'
-import { Insurance } from './pages/Insurance'
-import { Education } from './pages/Education'
-import { Tax } from './pages/Tax'
-import { Reports } from './pages/Reports'
-import { Family } from './pages/Family'
-import { FamilyCreateJoin } from './pages/FamilyCreateJoin'
-import { Notifications } from './pages/Notifications'
-import { Transactions } from './pages/Transactions'
-import { ImportPage } from './pages/ImportPage'
-import { FamilyDashboard } from './pages/FamilyDashboard'
-import { Vendors } from './pages/Vendors'
-import { VendorDetail } from './pages/VendorDetail'
-import { Budgets } from './pages/Budgets'
-import { Settings } from './pages/Settings'
-import { Form16List } from './pages/Form16List'
-import { Form16Upload } from './pages/Form16Upload'
-import { Form16Processing } from './pages/Form16Processing'
-import { Form16Review } from './pages/Form16Review'
-import { TaxRecommendation } from './pages/TaxRecommendation'
-import { RecommendationLoading } from './pages/RecommendationLoading'
-import { AcceptInvite } from './pages/AcceptInvite'
-import { PrivacyPolicy } from './pages/PrivacyPolicy'
-import { Docs } from './pages/Docs'
+// Route-level code splitting — each page is its own chunk, so the first
+// paint only ships the shell; heavy pages (recharts, reports) load on
+// navigation.
+const load = (mod: Promise<unknown>, exportName: string) =>
+  lazy(() => (mod as Promise<Record<string, ComponentType>>).then((m) => ({ default: m[exportName] })))
+
+const Landing = load(import('./pages/Landing'), 'Landing')
+const Login = load(import('./pages/Login'), 'Login')
+const Register = load(import('./pages/Register'), 'Register')
+const AcceptInvite = load(import('./pages/AcceptInvite'), 'AcceptInvite')
+const PrivacyPolicy = load(import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
+const Docs = load(import('./pages/Docs'), 'Docs')
+
+const Dashboard = load(import('./pages/Dashboard'), 'Dashboard')
+const Income = load(import('./pages/Income'), 'Income')
+const AddIncome = load(import('./pages/AddIncome'), 'AddIncome')
+const Subscriptions = load(import('./pages/Subscriptions'), 'Subscriptions')
+const SubscriptionDetail = load(import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
+const Recurring = load(import('./pages/Recurring'), 'Recurring')
+const Investments = load(import('./pages/Investments'), 'Investments')
+const Loans = load(import('./pages/Loans'), 'Loans')
+const LoanDetail = load(import('./pages/LoanDetail'), 'LoanDetail')
+const Insurance = load(import('./pages/Insurance'), 'Insurance')
+const Education = load(import('./pages/Education'), 'Education')
+const Tax = load(import('./pages/Tax'), 'Tax')
+const Reports = load(import('./pages/Reports'), 'Reports')
+const Family = load(import('./pages/Family'), 'Family')
+const FamilyCreateJoin = load(import('./pages/FamilyCreateJoin'), 'FamilyCreateJoin')
+const Notifications = load(import('./pages/Notifications'), 'Notifications')
+const Transactions = load(import('./pages/Transactions'), 'Transactions')
+const ImportPage = load(import('./pages/ImportPage'), 'ImportPage')
+const FamilyDashboard = load(import('./pages/FamilyDashboard'), 'FamilyDashboard')
+const Vendors = load(import('./pages/Vendors'), 'Vendors')
+const VendorDetail = load(import('./pages/VendorDetail'), 'VendorDetail')
+const Budgets = load(import('./pages/Budgets'), 'Budgets')
+const Settings = load(import('./pages/Settings'), 'Settings')
+const Form16List = load(import('./pages/Form16List'), 'Form16List')
+const Form16Upload = load(import('./pages/Form16Upload'), 'Form16Upload')
+const Form16Processing = load(import('./pages/Form16Processing'), 'Form16Processing')
+const Form16Review = load(import('./pages/Form16Review'), 'Form16Review')
+const TaxRecommendation = load(import('./pages/TaxRecommendation'), 'TaxRecommendation')
+const RecommendationLoading = load(import('./pages/RecommendationLoading'), 'RecommendationLoading')
+
+// Route-transition placeholder shown while a page chunk streams in.
+function PageFallback() {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center font-bold uppercase tracking-widest text-on-surface-variant">
+      Loading…
+    </div>
+  )
+}
+
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -52,7 +70,8 @@ function AnimatedRoutes() {
         exit={{ opacity: 0, y: 6 }}
         transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
       >
-        <Routes location={location}>
+        <Suspense fallback={<PageFallback />}>
+          <Routes location={location}>
           {/* Public / auth screens (no app chrome) */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
@@ -125,7 +144,8 @@ function AnimatedRoutes() {
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
-        </Routes>
+          </Routes>
+        </Suspense>
       </motion.main>
     </AnimatePresence>
   )
@@ -133,14 +153,16 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <TaxpayerProvider>
-          <BrowserRouter>
-            <AnimatedRoutes />
-          </BrowserRouter>
-        </TaxpayerProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <MotionConfig reducedMotion="user">
+      <ThemeProvider>
+        <AuthProvider>
+          <TaxpayerProvider>
+            <BrowserRouter>
+              <AnimatedRoutes />
+            </BrowserRouter>
+          </TaxpayerProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </MotionConfig>
   )
 }

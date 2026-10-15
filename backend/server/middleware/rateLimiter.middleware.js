@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 // Rate limit for the login route: max 10 requests / 15 min per IP.
 const loginRateLimiter = rateLimit({
@@ -22,7 +22,7 @@ const geminiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) =>
-    `${req.user && req.user._id ? req.user._id : 'anon'}:${req.ip}`,
+    `${req.user && req.user._id ? req.user._id : 'anon'}:${ipKeyGenerator(req.ip)}`,
   message: {
     error:
       'Too many AI requests. Gemini-powered features are limited to 4 requests per 5 minutes. Please try again shortly.',

@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for the app to reach its API host; previously only declared
+         in the debug manifest, so release builds had no network at all. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="fintrack_flutter"
+        android:label="FinStack"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

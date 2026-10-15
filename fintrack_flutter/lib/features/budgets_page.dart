@@ -25,8 +25,16 @@ class _BudgetsPageState extends State<BudgetsPage> {
   Future<void> save() async {
     final paise = (double.tryParse(amountCtrl.text)??0)*100;
     if(paise<=0) return;
-    await ApiClient.dio.post('/budgets', data: {'scope': scope, 'category': categoryCtrl.text.isEmpty? null: categoryCtrl.text, 'period': period, 'amountPaise': paise.round()});
-    amountCtrl.clear(); categoryCtrl.clear(); await load();
+    try {
+      await ApiClient.dio.post('/budgets', data: {'scope': scope, 'category': categoryCtrl.text.isEmpty? null: categoryCtrl.text, 'period': period, 'amountPaise': paise.round()});
+      amountCtrl.clear(); categoryCtrl.clear(); await load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save budget. Check your connection.')),
+        );
+      }
+    }
   }
 
   @override
@@ -41,7 +49,20 @@ class _BudgetsPageState extends State<BudgetsPage> {
         Align(alignment: Alignment.centerRight, child: BrutalButton(label: 'Save Budget', onPressed: save)),
       ])),
       const SizedBox(height: 12),
-      ...items.map((b)=> Container(margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFF1E1C10), width: 2)), padding: const EdgeInsets.all(12), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('${b['scope']} ${b['category'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)), Text('₹${((b['amountPaise']??0)/100).toStringAsFixed(0)}  •  spent ₹${((b['spentPaise']??0)/100).toStringAsFixed(0)}', style: const TextStyle(fontSize: 11))]))),
+      ...items.map((b) {
+        final paise = b['amountPaise'] is num ? b['amountPaise'] as num : (num.tryParse('${b['amountPaise']}') ?? 0);
+        final spent = b['spentPaise'] is num ? b['spentPaise'] as num : (num.tryParse('${b['spentPaise']}') ?? 0);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: const Color(0xFF1E1C10), width: 2)),
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Text('${b['scope']} ${b['category'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+            const Spacer(),
+            Flexible(child: Text('₹${(paise / 100).toStringAsFixed(0)}  •  spent ₹${(spent / 100).toStringAsFixed(0)}', style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis)),
+          ]),
+        );
+      }),
       if(items.isEmpty) const BrutalCard(child: Text('No budgets yet.')),
     ]);
   }

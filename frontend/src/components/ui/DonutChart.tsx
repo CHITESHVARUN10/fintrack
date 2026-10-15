@@ -34,6 +34,8 @@ export function DonutChart({
             paddingAngle={2}
             stroke="var(--border)"
             strokeWidth={2}
+            animationDuration={800}
+            animationEasing="ease-out"
           >
             {data.map((d) => (
               <Cell key={d.label} fill={d.color} stroke="var(--border)" strokeWidth={1.5} />

@@ -15,26 +15,48 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
   String? bankResult;
   String? shotResult;
 
+  void _snack(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   Future<void> pickBank() async {
-    final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv','xlsx','xls'], withData: true);
-    if(res==null || res.files.first.bytes==null) return;
-    final f = res.files.first;
-    final fd = FormData.fromMap({'file': MultipartFile.fromBytes(f.bytes!, filename: f.name)});
-    final r = await ApiClient.dio.post('/imports/bank', data: fd);
-    final status = r.data['status']?.toString() ?? '';
-    if(status=='duplicate_file'){ setState(()=> bankResult = 'DUPLICATE: ${r.data['message']?.toString() ?? 'Already imported'}'); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.data['message']?.toString() ?? 'Duplicate file'))); return; }
-    setState(()=> bankResult = r.data.toString());
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv','xlsx','xls'], withData: true);
+      if(res==null || res.files.first.bytes==null) return;
+      final f = res.files.first;
+      final fd = FormData.fromMap({'file': MultipartFile.fromBytes(f.bytes!, filename: f.name)});
+      final r = await ApiClient.dio.post('/imports/bank', data: fd);
+      final status = r.data['status']?.toString() ?? '';
+      if(status=='duplicate_file'){
+        if(mounted) setState(()=> bankResult = 'DUPLICATE: ${r.data['message']?.toString() ?? 'Already imported'}');
+        _snack(r.data['message']?.toString() ?? 'Duplicate file');
+        return;
+      }
+      if(mounted) setState(()=> bankResult = r.data.toString());
+    } catch (e) {
+      _snack('Upload failed. Check your connection and file type.');
+    }
   }
 
   Future<void> pickScreenshot() async {
-    final picker = ImagePicker();
-    final x = await picker.pickImage(source: ImageSource.gallery);
-    if(x==null) return;
-    final bytes = await x.readAsBytes();
-    final fd = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: x.name)});
-    final r = await ApiClient.dio.post('/imports/screenshot', data: fd);
-    if((r.data['status']?.toString() ?? '')=='duplicate_file'){ setState(()=> shotResult = 'DUPLICATE: ${r.data['message']?.toString() ?? ''}'); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicate screenshot'))); return; }
-    setState(()=> shotResult = r.data.toString());
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(source: ImageSource.gallery);
+      if(x==null) return;
+      final bytes = await x.readAsBytes();
+      final fd = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: x.name)});
+      final r = await ApiClient.dio.post('/imports/screenshot', data: fd);
+      if((r.data['status']?.toString() ?? '')=='duplicate_file'){
+        if(mounted) setState(()=> shotResult = 'DUPLICATE: ${r.data['message']?.toString() ?? ''}');
+        _snack('Duplicate screenshot');
+        return;
+      }
+      if(mounted) setState(()=> shotResult = r.data.toString());
+    } catch (e) {
+      _snack('Could not read the screenshot. Check the permission and retry.');
+    }
   }
 
   @override

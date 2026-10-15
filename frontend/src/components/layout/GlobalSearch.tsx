@@ -346,69 +346,69 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4">
       <div className="absolute inset-0 bg-on-surface/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative w-full max-w-[640px] brutal bg-white dark:bg-[#23231a] overflow-hidden flex flex-col max-h-[72vh] shadow-brutal">
+      <div className="relative w-full max-w-[640px] brutal bg-white overflow-hidden flex flex-col max-h-[72vh] shadow-brutal">
         {/* input row */}
-        <div className="flex items-center gap-sm p-sm border-b-[3px] border-on-surface dark:border-[#f5f0da] bg-white dark:bg-[#23231a] shrink-0">
+        <div className="flex items-center gap-sm p-sm border-b-[3px] border-on-surface bg-white shrink-0">
           <Icon name="search" className="text-xl text-on-surface-variant" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
             placeholder="Search pages, transactions, vendors, loans…  (try 'emi', 'zomato', '₹500')"
-            className="flex-1 bg-transparent outline-none text-sm font-bold placeholder:font-medium placeholder:text-on-surface-variant dark:text-[#f5f0da] dark:placeholder:text-[#9a998d]"
+            className="flex-1 bg-transparent outline-none text-sm font-bold placeholder:font-medium placeholder:text-on-surface-variant"
             autoComplete="off"
             spellCheck={false}
           />
           {query && (
-            <button onClick={() => setQuery('')} className="brutal-thin px-xs py-0.5 bg-white dark:bg-[#2a2a1e] text-xs font-bold hover:bg-brand-yellow dark:text-[#f5f0da]">Clear</button>
+            <button onClick={() => setQuery('')} className="brutal-thin px-xs py-0.5 bg-white text-xs font-bold hover:bg-brand-yellow">Clear</button>
           )}
-          <span className="hidden md:flex items-center gap-1 brutal-thin bg-surface-container-low dark:bg-[#1e1e16] px-xs py-0.5 text-[10px] font-bold uppercase">ESC</span>
+          <span className="hidden md:flex items-center gap-1 brutal-thin bg-surface-container-low px-xs py-0.5 text-[10px] font-bold uppercase">ESC</span>
         </div>
 
         {/* content */}
-        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container-low/30 dark:bg-[#121212] p-sm flex flex-col gap-sm">
+        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container-low/30 p-sm flex flex-col gap-sm">
           {loading ? (
             <div className="flex flex-col gap-sm">
-              {[1,2,3].map(i => <div key={i} className="brutal bg-white dark:bg-[#23231a] p-sm flex gap-sm items-center animate-pulse"><div className="w-8 h-8 bg-surface-container-high dark:bg-[#2f2f22]" /><div className="flex-1 space-y-2"><div className="h-4 bg-surface-container-high dark:bg-[#2f2f22] w-1/2" /><div className="h-3 bg-surface-container-high dark:bg-[#2f2f22] w-1/3" /></div></div>)}
+              {[1,2,3].map(i => <div key={i} className="brutal bg-white p-sm flex gap-sm items-center animate-pulse"><div className="w-8 h-8 bg-surface-container-high" /><div className="flex-1 space-y-2"><div className="h-4 bg-surface-container-high w-1/2" /><div className="h-3 bg-surface-container-high w-1/3" /></div></div>)}
             </div>
           ) : !query.trim() ? (
             <div className="flex flex-col gap-md">
               {recent.length > 0 && (
-                <div className="brutal bg-white dark:bg-[#23231a] p-sm">
+                <div className="brutal bg-white p-sm">
                   <div className="flex justify-between items-center mb-sm">
                     <span className="text-xs font-bold uppercase tracking-wider">Recent searches</span>
                     <button onClick={() => { localStorage.removeItem(RECENT_KEY); setRecent([]) }} className="text-[11px] underline opacity-60">Clear</button>
                   </div>
                   <div className="flex flex-wrap gap-xs">
                     {recent.map(r => (
-                      <button key={r} onClick={() => setQuery(r)} className="brutal-thin bg-surface-container-low dark:bg-[#2a2a1e] px-sm py-xs text-xs font-bold hover:bg-brand-yellow dark:text-[#f5f0da]">
+                      <button key={r} onClick={() => setQuery(r)} className="brutal-thin bg-surface-container-low px-sm py-xs text-xs font-bold hover:bg-brand-yellow">
                         <Icon name="history" className="text-sm mr-1 align-middle" />{r}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="brutal bg-white dark:bg-[#23231a] p-sm">
+              <div className="brutal bg-white p-sm">
                 <div className="text-xs font-bold uppercase tracking-wider mb-sm">Quick links</div>
                 <div className="grid grid-cols-2 gap-xs">
                   {navItems.slice(0, 8).map(n => (
-                    <button key={n.to} onClick={() => handleSelect({ id: n.to, group: 'Pages', title: n.label, icon: n.icon, to: n.to, keywords: '' } as any)} className="brutal-thin bg-white dark:bg-[#2a2a1e] px-sm py-sm text-xs font-bold flex items-center gap-xs hover:bg-brand-yellow text-left dark:text-[#f5f0da]">
+                    <button key={n.to} onClick={() => handleSelect({ id: n.to, group: 'Pages', title: n.label, icon: n.icon, to: n.to, keywords: '' } as any)} className="brutal-thin bg-white px-sm py-sm text-xs font-bold flex items-center gap-xs hover:bg-brand-yellow text-left">
                       <Icon name={n.icon} className="text-base" />{n.label}
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="brutal-thin bg-brand-yellow/30 dark:bg-[#332f00] p-sm text-xs">
+              <div className="brutal-thin bg-brand-yellow/30 p-sm text-xs">
                 <div className="font-bold uppercase mb-xs flex items-center gap-xs"><Icon name="lightbulb" className="text-base" />How search works</div>
                 <ul className="list-disc ml-4 space-y-1 opacity-80">
                   <li>Type any words — all must match (AND). e.g. <span className="font-bold">zomato 500</span> finds ₹500 Zomato spend.</li>
                   <li>Searches pages, transactions, vendors, subscriptions, loans, investments & family.</li>
-                  <li>Press <span className="brutal-thin bg-white dark:bg-[#23231a] px-1 text-[10px]">↑ ↓</span> + <span className="brutal-thin bg-white dark:bg-[#23231a] px-1 text-[10px]">Enter</span> to jump. <span className="brutal-thin bg-white dark:bg-[#23231a] px-1 text-[10px]">Ctrl K</span> anytime.</li>
+                  <li>Press <span className="brutal-thin bg-white px-1 text-[10px]">↑ ↓</span> + <span className="brutal-thin bg-white px-1 text-[10px]">Enter</span> to jump. <span className="brutal-thin bg-white px-1 text-[10px]">Ctrl K</span> anytime.</li>
                 </ul>
               </div>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="brutal bg-white dark:bg-[#23231a] p-lg text-center flex flex-col gap-sm items-center">
+            <div className="brutal bg-white p-lg text-center flex flex-col gap-sm items-center">
               <Icon name="search_off" className="text-4xl opacity-30" />
               <div className="font-bold">No results for “{query}”</div>
               <div className="text-xs opacity-60 max-w-[420px]">Try fewer words, check spelling, or search amount like 500. Press Enter to search transactions with this term.</div>
@@ -418,12 +418,12 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             <div className="flex flex-col gap-md">
               <div className="text-xs font-bold uppercase opacity-60 px-xs">{filtered.length} results — showing top {flatResults.length} grouped</div>
               {grouped.map(([group, arr]) => (
-                <div key={group} className="brutal bg-white dark:bg-[#23231a] overflow-hidden">
-                  <div className="px-sm py-xs bg-surface-container-low dark:bg-[#1e1e16] border-b-2 border-on-surface/20 dark:border-[#333] flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider dark:text-[#f5f0da]">{group}</span>
-                    <span className="text-[10px] brutal-thin bg-white dark:bg-[#2a2a1e] px-xs py-0.5 dark:text-[#f5f0da]">{arr.length}</span>
+                <div key={group} className="brutal bg-white overflow-hidden">
+                  <div className="px-sm py-xs bg-surface-container-low border-b-2 border-on-surface/20 flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-wider">{group}</span>
+                    <span className="text-[10px] brutal-thin bg-white px-xs py-0.5">{arr.length}</span>
                   </div>
-                  <div className="flex flex-col divide-y divide-on-surface/10 dark:divide-[#333]">
+                  <div className="flex flex-col divide-y divide-on-surface/10">
                     {arr.map(item => {
                       const flatIdx = flatResults.findIndex(f => f.id === item.id)
                       const isActive = flatIdx === activeIdx
@@ -433,9 +433,9 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
                           data-idx={flatIdx}
                           onClick={() => handleSelect(item)}
                           onMouseEnter={() => setActiveIdx(flatIdx)}
-                          className={`text-left p-sm flex items-center gap-sm w-full transition-colors ${isActive ? 'bg-brand-yellow dark:bg-[#ffdb00] text-on-surface' : 'hover:bg-surface-container-low dark:hover:bg-[#2a2a1e] bg-white dark:bg-[#23231a] dark:text-[#f5f0da]'}`}
+                          className={`text-left p-sm flex items-center gap-sm w-full transition-colors ${isActive ? 'bg-brand-yellow text-on-surface' : 'hover:bg-surface-container-low bg-white'}`}
                         >
-                          <span className={`w-8 h-8 border-2 border-on-surface dark:border-[#f5f0da] flex items-center justify-center shrink-0 ${isActive ? 'bg-white dark:bg-[#121212] text-on-surface dark:text-[#f5f0da]' : 'bg-surface-container-low dark:bg-[#1e1e16]'}`}>
+                          <span className={`w-8 h-8 border-2 border-on-surface flex items-center justify-center shrink-0 ${isActive ? 'bg-white text-on-surface' : 'bg-surface-container-low'}`}>
                             <Icon name={item.icon} className="text-base" />
                           </span>
                           <span className="flex-1 min-w-0">
@@ -454,11 +454,11 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
         </div>
 
         {/* footer */}
-        <div className="border-t-[3px] border-on-surface dark:border-[#f5f0da] bg-surface-container-low dark:bg-[#1e1e16] px-sm py-xs flex flex-wrap items-center justify-between gap-sm text-[11px] font-bold uppercase shrink-0 dark:text-[#b8b5a0]">
+        <div className="border-t-[3px] border-on-surface bg-surface-container-low px-sm py-xs flex flex-wrap items-center justify-between gap-sm text-[11px] font-bold uppercase shrink-0">
           <span className="flex items-center gap-sm">
-            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white dark:bg-[#23231a] px-1">↑ ↓</span> Navigate</span>
-            <span className="flex items-center gap-1"><span className="brutal-thin bg-white dark:bg-[#23231a] px-1">↵</span> Select</span>
-            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white dark:bg-[#23231a] px-1">ESC</span> Close</span>
+            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white px-1">↑ ↓</span> Navigate</span>
+            <span className="flex items-center gap-1"><span className="brutal-thin bg-white px-1">↵</span> Select</span>
+            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white px-1">ESC</span> Close</span>
           </span>
           <span className="opacity-60 hidden md:block">Global search • transactions, vendors, loans, pages</span>
         </div>

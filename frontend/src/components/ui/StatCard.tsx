@@ -1,6 +1,8 @@
+import { motion } from 'framer-motion'
 import { cn } from '../../lib/cn'
 import { Icon } from './Icon'
 import { CountUp } from './CountUp'
+import { staggerItem } from '../motion'
 import { formatCurrency } from '../../lib/format'
 
 interface StatCardProps {
@@ -10,7 +12,6 @@ interface StatCardProps {
   delta?: number
   icon?: string
   color?: 'yellow' | 'white' | 'cyan'
-  stagger?: number
 }
 
 const colorClasses = {
@@ -26,16 +27,15 @@ export function StatCard({
   delta,
   icon,
   color = 'yellow',
-  stagger = 0,
 }: StatCardProps) {
   const positive = (delta ?? 0) >= 0
   return (
-    <div
+    <motion.div
+      variants={staggerItem}
       className={cn(
-        'brutal p-md flex flex-col gap-sm nb-card-enter nb-card-hover',
+        'brutal p-md flex flex-col gap-sm nb-card-hover',
         colorClasses[color],
       )}
-      style={{ '--nb-stagger': `${stagger}ms` } as React.CSSProperties}
     >
       <div className="flex justify-between items-start">
         <h3 className="font-bold text-xs uppercase tracking-wider text-on-surface">
@@ -49,7 +49,10 @@ export function StatCard({
         <div className="text-3xl font-bold text-on-surface">{value}</div>
       )}
       {delta !== undefined && (
-        <div
+        <motion.div
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.45, type: 'spring', stiffness: 300, damping: 16 }}
           className={cn(
             'flex items-center gap-1 w-fit px-1 py-0.5 brutal-thin text-xs font-bold',
             positive
@@ -62,8 +65,8 @@ export function StatCard({
             {positive ? '+' : ''}
             {delta}%
           </span>
-        </div>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   )
 }

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fintrack Flutter</string>
+	<string>FinStack</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -51,10 +51,16 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>FinStack needs local network access to reach your dev backend (http://192.168.1.136:3000) on the same Wi-Fi.</string>
+	<string>FinStack needs local network access to reach your dev backend on the same Wi-Fi.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>
 	</array>
+	<!-- image_picker: required or the app crashes the first time a user
+	     picks a screenshot/bank file on iOS 14+. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FinStack uses your photo library to pick bank-statement screenshots for import.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FinStack uses the camera to capture bank-statement screenshots for import.</string>
 </dict>
 </plist>

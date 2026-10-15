@@ -8,7 +8,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianG
 type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: any[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: any }
 
 const ALL_CATS = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
-const CAT_COLORS = ['#FFE500','#2EC4B6','#E8487F','#7B61FF','#FF7A45','#FFB347','#6BCB77','#4D96FF','#FFD500','#6b6a5e','#ffbe0b','#3a86ff']
+const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)','var(--accent-hover)','#8f8f88','var(--chart-5)','var(--chart-8)']
 
 export function VendorDetail(){
   const { id } = useParams()

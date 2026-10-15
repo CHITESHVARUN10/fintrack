@@ -26,6 +26,9 @@ List<Map<String, dynamic>> normalizeTo100(List<Map<String, dynamic>> entries, do
   return List.generate(entries.length, (i) => {...entries[i], 'percent': pct[i], 'raw': raws[i]});
 }
 
+/// Coerces API values (num | numeric String) into num; null-safe.
+num _asNum(Object? v) => v is num ? v : (num.tryParse('$v') ?? 0);
+
 class _DashboardPageState extends State<DashboardPage> {
   Map? data;
   bool loading = true;
@@ -43,7 +46,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final res = await ApiClient.dio.get('/dashboard');
       setState(() => data = res.data);
     } catch (e) {
-      setState(() => error = 'Could not load dashboard.');
+      if (mounted) setState(() => error = 'Could not load dashboard.');
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -82,12 +85,18 @@ class _DashboardPageState extends State<DashboardPage> {
       child: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('OVERVIEW', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
         const SizedBox(height: 12),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          _Stat(label: 'Monthly Income', value: money(d['monthlyIncome'] ?? 0), color: const Color(0xFFFFE500)),
-          _Stat(label: 'Monthly Outflow', value: money(d['monthlyObligations'] ?? 0)),
-          _Stat(label: 'Investments Worth', value: money((d['investmentPortfolioValue']?['totalCurrentValue'] ?? 0))),
-          _Stat(label: 'Net Monthly Savings', value: money(d['netMonthlyFlow'] ?? 0)),
-        ]),
+        // Stat card grid — cell width derived from actual constraints
+        // (replaces the (screenWidth - 48) / 2 magic number).
+        Builder(builder: (context) {
+          final cw = MediaQuery.sizeOf(context).width - 32;
+          final cell = ((cw - 8) / 2).clamp(120.0, 280.0).toDouble();
+          return Wrap(spacing: 8, runSpacing: 8, children: [
+            SizedBox(width: cell, child: _Stat(label: 'Monthly Income', value: money(_asNum(d['monthlyIncome'])), color: const Color(0xFFFFE500))),
+            SizedBox(width: cell, child: _Stat(label: 'Monthly Outflow', value: money(_asNum(d['monthlyObligations'])))),
+            SizedBox(width: cell, child: _Stat(label: 'Investments Worth', value: money(_asNum(d['investmentPortfolioValue']?['totalCurrentValue'])))),
+            SizedBox(width: cell, child: _Stat(label: 'Net Monthly Savings', value: money(_asNum(d['netMonthlyFlow'])))),
+          ]);
+        }),
         const SizedBox(height: 12),
         BrutalCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('MONTHLY SPEND BREAKDOWN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
@@ -171,13 +180,17 @@ class _DashboardPageState extends State<DashboardPage> {
           final due = DateTime.tryParse('${p['dueDate'] ?? ''}');
           final days = due == null ? 99 : due.difference(DateTime.now()).inDays;
           final action = days <= 5 ? 'Pay Now' : 'Schedule';
+          // Safe date display — never substring a raw/short string (RangeError).
+          final dueText = due != null
+              ? due.toIso8601String().substring(0, 10)
+              : 'unavailable';
           return Container(margin: const EdgeInsets.only(bottom: 8), child: BrutalCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Expanded(child: Text('${p['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700))),
-              Text('Due ${('${p['dueDate'] ?? ''}').substring(0, 10)}', style: const TextStyle(fontSize: 10)),
+              Text('Due $dueText', style: const TextStyle(fontSize: 10)),
             ]),
             const SizedBox(height: 4),
-            Text(money(p['amount'] ?? 0), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            Text(money(_asNum(p['amount'])), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
             BrutalButton(label: action, onPressed: () {}),
           ])));
@@ -190,9 +203,9 @@ class _DashboardPageState extends State<DashboardPage> {
 class _Stat extends StatelessWidget {
   final String label; final String value; final Color color;
   const _Stat({required this.label, required this.value, this.color = Colors.white});
+  // Width is set by the parent (Wrap + LayoutBuilder) — never hardcoded here.
   @override
   Widget build(BuildContext context) => Container(
-    width: (MediaQuery.of(context).size.width - 48) / 2,
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(color: color, border: Border.all(width: 3), boxShadow: const [BoxShadow(offset: Offset(3, 3))]),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

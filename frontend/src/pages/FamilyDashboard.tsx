@@ -8,7 +8,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell, PieChart, Pie,
 } from 'recharts'
 
-const CAT_COLORS = ['#FFE500','#2EC4B6','#E8487F','#7B61FF','#FF7A45','#FFB347','#6BCB77','#4D96FF']
+const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)']
 
 function brutalTooltipStyle(): any {
   return {
@@ -283,12 +283,12 @@ export function FamilyDashboard(){
                     }
                     const q20=q(vals,0.2), q40=q(vals,0.4), q60=q(vals,0.6), q80=q(vals,0.8)
                     const palette = [
-                      { bg:'#ffffff', fg:'#1e1c10' }, // 0
-                      { bg:'#fff7a0', fg:'#1e1c10' }, // q0-q20
-                      { bg:'#ffe500', fg:'#1e1c10' }, // q20-q40
-                      { bg:'#d4a017', fg:'white' },
-                      { bg:'#6b6a5e', fg:'white' },
-                      { bg:'#1e1c10', fg:'white' }, // q80-max
+                      { bg:'var(--heat-1)', fg:'var(--heat-ink)' },   // 0
+                      { bg:'var(--heat-2)', fg:'var(--heat-ink)' },   // q0-q20
+                      { bg:'var(--heat-3)', fg:'var(--heat-ink)' },   // q20-q40
+                      { bg:'var(--heat-4)', fg:'var(--heat-inverse)' },
+                      { bg:'var(--heat-5)', fg:'var(--heat-inverse)' },
+                      { bg:'var(--heat-6)', fg:'var(--heat-inverse)' }, // q80-max
                     ]
                     const hiDate = data.highestDay?.date
                     return data.heatmap.map((h:any)=> {
@@ -309,13 +309,13 @@ export function FamilyDashboard(){
                 </div>
                 <div className="flex flex-wrap items-center gap-xs mt-sm text-xs font-bold uppercase">
                   <span className="opacity-60">Scale</span>
-                  <span className="brutal-thin w-4 h-4" style={{background:'#ffffff'}} /> 0
-                  <span className="brutal-thin w-4 h-4" style={{background:'#fff7a0'}} />
-                  <span className="brutal-thin w-4 h-4" style={{background:'#ffe500'}} />
-                  <span className="brutal-thin w-4 h-4" style={{background:'#d4a017'}} />
-                  <span className="brutal-thin w-4 h-4" style={{background:'#6b6a5e'}} />
-                  <span className="brutal-thin w-4 h-4" style={{background:'#1e1c10'}} /> max
-                  <span className="ml-auto text-[11px] normal-case opacity-60">Empty days shown as white — not gaps</span>
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-1)'}} /> 0
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-2)'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-3)'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-4)'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-5)'}} />
+                  <span className="brutal-thin w-4 h-4" style={{background:'var(--heat-6)'}} /> max
+                  <span className="ml-auto text-[11px] normal-case opacity-60">Empty days shown at lowest step — not gaps</span>
                 </div>
               </>
             )}

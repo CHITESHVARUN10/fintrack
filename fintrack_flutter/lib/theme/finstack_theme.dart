@@ -22,7 +22,7 @@ ThemeData finStackTheme() {
   final base = ThemeData.light(useMaterial3: true);
   return base.copyWith(
     scaffoldBackgroundColor: Colors.white,
-    colorScheme: const ColorScheme.light(primary: FinStackColors.onSurface, onPrimary: Colors.white, secondary: FinStackColors.tertiary, onSecondary: FinStackColors.onSurface, surface: Colors.white, onSurface: FinStackColors.onSurface, error: FinStackColors.errorContainer, onError: FinStackColors.onErrorContainer),
+    colorScheme: const ColorScheme.light(primary: FinStackColors.onSurface, onPrimary: Colors.white, secondary: FinStackColors.tertiary, onSecondary: FinStackColors.onSurface, surface: Colors.white, onSurface: FinStackColors.onSurface, error: FinStackColors.onErrorContainer, onError: FinStackColors.errorContainer),
     textTheme: GoogleFonts.spaceGroteskTextTheme().copyWith(
       displayLarge: const TextStyle(fontSize: 48, fontWeight: FontWeight.w700, height: 0.95, letterSpacing: -1.2, color: FinStackColors.onSurface),
       headlineLarge: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: FinStackColors.onSurface),
@@ -32,7 +32,7 @@ ThemeData finStackTheme() {
     ),
     appBarTheme: const AppBarTheme(backgroundColor: Colors.white, elevation: 0, surfaceTintColor: Colors.transparent, foregroundColor: FinStackColors.onSurface, shape: Border(bottom: BorderSide(color: FinStackColors.onSurface, width: 3))),
     elevatedButtonTheme: ElevatedButtonThemeData(style: ElevatedButton.styleFrom(backgroundColor: FinStackColors.brandYellow, foregroundColor: FinStackColors.onSurface, side: const BorderSide(color: FinStackColors.onSurface, width: 2), elevation: 2, shadowColor: FinStackColors.onSurface, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero), textStyle: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.8), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12))),
-    inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.white, border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), hintStyle: TextStyle(color: FinStackColors.onSurface.withOpacity(0.6)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+    inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.white, border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), hintStyle: TextStyle(color: FinStackColors.onSurface.withValues(alpha: 0.6)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
     dividerTheme: const DividerThemeData(color: FinStackColors.onSurface, thickness: 3, space: 1),
     cardTheme: const CardThemeData(color: Colors.white, elevation: 0, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero, side: BorderSide(color: FinStackColors.onSurface, width: 4))),
   );

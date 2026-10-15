@@ -1,6 +1,8 @@
 import { dashboardService } from '../services/api'
+import { motion } from 'framer-motion'
 import { useAsync } from '../hooks/useAsync'
 import { StatCard } from '../components/ui/StatCard'
+import { StaggerList } from '../components/motion'
 import { Card, SectionTitle } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
 import { Button } from '../components/ui/Button'
@@ -106,14 +108,13 @@ export function Dashboard() {
       </div>
 
       {/* Stat cards */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
+      <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
         <StatCard
           label="Monthly Income"
           value={formatCurrency(data.monthlyIncome)}
           valueNumber={data.monthlyIncome}
           icon="account_balance_wallet"
           color="yellow"
-          stagger={0}
         />
         <StatCard
           label="Monthly Outflow"
@@ -121,7 +122,6 @@ export function Dashboard() {
           valueNumber={data.monthlyObligations}
           icon="shopping_cart"
           color="white"
-          stagger={60}
         />
         <StatCard
           label="Investments Worth"
@@ -129,7 +129,6 @@ export function Dashboard() {
           valueNumber={data.investmentPortfolioValue.totalCurrentValue}
           icon="show_chart"
           color="cyan"
-          stagger={120}
         />
         <StatCard
           label="Net Monthly Savings"
@@ -137,9 +136,8 @@ export function Dashboard() {
           valueNumber={data.netMonthlyFlow}
           icon="savings"
           color="white"
-          stagger={180}
         />
-      </section>
+      </StaggerList>
 
       {/* Charts — transaction based, individual */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md lg:gap-xl min-w-0">
@@ -161,9 +159,12 @@ export function Dashboard() {
                     </span>
                   </div>
                   <div className="h-4 bg-surface-variant brutal-thin">
-                    <div
-                      className="h-full bg-on-surface"
+                    <motion.div
+                      className="h-full bg-on-surface origin-left"
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
                       style={{ width: `${(value / maxBurn) * 100}%` }}
+                      transition={{ type: 'spring', stiffness: 120, damping: 20, delay: 0.15 }}
                     />
                   </div>
                 </div>
