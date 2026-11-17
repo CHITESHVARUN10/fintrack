@@ -1,31 +1,20 @@
-import type { LedgerTransaction, LinkedTransactions, LoanSchedule, PaymentSuggestion, TransactionList, TransactionDetail, FamilyAnalytics, ImportResult, ApiMember, DuplicateGroup, RawLoan } from '../types/api'
+import type { LedgerTransaction, PaymentSuggestion, TransactionList, TransactionDetail, FamilyAnalytics, ImportResult, ApiMember, DuplicateGroup } from '../types/api'
 // Service layer for FinStack. Every call goes through the central `apiClient`
 // instance (see ./apiClient) with `withCredentials`, so cookies/sessions work
 // end-to-end through the Vite proxy to the Express backend.
 
 import { apiClient } from './apiClient'
-import { buildRegimeTrace } from '../lib/tax'
 import type {
   AdHocExpense,
   AppNotification,
   DashboardSummary,
-  EducationPayment,
   FamilyMember,
-  Form16,
-  Form16Regime,
   Income,
-  Insurance,
   Investment,
   RecurringPayment,
-  RegimeTrace,
   Subscription,
   TaxEstimate,
-  TaxRecommendation,
   TaxRegimeResult,
-  TaxSavingSuggestion,
-  DeductionBreakdown,
-  DeductionLineItem,
-  CalculationTraceStep,
 } from '../types'
 
 export const dashboardService = {
@@ -81,36 +70,8 @@ export const investmentService = {
     apiClient.get('/investments/summary').then((r) => r.data.overall),
 }
 
-export const loanService = {
-  list: (): Promise<RawLoan[]> => apiClient.get('/loans').then((r) => r.data),
-  get: (id: string): Promise<RawLoan> => apiClient.get(`/loans/${id}`).then((r) => r.data),
-  getSchedule: (id: string): Promise<LoanSchedule> => apiClient.get(`/loans/${id}/schedule`).then((r) => r.data),
-  getTransactions: (id: string): Promise<LinkedTransactions> => apiClient.get(`/loans/${id}/transactions`).then((r) => r.data),
-  linkTransaction: (id: string, payload: { transactionId: string; isPrepayment?: boolean }) =>
-    apiClient.post(`/loans/${id}/link-transaction`, payload).then((r) => r.data),
-  unlinkTransaction: (id: string, payload: { transactionId: string }) =>
-    apiClient.post(`/loans/${id}/unlink-transaction`, payload).then((r) => r.data),
-  recordPrepayment: (id: string, payload: { amount?: number; transactionId?: string; date?: string; mode?: string; notes?: string }) =>
-    apiClient.post(`/loans/${id}/record-prepayment`, payload).then((r) => r.data),
-  calculate: (payload: { principal: number; rate: number; tenureMonths: number; startDate?: string; emiDate?: number }) =>
-    apiClient.post('/loans/calculate', payload).then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: PaymentSuggestion[] }> => apiClient.get('/loans/suggestions').then((r) => r.data),
-  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
-    apiClient.post(`/loans/${id}/apply-suggestion`, payload).then((r) => r.data),
-  dismissSuggestion: (id: string) =>
-    apiClient.post(`/loans/${id}/dismiss-suggestion`).then((r) => r.data),
-}
-
 export const expenseService = {
   list: (): Promise<AdHocExpense[]> => apiClient.get('/expenses').then((r) => r.data),
-}
-
-export const insuranceService = {
-  list: (): Promise<Insurance[]> => apiClient.get('/insurance').then((r) => r.data),
-}
-
-export const educationService = {
-  list: (): Promise<EducationPayment[]> => apiClient.get('/education').then((r) => r.data),
 }
 
 export const taxService = {
@@ -262,144 +223,4 @@ export const importService = {
     return apiClient.post<ImportResult>('/imports/screenshot', fd).then((r) => r.data)
   },
   batch: (id: string) => apiClient.get(`/imports/batches/${id}`).then((r) => r.data),
-}
-
-// Backend Form 16 docs use Mongo `_id`; normalize so the frontend `Form16`
-// type (and all call sites) stay unchanged.
-export function normalizeForm16(raw: Record<string, unknown>): Form16 {
-  const id = String(raw._id ?? raw.id)
-  const rest = { ...raw }; delete rest._id; delete rest.__v
-  return {
-    ...(rest as unknown as Omit<Form16, 'id'>),
-    id,
-  }
-}
-
-export const form16Service = {
-  list: (memberId?: string): Promise<Form16[]> =>
-    apiClient
-      .get('/form16', { params: memberId ? { memberId } : undefined })
-      .then((r) => (r.data ?? []).map((f: Record<string, unknown>) => normalizeForm16(f))),
-
-  get: (id: string): Promise<Form16 | undefined> =>
-    apiClient
-      .get(`/form16/${id}`)
-      .then((r) => (r.data ? normalizeForm16(r.data) : undefined)),
-
-  // POST /api/form16/upload — multipart PDF; backend extracts via Gemini and
-  // returns { _id, sourceType } (the full record is fetched by the review screen).
-  upload: (file: File): Promise<Form16> => {
-    const fd = new FormData()
-    fd.append('pdf', file)
-    return apiClient.post('/form16/upload', fd).then((r) => normalizeForm16(r.data))
-  },
-
-  // POST /api/form16/manual — backend fills defaults; returns the created doc.
-  createManual: (): Promise<Form16> =>
-    apiClient.post('/form16/manual', {}).then((r) => normalizeForm16(r.data)),
-
-  update: (id: string, patch: Partial<Form16>): Promise<Form16 | undefined> => {
-    const body = { ...patch }; delete body.id
-    return apiClient
-      .put(`/form16/${id}`, body)
-      .then((r) => (r.data ? normalizeForm16(r.data) : undefined))
-  },
-
-  // POST /api/form16/:id/duplicate
-  duplicate: (id: string, financialYear?: string): Promise<Form16> =>
-    apiClient
-      .post(`/form16/${id}/duplicate`, financialYear ? { financialYear } : {})
-      .then((r) => normalizeForm16(r.data)),
-
-  // GET /api/form16/:id/deductions-preview
-  // Returns the COMPLETE merged DeductionLineItem array from all three sources
-  // (Form16 OCR + Investment Records + User Manual). Called by the Review page
-  // on mount to populate TaxpayerContext.deductions before rendering.
-  getDeductionsPreview: (id: string, draft?: Partial<Form16>): Promise<{ deductions: import('../types').DeductionLineItem[]; isFinalized: boolean }> =>
-    (draft ? apiClient.post(`/form16/${id}/deductions-preview`, draft) : apiClient.get(`/form16/${id}/deductions-preview`)).then((r) => r.data),
-
-  // PATCH /api/form16/:id — store isFinalized + finalizedDeductions.
-  // Called when the user clicks "Save and Continue" on the Review page.
-  finalizeForm16: (id: string, finalizedDeductions: import('../types').DeductionLineItem[]): Promise<{ isFinalized: boolean }> =>
-    apiClient.patch(`/form16/${id}`, { isFinalized: true, finalizedDeductions }).then((r) => r.data),
-
-  remove: (id: string): Promise<void> =>
-    apiClient.delete(`/form16/${id}`).then(() => undefined),
-
-  // GET /api/form16/:id/recommendation — assemble the display shape from the
-  // saved recommendation. The regime breakdowns are rebuilt from the SNAPSHOT
-  // fields the backend stored (grossSalaryUsed / totalDeductions / per-regime
-  // taxable income) so what the user sees matches exactly what was computed and
-  // saved, even when revisited days later.
-  getRecommendation: async (id: string): Promise<TaxRecommendation> => {
-    const [recRes, f16Res] = await Promise.all([
-      apiClient.get(`/form16/${id}/recommendation`),
-      apiClient.get(`/form16/${id}`),
-    ])
-    const rec = recRes.data ?? {}
-    const f16 = f16Res.data ? normalizeForm16(f16Res.data) : undefined
-
-    // Prefer the saved snapshot; fall back to the raw Form 16 if missing.
-    const gross = Number(rec.grossSalaryUsed ?? f16?.grossSalary ?? 0)
-    const totalDed = Number(rec.totalDeductions ?? f16?.totalDeductions ?? 0)
-    const oldTaxable = Number(rec.oldTaxableIncome ?? 0)
-    const newTaxable = Number(rec.newTaxableIncome ?? 0)
-
-    const suggestions: TaxSavingSuggestion[] = (
-      (rec.taxSavingSuggestions as Array<{ suggestion?: string; potentialSaving?: number; section?: string; suggestionType?: string; amount?: number; savingsType?: string; savingsAmount?: number | null; displayMessage?: string }>) ?? []
-    ).map((s, i) => ({
-      id: `sug-${i}`,
-      section: s.section || '',
-      suggestionType: s.suggestionType || 'INFORMATIONAL',
-      amount: s.amount,
-      savingsType: s.savingsType,
-      savingsAmount: s.savingsAmount,
-      displayMessage: s.displayMessage,
-      title: s.suggestion ?? '',
-      detail: s.suggestion ?? '',
-      icon: 'savings',
-      potentialSaving: Number(s.potentialSaving ?? 0),
-    }))
-
-    const breakdown: DeductionBreakdown[] = (
-      (rec.deductionBreakdown as Array<{ section?: string; label?: string; amount?: number; note?: string }>) ?? []
-    ).map((d) => ({
-      section: d.section ?? '',
-      label: d.label ?? '',
-      amount: Number(d.amount ?? 0),
-      note: d.note ?? '',
-    }))
-
-    // Prefer the full backend trace (authoritative, matches what was saved).
-    // Fall back to a computed minimal trace only for recommendations that predate
-    // the rich regimes trace.
-    const oldTrace =
-      (rec.regimes?.old as RegimeTrace | undefined) ??
-      buildRegimeTrace('Old', gross, totalDed, oldTaxable)
-    const newTrace =
-      (rec.regimes?.new as RegimeTrace | undefined) ??
-      buildRegimeTrace('New', gross, totalDed, newTaxable)
-
-    return {
-      id: `TAXREC-${id}`,
-      form16Id: id,
-      userId: f16?.userId ?? '',
-      grossIncome: gross,
-      recommendedRegime: (rec.recommendedRegime ?? 'New') as Form16Regime,
-      savingsAmount: Number(rec.savingsAmount ?? 0),
-      explanation: rec.explanation ?? '',
-      regimes: { old: oldTrace, new: newTrace },
-      taxSavingSuggestions: suggestions,
-      grossSalaryUsed: gross,
-      totalDeductions: totalDed,
-      deductionBreakdown: breakdown,
-      grossSalaryMismatch: Boolean(rec.grossSalaryMismatch),
-      mismatchDetail: (rec.mismatchDetail as string | null) ?? null,
-      debug: (rec.debug as Record<string, unknown> | null) ?? null,
-      deductionLineItems: (rec.deductionLineItems as DeductionLineItem[]) ?? [],
-      calculationTrace: (rec.calculationTrace as CalculationTraceStep[]) ?? [],
-      generatedAt: f16?.updatedAt ?? '',
-      isStale: Boolean(rec.isStale),
-    }
-  },
 }

@@ -28,6 +28,14 @@ export default {
         'on-secondary-container': 'rgb(var(--c-on-secondary-container) / <alpha-value>)',
         'error-container': 'rgb(var(--c-error-container) / <alpha-value>)',
         'on-error-container': 'rgb(var(--c-on-error-container) / <alpha-value>)',
+        // Solid error fill / inverse text — flips with .dark like the rest.
+        // Used by `text-error`, `border-error`, `hover:bg-error`,
+        // `hover:text-on-error` across loan/subscription/settings surfaces.
+        error: 'rgb(var(--c-on-error-container) / <alpha-value>)',
+        'on-error': 'rgb(var(--c-error-container) / <alpha-value>)',
+        // Legacy error banners are written as `bg-red-100`; resolve that shade
+        // to the themed error container so dark mode is not a pale pink block.
+        red: { 100: 'rgb(var(--c-error-container) / <alpha-value>)' },
         'outline-variant': 'rgb(var(--c-outline-variant) / <alpha-value>)',
         // Tailwind default `white` remapped: bg-white = card surface.
         // Channels format — a bare var() is invalid as a color and would

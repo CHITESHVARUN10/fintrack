@@ -1,15 +1,14 @@
 const RecipientDirectory = require('../models/recipientdirectory.model');
-const EMILoan = require('../models/loan.model');
 const Subscription = require('../models/subscription.model');
 const { MANUAL_UPI_HANDLE_MAP, KEYWORD_CATEGORY_MAP } = require('../config/bhimUpiMap');
 const { normalizeVendorKey } = require('./recipient.service');
 
 // Lightweight rule-based categorizer (no AI) – combination of manual + auto-learn
-// Returns { category, subcategory, confidence, trace: [{rule, category, confidence}], loanRef, subscriptionRef }
+// Returns { category, subcategory, confidence, trace: [{rule, category, confidence}], subscriptionRef }
 
 async function predictCategory({ familyId, vendorKey, upiId, amountPaise, description = '', vendorDoc = null }) {
   const trace = [];
-  let best = { category: 'Other', subcategory: null, confidence: 0, rule: 'none', loanRef: null, subscriptionRef: null };
+  let best = { category: 'Other', subcategory: null, confidence: 0, rule: 'none', subscriptionRef: null };
 
   function consider(category, confidence, rule, subcategory = null, refs = {}) {
     if (!category || category === 'Other') return;
@@ -20,39 +19,12 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
         confidence,
         rule,
         subcategory: subcategory || best.subcategory,
-        loanRef: refs.loanRef || best.loanRef,
         subscriptionRef: refs.subscriptionRef || best.subscriptionRef,
       };
     }
   }
 
-  // 1. Active Family Loans match (High signal)
-  if (familyId) {
-    try {
-      const activeLoans = await EMILoan.find({ familyAccountId: familyId, status: 'Active' }).lean();
-      const descLower = String(description || '').toLowerCase();
-      const upiLower = String(upiId || '').toLowerCase();
-      for (const loan of activeLoans) {
-        const loanNameLow = String(loan.loanName || '').toLowerCase().trim();
-        const lenderLow = String(loan.lender || '').toLowerCase().trim();
-        const isNameMatch = (loanNameLow && loanNameLow.length > 2 && (descLower.includes(loanNameLow) || upiLower.includes(loanNameLow))) ||
-                            (lenderLow && lenderLow.length > 2 && (descLower.includes(lenderLow) || upiLower.includes(lenderLow)));
-        const loanAmountPaise = Math.round(Number(loan.emiAmount || 0) * 100);
-        const isAmountMatch = amountPaise && loanAmountPaise && Math.abs(amountPaise - loanAmountPaise) <= Math.max(100, loanAmountPaise * 0.05);
-
-        if (isNameMatch && isAmountMatch) {
-          consider('Bills', 90, `family_loan_exact_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
-          break;
-        } else if (isNameMatch) {
-          consider('Bills', 80, `family_loan_name_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
-        } else if (isAmountMatch && (descLower.includes('emi') || descLower.includes('loan') || descLower.includes('nach') || descLower.includes('ach') || descLower.includes('mortgage'))) {
-          consider('Bills', 85, `family_loan_amount_kw_${loan._id}`, 'Loan EMI', { loanRef: loan._id });
-        }
-      }
-    } catch {}
-  }
-
-  // 2. Active Family Subscriptions match (High signal)
+  // 1. Active Family Subscriptions match (High signal)
   if (familyId) {
     try {
       const activeSubs = await Subscription.find({ familyAccountId: familyId, status: 'Active' }).lean();
@@ -161,7 +133,6 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
     subcategory: best.subcategory || null,
     confidence: best.confidence,
     rule: best.rule,
-    loanRef: best.loanRef || null,
     subscriptionRef: best.subscriptionRef || null,
     trace,
   };

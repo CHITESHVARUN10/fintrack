@@ -1,7 +1,6 @@
 const Transaction = require('../models/transaction.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
-const EMILoan = require('../models/loan.model');
 
 // Helper: fuzzy name match (contains, case-insensitive, normalized)
 function nameMatches(subName, recipientName) {
@@ -41,7 +40,7 @@ async function findMatches({ familyId, createdBy, name, amount, dueDay, type = '
     occurredAt: { $gte: since },
     visibility: { $ne: 'PRIVATE' },
     // Only search unlinked transactions
-    ...(type === 'subscription' ? { subscriptionRef: null } : type === 'loan' ? { loanRef: null } : {}),
+    ...(type === 'subscription' ? { subscriptionRef: null } : {}),
   };
   const candidates = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(200).lean();
   const matched = [];
@@ -162,30 +161,6 @@ async function buildSuggestionsForRecurring({ familyId, memberId }) {
   return out;
 }
 
-async function buildSuggestionsForLoans({ familyId, memberId }) {
-  const filter = { familyAccountId: familyId };
-  if (memberId) filter.memberId = memberId;
-  const loans = await EMILoan.find({ ...filter, status: 'Active' }).lean();
-  const out = [];
-  for (const loan of loans) {
-    if (loan.notes && loan.notes.includes('[[DISMISSED_SUGGESTION]]')) continue;
-    const matched = await findMatches({ familyId, name: loan.loanName, amount: loan.emiAmount, dueDay: loan.emiDate, type: 'loan' });
-    if (matched.length >= 2) {
-      out.push({
-        kind: 'loan',
-        id: loan._id,
-        name: loan.loanName,
-        current: { emiAmount: loan.emiAmount, emiDate: loan.emiDate },
-        matchedTxIds: matched.map((m) => m._id),
-        matchedCount: matched.length,
-        confidence: 70,
-        sample: matched.slice(0, 3),
-      });
-    }
-  }
-  return out;
-}
-
 async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxIds, familyId, createdBy }) {
   if (kind === 'subscription') {
     const sub = await Subscription.findOne({ _id: id, familyAccountId: familyId });
@@ -223,20 +198,6 @@ async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxId
     await rec.save();
     return rec;
   }
-  if (kind === 'loan') {
-    const loan = await EMILoan.findOne({ _id: id, familyAccountId: familyId });
-    if (!loan) throw Object.assign(new Error('Loan not found'), { status: 404 });
-    if (acceptAmount != null) loan.emiAmount = Number(acceptAmount);
-    if (acceptDate != null) loan.emiDate = Number(acceptDate);
-    await loan.save();
-    if (Array.isArray(matchedTxIds) && matchedTxIds.length > 0) {
-      await Transaction.updateMany(
-        { _id: { $in: matchedTxIds }, familyId, createdBy },
-        { $set: { loanRef: loan._id, loanMeta: { isLoanPayment: true, isPrepayment: false } } }
-      ).catch(() => {});
-    }
-    return loan;
-  }
   throw Object.assign(new Error('Unknown kind'), { status: 400 });
 }
 
@@ -256,13 +217,6 @@ async function dismissSuggestion({ kind, id, familyId }) {
     await rec.save();
     return { success: true };
   }
-  if (kind === 'loan') {
-    const loan = await EMILoan.findOne({ _id: id, familyAccountId: familyId });
-    if (!loan) return { success: true };
-    loan.notes = loan.notes ? `${loan.notes}\n${noteTag}` : noteTag;
-    await loan.save();
-    return { success: true };
-  }
   return { success: true };
 }
 
@@ -270,7 +224,6 @@ module.exports = {
   findMatches,
   buildSuggestionsForSubscriptions,
   buildSuggestionsForRecurring,
-  buildSuggestionsForLoans,
   applySuggestion,
   dismissSuggestion,
 };

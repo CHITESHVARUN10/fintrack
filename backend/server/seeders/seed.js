@@ -16,13 +16,8 @@ const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const Investement = require('../models/investment.model');
-const EMILoan = require('../models/loan.model');
 const AdHocExpense = require('../models/expense.model');
-const Insurance = require('../models/insurance.model');
-const EducationPayment = require('../models/education.model');
 const Notification = require('../models/notification.model');
-const Form16 = require('../models/form16.model');
-const TaxRecommendation = require('../models/taxrecommendation.model');
 
 // --- date helpers (relative to "now" so the seed stays current) ---
 const DAY = 864e5;
@@ -55,13 +50,8 @@ async function seed() {
       Subscription.deleteMany({}),
       RecurringPayment.deleteMany({}),
       Investement.deleteMany({}),
-      EMILoan.deleteMany({}),
       AdHocExpense.deleteMany({}),
-      Insurance.deleteMany({}),
-      EducationPayment.deleteMany({}),
       Notification.deleteMany({}),
-      Form16.deleteMany({}),
-      TaxRecommendation.deleteMany({}),
     ]);
   }
 
@@ -179,22 +169,7 @@ async function seed() {
   ]);
   console.log('✅ Investments seeded');
 
-  // --- 6. EMI & Loans ---
-  await EMILoan.insertMany([
-    {
-      memberId: R, familyAccountId: F, loanName: 'SBI Home Loan', loanType: 'Home', lender: 'SBI',
-      principalAmount: 6000000, outstandingAmount: 5400000, emiAmount: 52000, emiDate: 5,
-      interestRate: 8.5, tenureMonths: 240, startDate: yearsAgo(5), status: 'Active',
-    },
-    {
-      memberId: P, familyAccountId: F, loanName: 'HDFC Car Loan', loanType: 'Car', lender: 'HDFC',
-      principalAmount: 800000, outstandingAmount: 320000, emiAmount: 14500, emiDate: 10,
-      interestRate: 9.2, tenureMonths: 60, startDate: yearsAgo(2), status: 'Active',
-    },
-  ]);
-  console.log('✅ EMI & Loans seeded');
-
-  // --- 7. Ad-hoc expenses (last 3 months, both members, mixed categories) ---
+  // --- 6. Ad-hoc expenses (last 3 months, both members, mixed categories) ---
   await AdHocExpense.insertMany([
     { memberId: R, familyAccountId: F, title: 'Petrol', category: 'Fuel', amount: 1500, date: daysAgo(3), paymentMode: 'UPI' },
     { memberId: R, familyAccountId: F, title: 'Swiggy lunch', category: 'Food', amount: 450, date: daysAgo(3), paymentMode: 'UPI' },
@@ -219,91 +194,14 @@ async function seed() {
   ]);
   console.log('✅ Ad-hoc expenses seeded');
 
-  // --- 8. Insurance ---
-  await Insurance.insertMany([
-    {
-      memberId: R, familyAccountId: F, policyName: 'LIC Jeevan Anand', insurer: 'LIC',
-      insuranceType: 'Life', premiumAmount: 24000, premiumFrequency: 'Yearly',
-      nextDueDate: daysFromNow(45), tax80C: true, status: 'Active', nominee: 'Priya Sharma',
-    },
-    {
-      memberId: R, familyAccountId: F, policyName: 'Star Health Family Floater', insurer: 'Star Health',
-      insuranceType: 'Health', premiumAmount: 18500, premiumFrequency: 'Yearly',
-      nextDueDate: daysFromNow(20), tax80C: false, status: 'Active',
-    },
-    {
-      memberId: P, familyAccountId: F, policyName: 'Vehicle Insurance', insurer: 'ICICI Lombard',
-      insuranceType: 'Vehicle', premiumAmount: 8200, premiumFrequency: 'Yearly',
-      nextDueDate: daysFromNow(90), status: 'Active',
-    },
-  ]);
-  console.log('✅ Insurance seeded');
-
-  // --- 9. Education payments ---
-  await EducationPayment.insertMany([
-    {
-      memberId: R, familyAccountId: F, title: 'School Fees — Aryan', institution: 'Delhi Public School',
-      category: 'School', amount: 18000, frequency: 'Quarterly', dueDate: daysFromNow(15), forMember: 'Aryan Sharma',
-    },
-    {
-      memberId: P, familyAccountId: F, title: 'UPSC Coaching', institution: 'Vision IAS',
-      category: 'Coaching', amount: 8500, frequency: 'Monthly', dueDate: daysFromNow(20), forMember: 'Priya Sharma',
-    },
-  ]);
-  console.log('✅ Education payments seeded');
-
   // --- 10. Notifications (Rohan) ---
   await Notification.insertMany([
     { memberId: R, familyAccountId: F, type: 'subscription', message: 'Netflix subscription of ₹649 will be billed in 3 days.', relatedModule: 'subscriptions', isRead: false, scheduledAt: daysFromNow(3), channel: ['in-app'] },
-    { memberId: R, familyAccountId: F, type: 'emi', message: 'SBI Home Loan EMI of ₹52,000 is due in 3 days.', relatedModule: 'loans', isRead: false, scheduledAt: daysFromNow(3), channel: ['in-app'] },
-    { memberId: R, familyAccountId: F, type: 'insurance', message: 'Star Health policy premium is due in 7 days.', relatedModule: 'insurance', isRead: false, scheduledAt: daysFromNow(7), channel: ['in-app'] },
     { memberId: R, familyAccountId: F, type: 'subscription', message: 'Spotify subscription of ₹119 will be billed in 5 days.', relatedModule: 'subscriptions', isRead: false, scheduledAt: daysFromNow(5), channel: ['in-app'] },
     { memberId: R, familyAccountId: F, type: 'budget', message: 'You have exceeded your Food budget for this month.', relatedModule: 'expenses', isRead: true, scheduledAt: daysAgo(2), channel: ['in-app'] },
     { memberId: R, familyAccountId: F, type: 'report', message: 'Your June 2026 monthly report is ready.', relatedModule: 'reports', isRead: true, scheduledAt: daysAgo(10), channel: ['in-app'] },
   ]);
   console.log('✅ Notifications seeded');
-
-  // --- 11. Form 16 (Rohan) + Tax Recommendation ---
-  const form16 = await Form16.create({
-    userId: R,
-    financialYear: '2024-25',
-    employeeName: 'Rohan Sharma',
-    employerName: 'Acme Corp Pvt Ltd',
-    employerPAN: 'AAACA1234A',
-    basicSalary: 1000000,
-    hra: 200000,
-    specialAllowance: 180000,
-    grossSalary: 1380000,
-    standardDeduction: 50000,
-    section80C: 150000,
-    section80D: 25000,
-    totalDeductions: 175000,
-    taxableIncome: 1155000,
-    tdsDeducted: 140000,
-    taxRegimeUsed: 'Old',
-    sourceType: 'Manual',
-  });
-  console.log('✅ Form 16 seeded');
-
-  await TaxRecommendation.create({
-    userId: R,
-    form16Id: form16._id,
-    oldRegimeTax: 156000,
-    newRegimeTax: 112500,
-    recommendedRegime: 'New',
-    savingsAmount: 43500,
-    explanation: 'Based on your income and deductions, the New Regime saves you more tax this year.',
-    taxSavingSuggestions: [
-      { suggestion: 'Shift to the New Tax Regime to save ₹43,500 this year.', potentialSaving: 43500 },
-      { suggestion: 'Invest ₹50,000 more under Section 80C to maximise old-regime benefits if you switch back.', potentialSaving: 15000 },
-    ],
-    generatedAt: new Date(),
-    // Mark stale so the recommendation is recomputed from the real aggregated
-    // data (loans, education, investments, insurance) the first time it is
-    // viewed, instead of showing these seed placeholder numbers.
-    isStale: true,
-  });
-  console.log('✅ Tax recommendation seeded');
 }
 
 seed()

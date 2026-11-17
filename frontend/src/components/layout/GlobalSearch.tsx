@@ -1,5 +1,5 @@
-import type { LedgerTransaction, Vendor, RawLoan, RawSubscription, RawInvestment, Budget, ApiMember } from '../../types/api'
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import type { LedgerTransaction, Vendor, RawSubscription, RawInvestment, Budget, ApiMember } from '../../types/api'
+import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
 import { navItems } from './nav'
@@ -81,6 +81,9 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   const navigate = useNavigate()
   const query = initialQuery
   const setQuery = onQueryChange
+  // Scoring every page/transaction/vendor on each keystroke is expensive;
+  // filter against the deferred query so the input stays immediate.
+  const deferredQuery = useDeferredValue(query)
   const [activeIdx, setActiveIdx] = useState(0)
   const [recent, setRecent] = useState<string[]>(() => loadRecent())
   const [loading, setLoading] = useState(true)
@@ -179,23 +182,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
       } catch { /* Storage or optional suggestions may be unavailable. */ }
 
       try {
-        const lRes = await apiClient.get<RawLoan[]>('/loans').then(r => r.data).catch(() => [])
-        const lItems = lRes
-        lItems.slice(0, 50).forEach((l) => {
-          results.push({
-            id: `loan-${l._id || l.id}`,
-            group: 'Loans',
-            title: l.loanName || 'Loan',
-            subtitle: `${l.lender || ''} · ${l.loanType || ''} · EMI ₹${l.emiAmount}`.trim(),
-            icon: 'real_estate_agent',
-            to: `/loans/${l._id || l.id}`,
-            keywords: `${l.loanName} ${l.lender} ${l.loanType}`.toLowerCase(),
-            rawKeywords: [l.loanName, l.lender],
-          })
-        })
-      } catch { /* Storage or optional suggestions may be unavailable. */ }
-
-      try {
         const iRes = await apiClient.get<RawInvestment[]>('/investments').then(r => r.data).catch(() => [])
         const iItems = iRes
         iItems.slice(0, 50).forEach((inv) => {
@@ -266,9 +252,9 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   }, [open, items.length])
 
   const tokens = useMemo(() => {
-    if (!query.trim()) return []
-    return query.trim().toLowerCase().split(/\s+/).filter(Boolean).map(t => t.replace(/[₹,]/g,''))
-  }, [query])
+    if (!deferredQuery.trim()) return []
+    return deferredQuery.trim().toLowerCase().split(/\s+/).filter(Boolean).map(t => t.replace(/[₹,]/g,''))
+  }, [deferredQuery])
 
   const filtered = useMemo(() => {
     if (!tokens.length) return []
@@ -289,7 +275,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
       map.set(it.group, arr)
     }
     // order groups by priority
-    const order = ['Pages', 'Transactions', 'Vendors', 'Subscriptions', 'Loans', 'Investments', 'Budgets', 'Family']
+    const order = ['Pages', 'Transactions', 'Vendors', 'Subscriptions', 'Investments', 'Budgets', 'Family']
     const sorted = Array.from(map.entries()).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
     return sorted
   }, [filtered])
@@ -351,7 +337,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
-            placeholder="Search pages, transactions, vendors, loans…  (try 'emi', 'zomato', '₹500')"
+            placeholder="Search pages, transactions, vendors…  (try 'zomato', '₹500')"
             className="flex-1 bg-transparent outline-none text-sm font-bold placeholder:font-medium placeholder:text-on-surface-variant"
             autoComplete="off"
             spellCheck={false}
@@ -399,7 +385,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
                 <div className="font-bold uppercase mb-xs flex items-center gap-xs"><Icon name="lightbulb" className="text-base" />How search works</div>
                 <ul className="list-disc ml-4 space-y-1 opacity-80">
                   <li>Type any words — all must match (AND). e.g. <span className="font-bold">zomato 500</span> finds ₹500 Zomato spend.</li>
-                  <li>Searches pages, transactions, vendors, subscriptions, loans, investments & family.</li>
+                  <li>Searches pages, transactions, vendors, subscriptions, investments &amp; family.</li>
                   <li>Press <span className="brutal-thin bg-white px-1 text-[10px]">↑ ↓</span> + <span className="brutal-thin bg-white px-1 text-[10px]">Enter</span> to jump. <span className="brutal-thin bg-white px-1 text-[10px]">Ctrl K</span> anytime.</li>
                 </ul>
               </div>
@@ -457,7 +443,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             <span className="flex items-center gap-1"><span className="brutal-thin bg-white px-1">↵</span> Select</span>
             <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white px-1">ESC</span> Close</span>
           </span>
-          <span className="opacity-60 hidden md:block">Global search • transactions, vendors, loans, pages</span>
+          <span className="opacity-60 hidden md:block">Global search • transactions, vendors, pages</span>
         </div>
       </div>
     </div>

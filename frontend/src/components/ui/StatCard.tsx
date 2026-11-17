@@ -44,9 +44,9 @@ export function StatCard({
         {icon && <Icon name={icon} className="text-2xl" />}
       </div>
       {valueNumber !== undefined ? (
-        <CountUp value={valueNumber} format={formatCurrency} className="text-3xl font-bold text-on-surface" />
+        <CountUp value={valueNumber} format={formatCurrency} className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-bold tabular-nums text-on-surface whitespace-nowrap" />
       ) : (
-        <div className="text-3xl font-bold text-on-surface">{value}</div>
+        <div className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-bold tabular-nums text-on-surface whitespace-nowrap">{value}</div>
       )}
       {delta !== undefined && (
         <motion.div

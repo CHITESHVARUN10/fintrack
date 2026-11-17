@@ -17,7 +17,7 @@ export function PasswordInput({
         id={id}
         type={show ? 'text' : 'password'}
         className={cn(
-          'brutal-thin w-full px-3 py-2 bg-white text-on-surface font-medium outline-none focus:bg-brand-yellow placeholder:text-on-surface-variant/60 pr-12',
+          'brutal-thin w-full px-3 py-2 bg-white text-on-surface font-medium outline-none focus:bg-brand-yellow placeholder:text-[color:var(--text-placeholder)] pr-12',
           className,
         )}
         {...props}

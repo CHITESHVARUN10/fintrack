@@ -10,13 +10,13 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-xl pb-md border-b-[3px] border-on-surface gap-4">
-      <div>
-        <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tight text-on-surface">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-lg md:mb-xl pb-md border-b-[3px] border-on-surface gap-4 min-w-0">
+      <div className="min-w-0 max-w-full">
+        <h1 className="text-3xl md:text-4xl font-bold uppercase tracking-tight text-on-surface break-words max-w-full">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-on-surface-variant mt-1 font-medium">{subtitle}</p>
+          <p className="text-on-surface-variant mt-1 font-medium break-words">{subtitle}</p>
         )}
       </div>
       {action}

@@ -20,11 +20,11 @@ const SECTIONS: DocSection[] = [
     label: 'Getting Started',
     icon: 'rocket_launch',
     summary: 'Create account → create or join a family → unlock the full app.',
-    route: '/family/create-join',
+    route: '/settings#family',
     steps: [
       { title: 'Sign up / Log in', detail: 'Go to /register → enter name/email/password. First user of a new family becomes Super Admin (role: admin). Login at /login creates a httpOnly session cookie fintrack.sid (7-day TTL, stored in MongoDB).' },
-      { title: 'Create or Join Family', detail: 'Sidebar → Family Setup (/family/create-join). Create: name your FamilyAccount (e.g., Sharma Family) → you get an inviteCode. Join: paste the inviteCode from your admin → status PENDING until admin accepts in /family → Requests. Without a family you see the yellow banner and cannot Import/Transactions/Budgets.' },
-      { title: 'Invite flow', detail: 'Admin: /family → Invite Member → enter email (or share inviteCode). Member: /accept-invite/:token or /family/create-join → Join. Admin approves via PATCH /api/families/:id/requests/:membershipId {action: accept/reject}.' },
+      { title: 'Create or Join Family', detail: 'Settings → Family. Create: name your FamilyAccount (e.g., Sharma Family) → you get an inviteCode. Join: paste the inviteCode from your admin → status PENDING until admin accepts in /family → Requests. Without a family you see the yellow banner and cannot Import/Transactions/Budgets.' },
+      { title: 'Invite flow', detail: 'Admin: /family → Invite Member → enter email (or share inviteCode). Member: /accept-invite/:token or Settings → Family → Join. Admin approves via PATCH /api/families/:id/requests/:membershipId {action: accept/reject}.' },
       { title: 'Switch member view (admin)', detail: 'Top bar “View: Rohan ▾” — admin can toggle activeMemberId to see any member’s dashboard. Non-admins see only their own data; admin sees family aggregate.' },
     ],
     tips: ['Keep your inviteCode private — rotate it in /family if leaked.', 'Sessions are httpOnly; clearing fintrack-theme in localStorage only resets theme.'],
@@ -35,9 +35,9 @@ const SECTIONS: DocSection[] = [
     icon: 'dashboard',
     summary: 'Sidebar, header search, theme, and global navigation.',
     steps: [
-      { title: 'Sidebar (fixed 240px)', detail: 'All primary modules: Dashboard, Income, Subscriptions, Recurring, Investments, Loans, Insurance, Education, Form 16, Tax, Reports, Family Dashboard, Members, Vendors, Transactions, Import, Budgets, Settings. Active route is highlighted with the yellow indicator.' },
-      { title: 'Header', detail: 'Left: page title + member switcher (admin). Right: global search (⌘K / Ctrl+K / “/”) → palette that ranks pages/transactions/vendors/subscriptions/loans; theme toggle (light/dark, persisted in localStorage fintrack-theme); notifications; avatar → /settings.' },
-      { title: 'Family banner', detail: 'If !familyAccountId, a yellow brutal banner appears on every page except /family/create-join with a CTA to Create / Join Family.' },
+      { title: 'Sidebar (fixed 240px)', detail: 'All primary modules: Dashboard, Income, Subscriptions, Recurring, Investments, Tax Calculator, Reports, Family Dashboard, Members, Vendors, Transactions, Import, Budgets, Settings. Active route is highlighted with the yellow indicator.' },
+      { title: 'Header', detail: 'Left: page title + member switcher (admin). Right: global search (⌘K / Ctrl+K / “/”) → palette that ranks pages/transactions/vendors/subscriptions/investments; theme toggle (light/dark, persisted in localStorage fintrack-theme); notifications; avatar → /settings.' },
+      { title: 'Family banner', detail: 'If !familyAccountId, a yellow brutal banner appears on every page with a CTA to Settings → Family.' },
       { title: 'Footer', detail: 'Links to Privacy Policy (/privacy) and Docs (/docs). Always visible inside the app shell.' },
     ],
   },
@@ -51,7 +51,7 @@ const SECTIONS: DocSection[] = [
       { title: 'Stat cards', detail: 'Monthly Income (yellow), Monthly Outflow (white), Investments Worth (cyan), Net Monthly Savings (white) — values are via GET /api/dashboard. Net = Income − Obligations.' },
       { title: 'Monthly Spend Breakdown (420px card)', detail: 'Bar list per category: bar width = value / maxBurn. Totals at bottom: Actual Spend (Transactions) this month + txn count. Chips: Subscriptions / Recurring / Investments SIP from monthlyBurnBreakdown.' },
       { title: 'Category & Vendor donuts', detail: 'DonutChart (inner 55%, outer 85%, stroke var(--border)). Categories: full distribution — percentages normalized via Hamilton largest-remainder so center Total is always 100% (not 101%). Vendors: top 8 + Other bucket so 98% becomes 100% of total spend. Legend is grid 2-col scrollable, not overlapping outer labels (≥5% threshold).' },
-      { title: 'Upcoming Payments (7 days)', detail: 'Horizontal scroll of subscriptions/loans/insurance/SIPs due in next 7 days (nextOccurrence). Button: Pay Now (≤5d) vs Schedule, due badge color-coded.' },
+      { title: 'Upcoming Payments (7 days)', detail: 'Horizontal scroll of subscriptions and SIPs due in next 7 days (nextOccurrence). Button: Pay Now (≤5d) vs Schedule, due badge color-coded.' },
       { title: 'Dark mode contrast', detail: 'Axis/grid use var(--chart-axis-text) #d8d8d0 (13:1) and var(--chart-grid) 10% white, not muted gray. Borders use var(--border) #f5f5f0 + yellow shadow var(--shadow).' },
     ],
   },
@@ -81,7 +81,7 @@ const SECTIONS: DocSection[] = [
       { title: 'Summary', detail: 'Actual Spend (EXPENSE+CASH_EXPENSE), Transfers, Withdrawals, Total Movement — from computeLedgerSummary.' },
       { title: 'Other → auto-categorize', detail: 'Bulk “Categorize Others” POST /api/transactions/bulk-categorize {familyView, confidenceThreshold:30, limit:200} uses vendor primary → amount → UPI handle → keyword scoring.' },
       { title: 'Add transaction', detail: 'Amount, Type (EXPENSE/INCOME/INTERNAL_TRANSFER/CASH_*), Mode, Category, When, Recipient (autocomplete /recipients?q), To member (for INTERNAL_TRANSFER), Visibility (FAMILY/PRIVATE).' },
-      { title: 'Detail drawer', detail: 'Click row → right drawer with Amount/Type/Mode/Category (editable), Subcategory, Product, Visibility toggle, Teach Vendor box (vendorKey + categories + product+amount → priceMap), SubscriptionLinkBox, LoanLinkBox (link as EMI vs Prepayment), Source records, Compare, Merge/Keep separate for PENDING_REVIEW.' },
+      { title: 'Detail drawer', detail: 'Click row → right drawer with Amount/Type/Mode/Category (editable), Subcategory, Product, Visibility toggle, Teach Vendor box (vendorKey + categories + product+amount → priceMap), SubscriptionLinkBox, Source records, Compare, Merge/Keep separate for PENDING_REVIEW.' },
       { title: 'Global search deep-link', detail: 'Palette result → /transactions?highlight=<id>&q=<name> opens drawer and sets filters.' },
     ],
   },
@@ -140,32 +140,15 @@ const SECTIONS: DocSection[] = [
     ],
   },
   {
-    id: 'loans',
-    label: 'Loans & Prepayments',
-    icon: 'real_estate_agent',
-    summary: 'EMI schedule, planner, and linking to real bank debits.',
-    route: '/loans',
-    steps: [
-      { title: 'Model', detail: 'EMILoan {loanName, loanType, lender, principal/outstanding/emiAmount, emiDate 1-31, interestRate, tenureMonths, start/end, status}. endDate not auto-computed.' },
-      { title: 'Calculator (header)', detail: 'EMI Calculator modal: P,R,N → EMI = r==0?P/n:P*r*(1+r)^n/((1+r)^n-1), totalPayable, totalInterest, amortization & yearlySummary, CSV/PDF export.' },
-      { title: 'Detail (/loans/:id)', detail: 'Tabs: schedule (monthly/yearly toggle + CSV/PDF), future payments, linked transactions (explicit loanRef + suggestions via subscriptionLinker), member breakdown.' },
-      { title: 'Prepay Check (what-if)', detail: 'PrepaymentPlannerModal: prepayAmount, prepayAtMonth, mode tenure|emi, uses prepaymentImpact (outstandingAfterK, new_out, n′=−log(1−new_out*r/EMI)/log1+r). Shows without vs with: EMI/tenure/totalInterest/saved/monthsSaved/newCloseDate, copyable.' },
-      { title: 'Record prepayment (real)', detail: 'RecordPrepaymentModal: manual amount/date/mode or link existing Transaction (pick via amount/date). POST /loans/:id/record-prepayment or link-transaction; sets loanMeta.isLoanPayment/isPrepayment and category Bills.' },
-      { title: 'Transaction → loan link', detail: 'Transactions drawer → LoanLinkBox picks loan + Prepayment checkbox → POST /loans/:id/link-transaction. Table shows Loan EMI / ⭐ Prepay badge.' },
-    ],
-  },
-  {
     id: 'tax',
-    label: 'Form 16 & Tax',
+    label: 'Tax Calculator',
     icon: 'calculate',
-    summary: 'From PDF to regime recommendation — fully typed and cached.',
-    route: '/form16',
+    summary: 'Old vs New regime estimate from your income and recorded deductions.',
+    route: '/tax',
     steps: [
-      { title: 'Form 16 records', detail: 'Model Form16 {userId, financialYear, employeeName/PAN, employerName/TAN, grossSalary, standardDeduction, professionalTax, 80C/80D/80E/80G/80CCD, totalDeductions, taxRegimeUsed, sourceType: PDF|Manual|Duplicate, isEdited, isFinalized}.' },
-      { title: 'Upload flow', detail: '1) /form16/upload → Form16Upload (multipart pdf → POST /api/form16/upload → Gemini extraction) 2) /form16/processing (poll) 3) /form16/review/:id (deductions-preview + edit) 4) PATCH /form16/:id {isFinalized:true, finalizedDeductions} 5) /form16/recommendation/loading then /form16/recommendation/:id.' },
-      { title: 'AI calls', detail: 'Extraction: gemini-2.5-flash document-understanding, JSON-only, strip ```json fences. Recommendation: send Form16 JSON + aggregated financials (salary, 80C/80D etc from investments/loans/insurance/education) → returns {oldRegimeTax,newRegimeTax,recommendedRegime,savingsAmount,explanation,taxSavingSuggestions,deductionBreakdown, regimes:{old,new} RegimeTrace}. Cached in TaxRecommendation keyed by form16Id.' },
-      { title: 'Stale logic', detail: 'Mongoose post-save hooks: Form16 update OR Investment/Insurance/Loan/Education for same userId → TaxRecommendation isStale=true → next GET triggers fresh Gemini call. Duplicate: POST /form16/:id/duplicate copies fields, sourceType Duplicate, no Gemini call.' },
-      { title: 'Tax Calculator (/tax)', detail: 'GET /tax/estimate + /tax/tips → builds TaxEstimate with Old/New RegimeResult (grossIncome, deductions, taxableIncome, taxBeforeCess, cess, totalTax, effectiveRate) and tips. Tips panel + regime comparison.' },
+      { title: 'Estimate', detail: 'GET /tax/estimate aggregates annual income and deductions, then returns the Old and New regime traces with taxable income, tax before cess, cess, total tax and effective rate.' },
+      { title: 'Tips', detail: 'GET /tax/tips returns plain-English suggestions generated from the same deduction data.' },
+      { title: 'Deduction sources', detail: 'Deductions come from the tax payments recorded against investments (80C, 80CCD, 80D, 80E, 80G, 24b); nothing is inferred from scheduled payments.' },
     ],
   },
   {
@@ -197,9 +180,9 @@ const SECTIONS: DocSection[] = [
     summary: 'Global palette that actually works — ranked, grouped, keyboard-nav.',
     steps: [
       { title: 'Header input', detail: 'Hidden md:flex brutal-thin input (260-360px) + mobile icon. Typing opens palette; query synced both ways via initialQuery + onQueryChange. Shortcuts: ⌘K / Ctrl+K and “/” when not in input.' },
-      { title: 'Palette (GlobalSearch.tsx)', detail: 'Fetches transactions (120), vendors (80), subscriptions (50), loans (50), investments (50), budgets, family members; builds SearchItem {id, group, title, subtitle, icon, to, keywords}.' },
+      { title: 'Palette (GlobalSearch.tsx)', detail: 'Fetches transactions (120), vendors (80), subscriptions (50), investments (50), budgets, family members; builds SearchItem {id, group, title, subtitle, icon, to, keywords}.' },
       { title: 'Ranking', detail: 'AND logic: every token must appear in title+subtitle+keywords. Score: title exact 20, prefix 12, includes 8, subtitle 4, keywords 2, word-boundary 3; Pages +1. Sorted desc, then groups capped 5 each, flat 30.' },
-      { title: 'UX', detail: 'Grouped by Pages/Transactions/Vendors/Subscriptions/Loans/Investments/Budgets/Family; highlight via <mark>, ↑↓ + Enter, ESC, recent searches in localStorage fintrack-recent-searches (6), Clear. Empty shows Quick links (8) + How search works; no-result shows Search in Transactions fallback. Selecting saves recent and navigates.' },
+      { title: 'UX', detail: 'Grouped by Pages/Transactions/Vendors/Subscriptions/Investments/Budgets/Family; highlight via <mark>, ↑↓ + Enter, ESC, recent searches in localStorage fintrack-recent-searches (6), Clear. Empty shows Quick links (8) + How search works; no-result shows Search in Transactions fallback. Selecting saves recent and navigates.' },
       { title: 'Deep links', detail: 'Transaction → /transactions?highlight=id&q=name opens drawer; vendor → /vendors/:id; subscription → /subscriptions/:id.' },
     ],
   },
@@ -211,7 +194,7 @@ const SECTIONS: DocSection[] = [
     route: '/settings',
     steps: [
       { title: 'Theme', detail: 'Context ThemeContext: localStorage fintrack-theme, prefers-color-scheme fallback, class dark + data-theme + colorScheme. Toggle in header and sidebar/footer, also in Settings → Appearance (Light/Dark buttons). Early script in index.html prevents FOUC. Tokens: --bg-page:#0D0D0D, --bg-sidebar:#1F1F19, --bg-card:#24231C, --bg-input:#1B1B16, --text-primary:#F2F0DF, --border:rgba(216,213,189,0.13) etc.' },
-      { title: 'Settings page', detail: 'Account (name/email), Appearance, Notifications toggles (push/email/3-day reminders), Security (new/confirm password with nb-yellow-flash), Danger Zone (delete — not wired to backend yet).' },
+      { title: 'Settings page', detail: 'Account (name/email), Family (create/join, members), Appearance, Notifications toggles (push/email/3-day reminders), Security (new/confirm password with nb-yellow-flash), Danger Zone (delete — not wired to backend yet).' },
     ],
   },
 ]
@@ -242,7 +225,7 @@ export function Docs(): React.ReactElement {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search docs (e.g., vendor, Form 16, EMI)…"
+              placeholder="Search docs (e.g., vendor, budget, reports)…"
               className="bg-transparent outline-none placeholder:text-xs min-w-[220px]"
               style={{ color: 'var(--text-primary)' }}
             />

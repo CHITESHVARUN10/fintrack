@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { initials } from '../../lib/format'
 import { Icon } from '../ui/Icon'
 import { cn } from '../../lib/cn'
+import { prefetchRoute } from '../../lib/routePrefetch'
 import { motion } from 'framer-motion'
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
@@ -28,9 +29,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             to={item.to}
             end={item.to === '/dashboard' || item.to === '/family'}
             onClick={onNavigate}
+            onMouseEnter={() => prefetchRoute(item.to)}
+            onFocus={() => prefetchRoute(item.to)}
             className={({ isActive }) =>
               cn(
-                'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold transition-colors',
+                'relative flex items-center gap-sm px-sm py-2 border-l-[3px] font-bold text-[15px] whitespace-nowrap transition-colors',
                 isActive
                   ? 'border-on-surface'
                   : 'border-transparent hover:bg-surface-container-high hover:border-on-surface hover:text-on-surface text-on-surface-variant',
@@ -98,15 +101,16 @@ export function Sidebar({ mobileOpen = false, onClose = () => {} }: { mobileOpen
 
       {/* Mobile: slide-in drawer + backdrop */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={onClose} aria-hidden="true" />
+        <div className="nb-backdrop fixed inset-0 z-50 lg:hidden" onClick={onClose} aria-hidden="true" />
       )}
       <aside
         className={cn(
-          'lg:hidden w-[280px] max-w-[85vw] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col transition-transform duration-200 ease-out',
+          'nb-drawer lg:hidden w-[280px] max-w-[85vw] h-screen fixed left-0 top-0 border-r-[3px] border-on-surface shadow-layout z-50 flex flex-col',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
         style={{ background: 'var(--bg-sidebar)', borderColor: 'var(--border)' }}
         aria-hidden={!mobileOpen}
+        inert={!mobileOpen}
       >
         <SidebarBody onNavigate={onClose} />
       </aside>

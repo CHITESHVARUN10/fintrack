@@ -84,7 +84,7 @@ export function ImportPage() {
             <Icon name="group_add" />
             <span className="font-bold text-sm break-words min-w-0">You need a family to import. Create a new family or join one, then try again.</span>
           </div>
-          <Link to="/family/create-join" className="brutal bg-white px-md py-xs font-bold uppercase text-sm">
+          <Link to="/settings#family" className="brutal bg-white px-md py-xs font-bold uppercase text-sm">
             Create / Join Family
           </Link>
         </div>

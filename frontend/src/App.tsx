@@ -1,58 +1,48 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
-import { AuthProvider } from './context/AuthContext'
-import { TaxpayerProvider } from './context/TaxpayerContext'
+import { MotionConfig } from 'framer-motion'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthGuard } from './components/layout/AuthGuard'
 import { Layout } from './components/layout/Layout'
+import { navItems } from './components/layout/nav'
+import { registerPrefetcher, prefetchRoute } from './lib/routePrefetch'
 // Route-level code splitting — each page is its own chunk, so the first
 // paint only ships the shell; heavy pages (recharts, reports) load on
-// navigation.
-const pageModules: Array<() => Promise<unknown>> = []
-const load = (loader: () => Promise<unknown>, exportName: string) => {
+// navigation. Each loader is registered by pathname so the sidebar can warm
+// it on hover/focus.
+const load = (path: string, loader: () => Promise<unknown>, exportName: string) => {
   let pending: Promise<Record<string, ComponentType>> | undefined
-  const getModule = () => pending ??= loader() as Promise<Record<string, ComponentType>>
-  pageModules.push(getModule)
+  const getModule = () => (pending ??= loader() as Promise<Record<string, ComponentType>>)
+  registerPrefetcher(path, getModule)
   return lazy(() => getModule().then((m) => ({ default: m[exportName] })))
 }
 
-const Landing = load(() => import('./pages/Landing'), 'Landing')
-const Login = load(() => import('./pages/Login'), 'Login')
-const Register = load(() => import('./pages/Register'), 'Register')
-const AcceptInvite = load(() => import('./pages/AcceptInvite'), 'AcceptInvite')
-const PrivacyPolicy = load(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
-const Docs = load(() => import('./pages/Docs'), 'Docs')
+const Landing = load('/', () => import('./pages/Landing'), 'Landing')
+const Login = load('/login', () => import('./pages/Login'), 'Login')
+const Register = load('/register', () => import('./pages/Register'), 'Register')
+const AcceptInvite = load('/accept-invite/:token', () => import('./pages/AcceptInvite'), 'AcceptInvite')
+const PrivacyPolicy = load('/privacy', () => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
+const Docs = load('/docs', () => import('./pages/Docs'), 'Docs')
 
-const Dashboard = load(() => import('./pages/Dashboard'), 'Dashboard')
-const Income = load(() => import('./pages/Income'), 'Income')
-const AddIncome = load(() => import('./pages/AddIncome'), 'AddIncome')
-const Subscriptions = load(() => import('./pages/Subscriptions'), 'Subscriptions')
-const SubscriptionDetail = load(() => import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
-const Recurring = load(() => import('./pages/Recurring'), 'Recurring')
-const Investments = load(() => import('./pages/Investments'), 'Investments')
-const Loans = load(() => import('./pages/Loans'), 'Loans')
-const LoanDetail = load(() => import('./pages/LoanDetail'), 'LoanDetail')
-const Insurance = load(() => import('./pages/Insurance'), 'Insurance')
-const Education = load(() => import('./pages/Education'), 'Education')
-const Tax = load(() => import('./pages/Tax'), 'Tax')
-const Reports = load(() => import('./pages/Reports'), 'Reports')
-const Family = load(() => import('./pages/Family'), 'Family')
-const FamilyCreateJoin = load(() => import('./pages/FamilyCreateJoin'), 'FamilyCreateJoin')
-const Notifications = load(() => import('./pages/Notifications'), 'Notifications')
-const Transactions = load(() => import('./pages/Transactions'), 'Transactions')
-const ImportPage = load(() => import('./pages/ImportPage'), 'ImportPage')
-const FamilyDashboard = load(() => import('./pages/FamilyDashboard'), 'FamilyDashboard')
-const Vendors = load(() => import('./pages/Vendors'), 'Vendors')
-const VendorDetail = load(() => import('./pages/VendorDetail'), 'VendorDetail')
-const Budgets = load(() => import('./pages/Budgets'), 'Budgets')
-const Settings = load(() => import('./pages/Settings'), 'Settings')
-const Form16List = load(() => import('./pages/Form16List'), 'Form16List')
-const Form16Upload = load(() => import('./pages/Form16Upload'), 'Form16Upload')
-const Form16Processing = load(() => import('./pages/Form16Processing'), 'Form16Processing')
-const Form16Review = load(() => import('./pages/Form16Review'), 'Form16Review')
-const TaxRecommendation = load(() => import('./pages/TaxRecommendation'), 'TaxRecommendation')
-const RecommendationLoading = load(() => import('./pages/RecommendationLoading'), 'RecommendationLoading')
+const Dashboard = load('/dashboard', () => import('./pages/Dashboard'), 'Dashboard')
+const Income = load('/income', () => import('./pages/Income'), 'Income')
+const AddIncome = load('/income/new', () => import('./pages/AddIncome'), 'AddIncome')
+const Subscriptions = load('/subscriptions', () => import('./pages/Subscriptions'), 'Subscriptions')
+const SubscriptionDetail = load('/subscriptions/:id', () => import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
+const Recurring = load('/recurring', () => import('./pages/Recurring'), 'Recurring')
+const Investments = load('/investments', () => import('./pages/Investments'), 'Investments')
+const Tax = load('/tax', () => import('./pages/Tax'), 'Tax')
+const Reports = load('/reports', () => import('./pages/Reports'), 'Reports')
+const Family = load('/family', () => import('./pages/Family'), 'Family')
+const Notifications = load('/notifications', () => import('./pages/Notifications'), 'Notifications')
+const Transactions = load('/transactions', () => import('./pages/Transactions'), 'Transactions')
+const ImportPage = load('/import', () => import('./pages/ImportPage'), 'ImportPage')
+const FamilyDashboard = load('/family/dashboard', () => import('./pages/FamilyDashboard'), 'FamilyDashboard')
+const Vendors = load('/vendors', () => import('./pages/Vendors'), 'Vendors')
+const VendorDetail = load('/vendors/:id', () => import('./pages/VendorDetail'), 'VendorDetail')
+const Budgets = load('/budgets', () => import('./pages/Budgets'), 'Budgets')
+const Settings = load('/settings', () => import('./pages/Settings'), 'Settings')
 
 // Route-transition placeholder shown while a page chunk streams in.
 function PageFallback() {
@@ -63,35 +53,32 @@ function PageFallback() {
   )
 }
 
-// Prefetch every route chunk once the app is idle. Chunks are small
-// (9–50 KB), so this fetches the whole app in the background on the first
-// screen. Without it, a navigation whose chunk is still streaming inside
-// framer-motion's mode="wait" exit can suspend mid-transition and freeze
-// the route swap (blank content, stale page until hard reload).
-function useIdleRoutePrefetch() {
+// Warm the sidebar's route chunks once an authenticated shell is on screen.
+// Chunks are small (9–50 KB) and this only runs after login, so landing/login
+// visitors never download pages they cannot reach. Navigation-specific chunks
+// still warm earlier on hover/focus via the sidebar.
+function useIdleRoutePrefetch(enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return
     const kickoff = () => {
-      pageModules.forEach((p) => p().catch(() => {}))
+      navItems.forEach((item) => prefetchRoute(item.to))
     }
     const timer = window.setTimeout(kickoff, 1500)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [enabled])
 }
 
 
 function AnimatedRoutes() {
   const location = useLocation()
-  useIdleRoutePrefetch()
+  const { isAuthenticated } = useAuth()
+  useIdleRoutePrefetch(isAuthenticated)
+  // Route entry is a CSS animation that starts from visible: the old
+  // AnimatePresence/mode="wait" pair held the incoming page at opacity 0 and
+  // could stall a suspended route, leaving a blank screen until a repaint.
   return (
-    <AnimatePresence mode="wait">
-      <motion.main
-        key={location.pathname}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 6 }}
-        transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
-      >
-        <Suspense fallback={<PageFallback />}>
+    <div key={location.pathname} className="nb-page-enter min-h-full">
+      <Suspense fallback={<PageFallback />}>
           <Routes location={location}>
           {/* Public / auth screens (no app chrome) */}
           <Route path="/" element={<Landing />} />
@@ -102,32 +89,6 @@ function AnimatedRoutes() {
           <Route path="/docs" element={<Docs />} />
           <Route path="/terms" element={<PrivacyPolicy />} />
 
-          {/* Transactional Form 16 screens — centered, no app shell but still protected */}
-          <Route
-            path="/form16/upload"
-            element={
-              <AuthGuard>
-                <Form16Upload />
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/form16/processing"
-            element={
-              <AuthGuard>
-                <Form16Processing />
-              </AuthGuard>
-            }
-          />
-          <Route
-            path="/form16/recommendation/loading"
-            element={
-              <AuthGuard>
-                <RecommendationLoading />
-              </AuthGuard>
-            }
-          />
-
           {/* App shell — Layout renders the sidebar/header/footer + <Outlet/> */}
           <Route
             element={
@@ -137,7 +98,6 @@ function AnimatedRoutes() {
             }
           >
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="family/create-join" element={<FamilyCreateJoin />} />
             <Route path="family/dashboard" element={<FamilyDashboard />} />
             <Route path="vendors" element={<Vendors />} />
             <Route path="vendors/:id" element={<VendorDetail />} />
@@ -150,25 +110,17 @@ function AnimatedRoutes() {
             <Route path="subscriptions/:id" element={<SubscriptionDetail />} />
             <Route path="recurring" element={<Recurring />} />
             <Route path="investments" element={<Investments />} />
-            <Route path="loans" element={<Loans />} />
-            <Route path="loans/:id" element={<LoanDetail />} />
-            <Route path="insurance" element={<Insurance />} />
-            <Route path="education" element={<Education />} />
             <Route path="tax" element={<Tax />} />
             <Route path="reports" element={<Reports />} />
             <Route path="family" element={<Family />} />
             <Route path="expenses" element={<Navigate to="/transactions" replace />} />
-            <Route path="form16" element={<Form16List />} />
-            <Route path="form16/review/:id" element={<Form16Review />} />
-            <Route path="form16/recommendation/:id" element={<TaxRecommendation />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
           </Routes>
-        </Suspense>
-      </motion.main>
-    </AnimatePresence>
+      </Suspense>
+    </div>
   )
 }
 
@@ -177,11 +129,9 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <ThemeProvider>
         <AuthProvider>
-          <TaxpayerProvider>
-            <BrowserRouter>
-              <AnimatedRoutes />
-            </BrowserRouter>
-          </TaxpayerProvider>
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
         </AuthProvider>
       </ThemeProvider>
     </MotionConfig>

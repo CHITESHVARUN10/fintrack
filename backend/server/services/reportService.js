@@ -6,13 +6,8 @@ const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const Investment = require('../models/investment.model');
-const EMILoan = require('../models/loan.model');
-const Insurance = require('../models/insurance.model');
-const EducationPayment = require('../models/education.model');
 const AdHocExpense = require('../models/expense.model');
 const User = require('../models/user.model');
-const Form16 = require('../models/form16.model');
-const TaxRecommendation = require('../models/taxrecommendation.model');
 const Transaction = require('../models/transaction.model');
 const Budget = require('../models/budget.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
@@ -29,15 +24,6 @@ const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
 function subMonthlyAmount(s) {
   if (s.frequency === 'yearly') return (s.amount || 0) / 12;
   return s.amount || 0;
-}
-function insuranceMonthlyAmount(i) {
-  const div = FREQ_MONTHS[i.premiumFrequency] || 12;
-  return (i.premiumAmount || 0) / div;
-}
-function eduMonthlyAmount(e) {
-  if (e.frequency === 'One-time') return 0;
-  const div = FREQ_MONTHS[e.frequency] || 12;
-  return (e.amount || 0) / div;
 }
 function investmentMonthlyAmount(inv) {
   if (inv.investmentType === 'mf_sip') return inv.sipAmount || 0;
@@ -63,31 +49,24 @@ function monthName(m) {
 // ---------------------------------------------------------------------------
 
 async function baseData(userId) {
-  const [user, incomes, subs, recs, invs, loans, insurances, edus, expenses] =
+  const [user, incomes, subs, recs, invs, expenses] =
     await Promise.all([
       User.findById(userId).select('name email').lean(),
       Income.find({ memberId: userId }),
       Subscription.find({ memberId: userId }),
       RecurringPayment.find({ memberId: userId }),
       Investment.find({ memberId: userId }),
-      EMILoan.find({ memberId: userId }),
-      Insurance.find({ memberId: userId }),
-      EducationPayment.find({ memberId: userId }),
       AdHocExpense.find({ memberId: userId }),
     ]);
-  return { user: user || {}, incomes, subs, recs, invs, loans, insurances, edus, expenses };
+  return { user: user || {}, incomes, subs, recs, invs, expenses };
 }
 
-function buildObligations(subs, recs, invs, loans, insurances) {
+function buildObligations(subs, recs, invs) {
   const subsActive = subs.filter((s) => s.status !== 'Cancelled');
-  const loansActive = loans.filter((l) => l.status !== 'Closed' && l.status !== 'Prepaid');
-  const insActive = insurances.filter((i) => i.status !== 'Lapsed' && i.status !== 'Matured');
   const sipInvs = invs.filter((i) => i.investmentType === 'mf_sip');
 
   const items = [
     ...subsActive.map((s) => ({ type: 'Subscription', name: s.name || 'Subscription', amount: subMonthlyAmount(s) })),
-    ...loansActive.map((l) => ({ type: 'Loan EMI', name: l.loanName || 'Loan', amount: l.emiAmount || 0 })),
-    ...insActive.map((i) => ({ type: 'Insurance', name: i.policyName || 'Insurance', amount: insuranceMonthlyAmount(i) })),
     ...recs.map((r) => ({ type: 'Recurring', name: r.title || 'Recurring', amount: r.amount || 0 })),
     ...sipInvs.map((i) => ({ type: 'SIP', name: i.fundName || i.stockName || 'SIP', amount: i.sipAmount || 0 })),
   ];
@@ -114,7 +93,7 @@ function buildInvestmentSnapshot(invs) {
 }
 
 async function buildMonthlyData(userId, month, year) {
-  const { user, incomes, subs, recs, invs, loans, insurances, expenses } = await baseData(userId);
+  const { user, incomes, subs, recs, invs, expenses } = await baseData(userId);
 
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
@@ -129,7 +108,7 @@ async function buildMonthlyData(userId, month, year) {
   }
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-  const obligations = buildObligations(subs, recs, invs, loans, insurances);
+  const obligations = buildObligations(subs, recs, invs);
   const inv = buildInvestmentSnapshot(invs);
 
   return {
@@ -150,7 +129,7 @@ async function buildMonthlyData(userId, month, year) {
 }
 
 async function buildAnnualData(userId, year) {
-  const { user, incomes, subs, recs, invs, loans, insurances, expenses } = await baseData(userId);
+  const { user, incomes, subs, recs, invs, expenses } = await baseData(userId);
 
   const start = new Date(year, 0, 1);
   const end = new Date(year + 1, 0, 1);
@@ -168,7 +147,7 @@ async function buildAnnualData(userId, year) {
   }
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-  const monthlyObligations = buildObligations(subs, recs, invs, loans, insurances);
+  const monthlyObligations = buildObligations(subs, recs, invs);
   const inv = buildInvestmentSnapshot(invs);
 
   return {
@@ -236,9 +215,6 @@ async function buildTaxData(userId, year) {
   const savings = Math.abs(old.finalTax - newR.finalTax);
   const tips = await generateTips(userId);
 
-  // Pull any stored recommendation for context.
-  const stored = await TaxRecommendation.findOne({ userId }).sort({ generatedAt: -1 }).lean();
-
   return {
     period: 'Tax',
     year,
@@ -251,7 +227,6 @@ async function buildTaxData(userId, year) {
     recommended,
     savings,
     tips,
-    stored,
   };
 }
 
@@ -430,7 +405,6 @@ async function renderTaxPdf(data) {
   section(doc, 'Recommendation');
   kv(doc, 'Recommended Regime', data.recommended);
   kv(doc, 'Estimated Savings', inr(data.savings));
-  if (data.stored && data.stored.explanation) bullet(doc, data.stored.explanation);
 
   section(doc, 'Tax-Saving Tips');
   if (data.tips.length === 0) doc.text('  None.');

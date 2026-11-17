@@ -1,15 +1,20 @@
 import type { CategorizeResult, CompareData, DuplicateGroup, LedgerSummary, LedgerTransaction, MergeResult, TransactionDetail, Vendor, VendorProduct } from '../types/api'
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
-import { transactionService, familyService, loanService } from '../services/api'
+import { transactionService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
 import { OPAQUE_HEADER_STYLE, OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
 
 type Tx = LedgerTransaction
+
+// Request sequence for the ledger query: only the newest response may commit.
+// Module-scoped because the page is a single instance and the counter must not
+// participate in rendering.
+let ledgerLoadSeq = 0
 
 const DEFAULT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
 let ALL_CATEGORIES: string[] = [...DEFAULT_CATEGORIES]
@@ -51,13 +56,15 @@ function monthLabel(fromDate: string) {
 }
 
 export function Transactions() {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, members: authMembers } = useAuth()
   const ownsTransaction = (tx: LedgerTransaction) => String(typeof tx.createdBy === 'object' ? tx.createdBy._id : tx.createdBy) === user?.id
   const [searchParams, setSearchParams] = useSearchParams()
   const [familyView, setFamilyView] = useState(false)
   const [items, setItems] = useState<Tx[]>([])
   const [loading, setLoading] = useState(true)
-  const [members, setMembers] = useState<{ id: string; name: string }[]>([])
+  // Member list comes from AuthContext instead of a second /families/me →
+  // /families/:id/members round-trip on every visit.
+  const members = useMemo(() => authMembers.map((m) => ({ id: m.id, name: m.name })), [authMembers])
   const [summary, setSummary] = useState<LedgerSummary | null>(null)
   const [form, setForm] = useState({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: localDateTime(), recipient: '', toUserId: '', visibility: 'FAMILY' })
   const [q, setQ] = useState(() => searchParams.get('q') || '')
@@ -92,9 +99,9 @@ export function Transactions() {
     apiClient.get('/transactions', { params:{ limit: 1 } }).catch(()=>{})
   }, [])
 
-  const load = useCallback(() => Promise.resolve().then(async () => {
-    setLoading(true);
-
+  // Sequence guard: filter changes can fire overlapping requests, and an older
+  // response must never overwrite a newer one.
+  const load = useCallback(() => {
     const params: Record<string, string> = { familyView: String(familyView) }
     if (statusFilter) params.status = statusFilter
     if (categoryFilter) params.category = categoryFilter
@@ -103,8 +110,19 @@ export function Transactions() {
     if (modeFilter) params.mode = modeFilter
     if (vendorFilter.trim()) params.vendor = vendorFilter.trim()
     if (familyView && memberFilter) params.memberId = memberFilter
-    transactionService.list(params).then((d) => { setItems(d.items || d || []); setSummary(d.summary || null) }).finally(() => setLoading(false))
-  }), [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
+    Promise.resolve().then(() => {
+      const seq = ++ledgerLoadSeq
+      setLoading(true)
+      return transactionService.list(params)
+        .then((d) => {
+          if (seq !== ledgerLoadSeq) return
+          setItems(d.items || d || [])
+          setSummary(d.summary || null)
+        })
+        .catch(() => {})
+        .finally(() => { if (seq === ledgerLoadSeq) setLoading(false) })
+    })
+  }, [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
   useEffect(() => { load() }, [load])
   // External navigation synchronizes local filters before rendering the next frame.
   const [previousSearch, setPreviousSearch] = useState(searchParams.toString())
@@ -128,7 +146,6 @@ export function Transactions() {
     setSearchParams(p, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailId])
-  useEffect(() => { apiClient.get('/families/me').then((r) => r.data?.family?._id ? familyService.members(r.data.family._id).then((d) => setMembers((d.members || []).map((m) => ({ id: m.id, name: m.name })))).catch(() => {}) : null).catch(() => {}) }, [])
 
   useEffect(() => {
     if (!detailId) return
@@ -160,11 +177,14 @@ export function Transactions() {
     load()
   }
 
+  // Keep the search box responsive: the table re-renders against the deferred
+  // query, so typing never blocks on filtering a large ledger.
+  const deferredQ = useDeferredValue(q)
   const filtered = useMemo(() => {
-    if (!q.trim()) return items
-    const needle = q.toLowerCase()
+    if (!deferredQ.trim()) return items
+    const needle = deferredQ.toLowerCase()
     return items.filter((t) => [t.type, t.category, t.mode, t.status, (t.recipient)?.name, typeof t.createdBy === 'object' ? (t.createdBy)?.name : ''].join(' ').toLowerCase().includes(needle))
-  }, [items, q])
+  }, [items, deferredQ])
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else { if (n.size >= 4) return n; n.add(id) } return n })
@@ -309,7 +329,7 @@ export function Transactions() {
   return (
     <div className="min-w-0">
       <PageHeader title="Transactions" subtitle="Manual entry + family ledger. Transfers and withdrawals don't inflate spend." />
-      <div className="flex flex-col sm:flex-row flex-wrap gap-sm mb-md sm:items-center min-w-0">
+      <div className="flex flex-row flex-wrap gap-sm mb-md sm:items-center min-w-0">
         <button onClick={() => setFamilyView(false)} className={`brutal px-md py-xs font-bold uppercase text-sm ${!familyView ? 'bg-brand-yellow' : 'bg-white'}`}>My</button>
         <button onClick={() => setFamilyView(true)} className={`brutal px-md py-xs font-bold uppercase text-sm ${familyView ? 'bg-brand-yellow' : 'bg-white'}`}>Family</button>
         {isAdmin && <span className="text-xs opacity-60">Admin sees full family ledger</span>}
@@ -337,8 +357,8 @@ export function Transactions() {
         >
           {reviewMode ? '✓ Reviewing…' : `⚠ Review duplicates${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
         </button>
-        <div className="flex flex-col sm:flex-row flex-wrap gap-sm sm:items-center w-full sm:w-auto sm:ml-auto min-w-0">
-          <div className="flex items-center gap-xs" role="group" aria-label="Month navigation">
+        <div className="grid grid-cols-2 gap-sm sm:flex sm:flex-row sm:flex-wrap sm:items-center w-full sm:w-auto sm:ml-auto min-w-0">
+          <div className="flex items-center gap-xs col-span-2 sm:col-auto" role="group" aria-label="Month navigation">
             <button
               type="button"
               onClick={() => { const b = parseMonthBase(fromDate); const d = new Date(b.y, b.m - 1, 1); const r = monthBounds(d.getFullYear(), d.getMonth()); setFromDate(r.first); setToDate(r.last) }}
@@ -389,7 +409,7 @@ export function Transactions() {
           {familyView && <select value={memberFilter} onChange={(e)=> setMemberFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All members</option>{members.map((m)=> <option key={m.id} value={m.id}>{m.name}</option>)}</select>}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="brutal-thin px-sm py-xs text-sm w-full sm:w-28 max-w-full min-w-0" />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All statuses</option><option value="PENDING_REVIEW">Pending review</option><option value="ACTIVE">Active</option><option value="RECONCILED">Reconciled</option></select>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0"><option value="">All categories</option>{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="brutal-thin px-sm py-xs text-sm max-w-full min-w-0 col-span-2 sm:col-auto"><option value="">All categories</option>{ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
         </div>
       </div>
 
@@ -590,7 +610,7 @@ export function Transactions() {
         <div className="brutal bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-sm">
-              <thead className="bg-on-surface text-white whitespace-nowrap"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Sub / Loan</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
+              <thead className="bg-on-surface text-white whitespace-nowrap"><tr><th className="px-sm py-xs"><Icon name="check_box" className="text-base" /></th><th className="text-left px-sm py-xs">Date</th><th className="text-left px-sm py-xs">Made by</th><th className="text-left px-sm py-xs">Type</th><th className="text-left px-sm py-xs">Amount</th><th className="text-left px-sm py-xs">Mode</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Subscription</th><th className="text-left px-sm py-xs">Visibility</th><th className="text-left px-sm py-xs">Status</th></tr></thead>
               <tbody>
                 {filtered.map((t) => {
                   const madeBy = typeof t.createdBy === 'object' && t.createdBy ? (t.createdBy).name : typeof t.createdBy === 'string' ? t.createdBy.slice(0, 8) : '—'
@@ -606,10 +626,10 @@ export function Transactions() {
                         )}
                       </td>
                       <td className="px-sm py-xs whitespace-nowrap">{fmtDate(t.occurredAt)}</td>
-                      <td className="px-sm py-xs font-medium">{madeBy}</td>
+                      <td className="px-sm py-xs font-medium whitespace-nowrap">{madeBy}</td>
                       <td className="px-sm py-xs"><span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${TYPE_STYLES[t.type] || 'bg-white'}`}>{t.type.replace('_', ' ')}</span></td>
                       <td className="px-sm py-xs font-bold whitespace-nowrap">{money(t.amountPaise)}</td>
-                      <td className="px-sm py-xs">{t.mode}</td>
+                      <td className="px-sm py-xs whitespace-nowrap">{t.mode}</td>
                       <td className="px-sm py-xs">
                         {catEditId === t._id ? (
                           <span className="flex gap-xs items-center" onClick={(e) => e.stopPropagation()}>
@@ -622,11 +642,7 @@ export function Transactions() {
                         )}
                       </td>
                       <td className="px-sm py-xs text-xs">
-                        {t.loanRef ? (
-                          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block" title={typeof t.loanRef==='object'? t.loanRef.loanName: 'Loan'}>
-                            {t.loanMeta?.isPrepayment ? '⭐ Prepay' : 'Loan EMI'}: {typeof t.loanRef==='object' ? (t.loanRef.loanName||'Loan') : 'Linked'}
-                          </span>
-                        ) : t.subscriptionRef ? (
+                        {t.subscriptionRef ? (
                           <span className="brutal-thin bg-brand-yellow px-xs py-0.5 text-xs font-bold truncate max-w-[120px] inline-block">
                             {typeof t.subscriptionRef==='object' ? (t.subscriptionRef.name||'Sub') : 'Sub'}
                           </span>
@@ -712,7 +728,6 @@ export function Transactions() {
               <div className="text-[11px] opacity-60">Private is invisible to other family members even in dashboard/budgets/reports.</div>
               {ownsTransaction(detail.transaction) && <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
               {ownsTransaction(detail.transaction) && <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
-              {ownsTransaction(detail.transaction) && <LoanLinkBox tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
               <DetailRow label="Status" value={detail.transaction.status} />
               <DetailRow label="Confidence" value={detail.transaction.confidence != null ? `${detail.transaction.confidence}%` : '—'} />
               {detail.transaction.candidateOf && <DetailRow label="Possible duplicate of" value={String(detail.transaction.candidateOf).slice(0, 12)} />}
@@ -942,149 +957,6 @@ function SubscriptionLinkBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()
     {subs.length===0 && <div className="text-[11px] opacity-60">No subscriptions yet — create one in Subscriptions page.</div>}
     {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold">{toast}</div>}
   </div>
-}
-
-function LoanLinkBox({ tx, onDone }: { tx: LedgerTransaction; onDone: () => void }) {
-  const [loans, setLoans] = useState<{ id: string; name: string; lender: string; type: string; emi: number; outstanding: number }[]>([])
-  const [selectedLoan, setSelectedLoan] = useState('')
-  const [isPrepay, setIsPrepay] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-
-  useEffect(() => {
-    loanService.list().then((arr) => {
-      const list = arr.map((l) => ({
-        id: l._id || l.id,
-        name: l.loanName,
-        lender: l.lender,
-        type: l.loanType,
-        emi: l.emiAmount,
-        outstanding: l.outstandingAmount,
-      }))
-      setLoans(list)
-      if (tx.loanRef) {
-        const lid = typeof tx.loanRef === 'object' ? (tx.loanRef._id || tx.loanRef.id) : tx.loanRef
-        if (lid) setSelectedLoan(String(lid))
-      }
-      if (tx.loanMeta?.isPrepayment) setIsPrepay(true)
-    }).catch(() => {})
-  }, [tx._id, tx.loanRef, tx.loanMeta])
-
-  const linked = tx.loanRef
-  const linkedName = linked
-    ? (typeof linked === 'object' ? (linked.loanName) : loans.find((l) => String(l.id) === String(linked))?.name || 'Loan')
-    : null
-  const isPrepayment = tx.loanMeta?.isPrepayment
-
-  async function link() {
-    if (!selectedLoan) {
-      setToast('Select a loan')
-      setTimeout(() => setToast(null), 2000)
-      return
-    }
-    setBusy(true)
-    try {
-      await loanService.linkTransaction(selectedLoan, {
-        transactionId: tx._id,
-        isPrepayment: isPrepay,
-      })
-      setToast(`Linked as ${isPrepay ? 'Prepayment' : 'Regular EMI'}`)
-      setTimeout(() => setToast(null), 2500)
-      onDone()
-    } catch (caught: unknown) { const e = toApiError(caught);
-      setToast(e?.response?.data?.error || 'Link failed')
-      setTimeout(() => setToast(null), 2500)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function unlink() {
-    const loanId = typeof linked === 'object' ? (linked?._id || linked?.id) : linked
-    if (!loanId) return
-    setBusy(true)
-    try {
-      await loanService.unlinkTransaction(loanId, { transactionId: tx._id })
-      setToast('Unlinked from loan')
-      setTimeout(() => setToast(null), 2000)
-      onDone()
-    } catch (caught: unknown) { const e = toApiError(caught);
-      setToast(e?.response?.data?.error || 'Unlink failed')
-      setTimeout(() => setToast(null), 2000)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="brutal-thin p-sm bg-white flex flex-col gap-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase">Link to EMI Loan / Prepayment</span>
-        {linked && (
-          <span className="brutal-thin bg-tertiary-container px-xs py-0.5 text-[10px] font-bold uppercase">
-            {isPrepayment ? '⭐ Prepayment' : 'Regular EMI'}
-          </span>
-        )}
-      </div>
-      <span className="text-xs opacity-60">
-        Attach this transaction as an EMI payment or part-prepayment to track debt payoff progress.
-      </span>
-
-      {linked ? (
-        <div className="flex flex-wrap items-center justify-between gap-sm text-xs min-w-0">
-          <span className="brutal-thin bg-brand-yellow px-xs py-0.5 font-bold min-w-0 break-words">
-            Linked: {linkedName} {isPrepayment ? '(Prepayment)' : '(EMI)'}
-          </span>
-          <button
-            type="button"
-            onClick={unlink}
-            disabled={busy}
-            className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-error-container"
-          >
-            Unlink
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-xs">
-          <div className="flex gap-xs min-w-0">
-            <select
-              value={selectedLoan}
-              onChange={(e) => setSelectedLoan(e.target.value)}
-              className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 bg-white"
-            >
-              <option value="">Select loan…</option>
-              {loans.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name} ({l.lender || l.type}) — EMI ₹{l.emi}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={link}
-              disabled={busy || !selectedLoan}
-              className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase"
-            >
-              Link
-            </button>
-          </div>
-          <label className="flex items-center gap-2 text-xs font-bold cursor-pointer mt-1">
-            <input
-              type="checkbox"
-              checked={isPrepay}
-              onChange={(e) => setIsPrepay(e.target.checked)}
-            />
-            <span>Mark as Prepayment (Extra principal reduction)</span>
-          </label>
-        </div>
-      )}
-
-      {loans.length === 0 && (
-        <div className="text-[11px] opacity-60">No active loans found — create one in Loans page.</div>
-      )}
-      {toast && <div className="brutal-thin bg-white p-xs text-xs font-bold">{toast}</div>}
-    </div>
-  )
 }
 
 function vendorInfoCategoryChip(detail: TransactionDetail & { vendorInfo?: Vendor }){ const v=detail.vendorInfo || detail.transaction?.recipientVendorRef; if(!v || typeof v === 'string') return null; const cats=(v.offerings||[]).map((o)=>o.category).join(', '); if(!cats) return null; return <div className="brutal-thin bg-white p-xs text-xs">Vendor offers: <span className="font-bold">{cats}</span> · default <span className="font-bold">{v.primaryCategory||v.category}</span>{(v.products||[]).length? <> · sells <span className="font-bold">{v.products.map((p)=> p.name).join(', ')}</span></> : null}</div> }

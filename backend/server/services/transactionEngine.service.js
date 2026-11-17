@@ -96,7 +96,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
 
   if (decision === 'REVIEW' && best) {
     const tx = await Transaction.create({
-      subscriptionRef: candidate.subscriptionRef || undefined, loanRef: candidate.loanRef || undefined, loanMeta: candidate.loanMeta, categorySplit: candidate.categorySplit,
+      subscriptionRef: candidate.subscriptionRef || undefined, categorySplit: candidate.categorySplit,
     familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
       occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory||undefined, productName: candidate.productName||undefined, lineItems: candidate.lineItems||undefined, sender: candidate.sender, recipient: candidate.recipient,
       familyTransfer: candidate.familyTransfer, cashLeg: candidate.cashLeg, visibility: candidate.visibility || 'FAMILY', status: 'PENDING_REVIEW', confidence: bestScore, candidateOf: best._id, batchId, fingerprint: fp, metadata: candidate.metadata,
@@ -158,7 +158,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     }
   } catch {}
   const tx = await Transaction.create({
-    subscriptionRef: candidate.subscriptionRef || undefined, loanRef: candidate.loanRef || undefined, loanMeta: candidate.loanMeta, categorySplit: candidate.categorySplit,
+    subscriptionRef: candidate.subscriptionRef || undefined, categorySplit: candidate.categorySplit,
     familyId, createdBy, type: candidate.type, mode: candidate.mode || 'OTHER', amountPaise: candidate.amountPaise, currency: candidate.currency || 'INR',
     occurredAt: candidate.occurredAt, category: candidate.category, subcategory: candidate.subcategory || undefined, productName: candidate.productName || undefined, productRef: candidate.productRef || undefined,
     lineItems: candidate.lineItems || undefined,

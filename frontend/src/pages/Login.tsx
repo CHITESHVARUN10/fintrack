@@ -59,7 +59,7 @@ export function Login() {
         </div>
 
         {error && (
-          <div className="mb-md border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
+          <div className="mb-md border-[3px] border-on-surface bg-error-container text-on-error-container px-sm py-2 font-bold text-sm">
             {error}
           </div>
         )}
@@ -81,12 +81,6 @@ export function Login() {
               <span className="font-bold text-sm uppercase tracking-wide text-on-surface">
                 Password
               </span>
-              <a
-                className="font-bold text-sm text-on-surface hover:underline underline-offset-4"
-                href="#"
-              >
-                Forgot password?
-              </a>
             </div>
             <PasswordInput
               id="password"

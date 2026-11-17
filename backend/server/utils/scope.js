@@ -1,6 +1,6 @@
 // Shared query-scoping and ownership helpers for member-scoped resources.
 // memberId-based models: Income, Subscription, RecurringPayment, Investment,
-// EMILoan, AdHocExpense, Insurance, EducationPayment, Notification.
+// AdHocExpense, Notification.
 
 // Build a list filter scoped to the requesting user. Admins may pass
 // ?memberId=<id> to scope to a specific family member.

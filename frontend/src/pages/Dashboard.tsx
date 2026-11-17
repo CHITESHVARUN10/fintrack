@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { dashboardService } from '../services/api'
 import { motion } from 'framer-motion'
@@ -8,6 +10,7 @@ import { Card, SectionTitle } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
 import { Button } from '../components/ui/Button'
 import { DonutChart, type DonutDatum } from '../components/ui/DonutChart'
+import { ChartPanel } from '../components/charts/ChartKit'
 import { LoadingBlock } from '../components/ui/PageHeader'
 import { formatCurrency, formatDate } from '../lib/format'
 
@@ -61,6 +64,9 @@ export function Dashboard() {
   const { activeMemberId, user, isAdmin } = useAuth()
   const selectedMember = isAdmin && activeMemberId !== user?.id ? activeMemberId : undefined
   const { data, loading, error } = useAsync(() => dashboardService.getSummary(selectedMember), [selectedMember])
+  // Honest freshness: stamp the moment this payload arrived instead of a
+  // permanent "Just now" label.
+  const loadedAt = useMemo(() => (data ? new Date() : null), [data])
 
   if (loading) return <LoadingBlock label="Loading dashboard…" />
   if (error)
@@ -107,13 +113,14 @@ export function Dashboard() {
         <h2 className="text-4xl md:text-5xl font-bold uppercase tracking-tight text-on-surface">
           Overview
         </h2>
-        <div className="font-bold text-on-surface-variant bg-surface-container-high px-sm py-xs brutal-thin w-fit max-w-full">
-          Last updated: Just now
+        <div className="flex items-center gap-2 font-bold text-[11px] uppercase tracking-[0.08em] text-on-surface-variant" title={loadedAt?.toLocaleString('en-IN')}>
+          <span className="nb-live-dot" aria-hidden="true" />
+          Updated {loadedAt ? loadedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
         </div>
       </div>
 
       {/* Stat cards */}
-      <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md min-w-0">
+      <StaggerList className="grid grid-cols-2 xl:grid-cols-4 gap-sm sm:gap-md min-w-0">
         <StatCard
           label="Monthly Income"
           value={formatCurrency(data.monthlyIncome)}
@@ -146,24 +153,25 @@ export function Dashboard() {
 
       {/* Charts — transaction based, individual */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md lg:gap-xl min-w-0">
-        <Card color="white" className="h-[420px] overflow-y-auto min-w-0">
-          <h3 className="font-bold text-lg uppercase">Monthly Spend Breakdown</h3>
+        <ChartPanel className="min-w-0">
+        <Card color="white" className="h-auto lg:h-[660px] overflow-y-auto min-w-0">
+          <h3 className="font-bold text-base uppercase">Monthly Spend Breakdown</h3>
           <p className="text-xs font-bold text-on-surface-variant">From your transactions this month (individual)</p>
           {burnEntries.length === 0 ? (
             <p className="font-bold text-on-surface-variant mt-md">
               No transactions this month — import or add one.
             </p>
           ) : (
-            <div className="flex flex-col gap-sm mt-md min-w-0">
-              {burnEntries.map(([label, value]) => (
-                <div key={label} className="flex flex-col gap-xs min-w-0">
+            <div className="flex flex-col gap-2 mt-sm min-w-0">
+              {burnEntries.slice(0, 5).map(([label, value]) => (
+                <div key={label} className="flex flex-col gap-2 min-w-0">
                   <div className="flex justify-between items-center gap-sm min-w-0">
-                    <span className="font-bold text-sm uppercase min-w-0 truncate">{label}</span>
-                    <span className="font-bold text-sm whitespace-nowrap shrink-0">
+                    <span className="font-bold text-xs uppercase min-w-0 truncate">{label}</span>
+                    <span className="font-bold text-xs whitespace-nowrap shrink-0">
                       {formatCurrency(value)}
                     </span>
                   </div>
-                  <div className="h-4 bg-surface-variant brutal-thin">
+                  <div className="h-3 bg-surface-variant brutal-thin">
                     <motion.div
                       className="h-full bg-on-surface origin-left"
                       initial={{ scaleX: 0 }}
@@ -174,9 +182,14 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
+              {burnEntries.length > 5 && (
+                <div className="text-[11px] font-bold uppercase tracking-wider mt-1" style={{ color: 'var(--text-muted)' }}>
+                  +{burnEntries.length - 5} more categories
+                </div>
+              )}
             </div>
           )}
-          <div className="mt-lg pt-md border-t-[3px] border-on-surface flex flex-wrap justify-between items-center gap-sm">
+          <div className="mt-sm pt-sm border-t-[3px] border-on-surface flex flex-wrap justify-between items-center gap-sm">
             <span className="font-bold text-xs uppercase text-on-surface-variant">
               Actual Spend (Transactions) this month
             </span>
@@ -185,14 +198,16 @@ export function Dashboard() {
               <span className="text-xs font-normal"> · {data.transactionCountThisMonth ?? 0} txns</span>
             </span>
           </div>
-          <div className="mt-sm flex flex-wrap gap-xs text-xs font-bold">
-            <span className="brutal-thin bg-brand-yellow px-2 py-1">Subscriptions: {formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo</span>
-            <span className="brutal-thin bg-white px-2 py-1">Recurring: {formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo</span>
-            <span className="brutal-thin bg-surface-variant px-2 py-1">Investments SIP: {formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo</span>
+          <div className="mt-sm flex flex-wrap gap-1 text-[10px] font-bold">
+            <span className="brutal-thin bg-brand-yellow px-1.5 py-0.5">Subscriptions: {formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo</span>
+            <span className="brutal-thin bg-white px-1.5 py-0.5">Recurring: {formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo</span>
+            <span className="brutal-thin bg-surface-variant px-1.5 py-0.5">Investments SIP: {formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo</span>
           </div>
         </Card>
+        </ChartPanel>
 
-        <Card color="white" className="h-[500px] flex flex-col overflow-hidden min-w-0">
+        <ChartPanel className="min-w-0" delay={0.06}>
+        <Card color="white" className="h-auto lg:h-[660px] flex flex-col overflow-hidden min-w-0">
           <h3 className="font-bold text-lg uppercase leading-none">Category Breakdown</h3>
           <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your spend by category (transactions)</p>
           {donut.length === 0 ? (
@@ -205,7 +220,7 @@ export function Dashboard() {
               </div>
               {/* Legend — independent rows, scrolls internally, never overlaps */}
               <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col" style={{ borderColor: 'var(--border)' }}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 flex-1 min-h-0">
+                <div className="grid grid-cols-1 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 max-h-[240px] flex-1 min-h-0">
                   {normalizedCategories.map((d, i) => (
                     <div
                       key={`${d.label}-${i}`}
@@ -230,8 +245,10 @@ export function Dashboard() {
             </>
           )}
         </Card>
+        </ChartPanel>
 
-        <Card color="white" className="h-[500px] flex flex-col overflow-hidden min-w-0">
+        <ChartPanel className="min-w-0" delay={0.12}>
+        <Card color="white" className="h-auto lg:h-[660px] flex flex-col overflow-hidden min-w-0">
           <h3 className="font-bold text-lg uppercase leading-none">Vendor Breakdown</h3>
           <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your top vendors this month</p>
           {vendorDonut.length === 0 ? (
@@ -242,7 +259,7 @@ export function Dashboard() {
                 <DonutChart data={vendorDonut} centerLabel="Total" height={200} />
               </div>
               <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 flex flex-col gap-2">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 flex flex-col gap-2 max-h-[260px]">
                   {normalizedVendors.map((e, i) => {
                     const isUpi = /upi|@|UPI/.test(e.label)
                     const display = e.label.length > 28 ? `${e.label.slice(0, 20)}…${e.label.slice(-6)}` : e.label
@@ -276,15 +293,16 @@ export function Dashboard() {
             </>
           )}
         </Card>
+        </ChartPanel>
       </section>
 
       {/* Upcoming payments */}
       <section className="flex flex-col gap-md pb-xl">
         <SectionTitle
           action={
-            <a className="font-bold underline hover:bg-brand-yellow px-1" href="#">
+            <Link to="/subscriptions" className="font-bold underline hover:bg-brand-yellow px-1">
               View All
-            </a>
+            </Link>
           }
         >
           Upcoming Payments
@@ -307,15 +325,15 @@ export function Dashboard() {
                   key={p.id}
                   className={`min-w-[280px] brutal p-md flex flex-col gap-sm nb-card-enter nb-card-hover cursor-pointer ${meta.bg}`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-xs">
-                      <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center">
+                  <div className="flex justify-between items-start gap-sm">
+                    <div className="flex items-center gap-xs min-w-0">
+                      <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center shrink-0">
                         <Icon name={meta.icon} />
                       </div>
-                      <span className="font-bold">{p.name}</span>
+                      <span className="font-bold truncate min-w-0">{p.name}</span>
                     </div>
                     <span
-                      className={`border-2 border-on-surface px-2 py-1 font-bold text-xs ${
+                      className={`border-2 border-on-surface px-2 py-1 font-bold text-xs whitespace-nowrap shrink-0 ${
                         dueInDays <= 5
                           ? 'bg-error-container text-on-error-container'
                           : 'bg-white'

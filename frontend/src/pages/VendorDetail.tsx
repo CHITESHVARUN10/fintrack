@@ -5,12 +5,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
 import { familyService } from '../services/api'
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
+import { AreaTrend, BarRank, ShareDonut } from '../components/charts/ChartKit'
+import { CAT_COLORS, compactINR } from '../components/charts/chartTheme'
 
 type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: LineItem[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: LedgerTransaction['createdBy'] }
 
 const ALL_CATS = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Other']
-const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)','var(--accent-hover)','#8f8f88','var(--chart-5)','var(--chart-8)']
 
 export function VendorDetail(){
   const { id } = useParams()
@@ -235,50 +235,41 @@ try{
           <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">Spend Trend (monthly)</h3>
             {monthlyData.length===0 ? <div className="text-xs opacity-60">No trend.</div> : (
-              <div className="h-[200px] min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
-                    <CartesianGrid stroke="var(--chart-grid)" vertical={false} strokeDasharray="3 3"/>
-                    <XAxis dataKey="month" tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} axisLine={{stroke:'var(--border)'}} tickLine={{stroke:'var(--border)'}} />
-                    <YAxis tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} axisLine={{stroke:'var(--border)'}} />
-                    <Tooltip contentStyle={{background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:0, boxShadow:'0 4px 16px rgba(0,0,0,0.3)', color:'var(--text-primary)'}} />
-                    <Area type="monotone" dataKey="spend" stroke="var(--border)" strokeWidth={2} fill="var(--chart-1)" fillOpacity={0.22} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <AreaTrend
+                data={monthlyData}
+                xKey="month"
+                height={200}
+                series={[{ key: 'spend', name: 'Spend', color: 'var(--chart-line-accent)', fill: 'var(--chart-1)' }]}
+                valueFormat={compactINR}
+                legend={false}
+              />
             )}
           </div>
           <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">By Category</h3>
             {byCategoryData.length===0 ? <div className="text-xs opacity-60">No data.</div> : (
-              <div className="h-[200px] min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={byCategoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(props)=> { const total = byCategoryData.reduce((s, v)=>s+v.value,0); const pct = total? props.payload.value/total*100:0; return pct<5? null : `${props.payload.name} ${pct.toFixed(0)}%`; }}>
-                      {byCategoryData.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} stroke="var(--border)" strokeWidth={1.5}/>)}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+              <ShareDonut
+                data={byCategoryData.map((d)=> ({ label: d.name, value: d.value }))}
+                height={200}
+                centerLabel="Spent"
+                colors={CAT_COLORS}
+                valueFormat={(n)=> `₹${n.toLocaleString('en-IN')}`}
+              />
             )}
           </div>
           <div className="brutal bg-white p-md min-w-0">
             <h3 className="font-bold uppercase mb-sm text-xs">By Product</h3>
             {byProductData.length===0 ? <div className="text-xs opacity-60">No product spend — transactions have no productName yet.</div> : (
-              <div className="h-[200px] min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={byProductData.slice(0,6)} layout="vertical" margin={{ left: 40 }}>
-                    <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3"/>
-                    <XAxis type="number" tick={{fill:'var(--chart-axis-text)', fontSize:10}} axisLine={{stroke:'var(--border)'}} />
-                    <YAxis type="category" dataKey="name" tick={{fill:'var(--chart-axis-text)', fontSize:10, fontWeight:700}} width={90} axisLine={{stroke:'var(--border)'}} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="var(--chart-1)" stroke="var(--border)" strokeWidth={1}>
-                      {byProductData.slice(0,6).map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <BarRank
+                data={byProductData.slice(0,6)}
+                categoryKey="name"
+                valueKey="value"
+                height={200}
+                horizontal
+                color="var(--chart-1)"
+                labelWidth={82}
+                valueFormat={compactINR}
+              />
             )}
           </div>
         </div>

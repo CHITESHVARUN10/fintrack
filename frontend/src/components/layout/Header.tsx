@@ -44,24 +44,27 @@ export function Header({ title, onMenu }: { title: string; onMenu?: () => void }
             <Icon name="menu" className="text-2xl" />
           </button>
         )}
-        <h2 className="font-bold uppercase tracking-tight text-base sm:text-xl truncate" style={{ color: 'var(--text-primary)' }}>
+        <h2 className="hidden sm:block font-bold uppercase tracking-tight text-base sm:text-xl truncate" style={{ color: 'var(--text-primary)' }}>
           {title}
         </h2>
         {isAdmin && (
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setOpen((o) => !o)}
-              className="brutal-sm flex items-center gap-1 px-2 py-1 font-bold text-xs uppercase hover:brightness-110"
+              className="brutal-sm flex items-center gap-1 px-2 py-1 font-bold text-xs uppercase whitespace-nowrap hover:brightness-110"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+              aria-label={`Switch member view; currently ${activeMember.name}`}
+              aria-expanded={open}
             >
               <Icon name="group" className="text-base" />
-              View: {activeMember.name.split(' ')[0]}
+              <span className="hidden sm:inline">View:&nbsp;</span>
+              {activeMember.name.split(' ')[0]}
               <Icon name="arrow_drop_down" className="text-base" />
             </button>
             {open && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                <div className="absolute left-0 mt-1 z-20 w-56 brutal shadow-brutal overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+                <div className="nb-pop-menu absolute left-0 mt-1 z-20 w-56 brutal shadow-brutal overflow-hidden" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
                   <div className="px-3 py-2 border-b-2 font-bold text-xs uppercase" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
                     Switch member view
                   </div>
@@ -93,7 +96,7 @@ export function Header({ title, onMenu }: { title: string; onMenu?: () => void }
         )}
       </div>
 
-      <div className="flex items-center gap-sm">
+      <div className="flex items-center gap-1 sm:gap-sm shrink-0">
         {/* Desktop search — same styling as sidebar/header controls */}
         <div className="hidden md:flex items-center brutal-thin px-sm py-1 gap-sm min-w-[260px] lg:min-w-[360px]" style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}>
           <Icon name="search" className="text-base shrink-0" style={{ color: 'var(--text-muted)' }} />
@@ -138,10 +141,10 @@ export function Header({ title, onMenu }: { title: string; onMenu?: () => void }
           <Icon name="search" className="text-2xl" />
         </button>
 
-        {/* Theme toggle — same component styling as search */}
+        {/* Theme toggle — desktop only; the mobile drawer carries it too */}
         <button
           onClick={toggle}
-          className="p-1.5 border-2 hover:brightness-110 transition-colors"
+          className="hidden sm:flex p-1.5 border-2 hover:brightness-110 transition-colors"
           style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label="Toggle theme"

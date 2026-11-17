@@ -6,16 +6,12 @@ const Membership = require('../models/familymembership.model');
 const Family = require('../models/familyaccount.model');
 const Transaction = require('../models/transaction.model');
 const SourceRecord = require('../models/sourcerecord.model');
-const Form16 = require('../models/form16.model');
-const Loan = require('../models/loan.model');
 const ImportBatch = require('../models/importbatch.model');
 const { isAuthenticated } = require('../middleware/auth.middleware');
 const { buildListFilter, canModify, canModifyTransaction } = require('../utils/scope');
 const { fingerprintCandidate, scoreCandidate, classifyConfidence } = require('../services/reconciliation.service');
 const txRoutes = require('./transactions/transactions.routes');
 const familyRoutes = require('./families/families.routes');
-const formRoutes = require('./form16/form16.routes');
-const loanRoutes = require('./loans/loans.routes');
 const importRoutes = require('./imports/imports.routes');
 const id = () => new mongoose.Types.ObjectId();
 const alice = { _id: id(), familyAccountId: id(), role: 'admin', isActive: true };
@@ -87,13 +83,6 @@ test('merge target must also belong to transaction creator', async t => {
   t.mock.method(Transaction, 'findById', async key => key === source.candidateOf ? { createdBy: alice._id, familyId: alice.familyAccountId } : source);
   assert.equal((await call(txRoutes, 'post', '/:id/resolve', { user: bob, body: { action: 'merge' } })).statusCode, 403);
 });
-test('family admin retains Form16 access within family and is denied unrelated records', async t => {
-  const form = { userId: bob._id, isFinalized: true, finalizedDeductions: [] };
-  t.mock.method(Form16, 'findById', async () => form);
-  t.mock.method(User, 'exists', async filter => String(filter.familyAccountId) === String(alice.familyAccountId) ? { _id: bob._id } : null);
-  assert.equal((await call(formRoutes, 'get', '/:id/deductions-preview', { user: alice, params: { id: String(id()) } })).statusCode, 200);
-  assert.equal((await call(formRoutes, 'get', '/:id/deductions-preview', { user: outsider, params: { id: String(id()) } })).statusCode, 403);
-});
 test('family admin cannot rotate another family invite code', async t => {
   t.mock.method(Family, 'findById', async () => ({ _id: alice.familyAccountId, adminId: alice._id }));
   assert.equal((await call(familyRoutes, 'post', '/:id/rotate-code', { user: outsider })).statusCode, 403);
@@ -136,34 +125,16 @@ test('date-only bank rows are never treated as same-minute payments', () => {
   const dayOnly = { ...candidate, metadata: { timePrecision: 'day' } };
   assert.notEqual(classifyConfidence(scoreCandidate(dayOnly, dayOnly).confidence), 'AUTO');
 });
-test('negative manual prepayment is rejected before saving', async t => {
-  t.mock.method(Loan, 'findById', async () => ({ _id: id(), memberId: bob._id, familyAccountId: bob.familyAccountId, outstandingAmount: 10000 }));
-  assert.equal((await call(loanRoutes, 'post', '/:id/record-prepayment', { user: bob, body: { amount: -100 } })).statusCode, 400);
-});
-test('one payment reduces principal once across repeated requests', async t => {
-  const loan = { _id: id(), memberId: bob._id, familyAccountId: bob.familyAccountId, outstandingAmount: 10000, prepayments: [] };
-  const tx = { _id: id(), createdBy: bob._id, familyId: bob.familyAccountId, type: 'EXPENSE', status: 'ACTIVE', amountPaise: 100000, save: async () => {} };
-  t.mock.method(Loan, 'findById', async () => loan);
-  t.mock.method(Transaction, 'findById', async () => tx);
-  const update = t.mock.method(Loan, 'findOneAndUpdate', async (filter, change) => {
-    assert.deepEqual(filter['prepayments.transactionId'], { $ne: tx._id });
-    loan.outstandingAmount += change.$inc.outstandingAmount; loan.prepayments.push(change.$push.prepayments); return loan;
-  });
-  const req = { user: bob, body: { transactionId: String(tx._id) } };
-  assert.equal((await call(loanRoutes, 'post', '/:id/record-prepayment', req)).statusCode, 201);
-  assert.equal((await call(loanRoutes, 'post', '/:id/record-prepayment', req)).body.alreadyApplied, true);
-  assert.equal(loan.outstandingAmount, 9000); assert.equal(update.mock.callCount(), 1);
-});
 test('ingest persists accepted references and split amounts', async t => {
   t.mock.method(SourceRecord, 'findOne', () => ({ lean: async () => null, then: resolve => Promise.resolve(null).then(resolve) }));
   t.mock.method(Transaction, 'find', () => ({ lean: async () => [] }));
   const create = t.mock.method(Transaction, 'create', async fields => ({ ...fields, _id: id(), save: async () => {} }));
   t.mock.method(SourceRecord, 'create', async fields => ({ ...fields, _id: id() }));
   const { ingest } = require('../services/transactionEngine.service');
-  const loanRef = id(); const subscriptionRef = id();
-  await ingest({ ...candidate, recipient: undefined, category: 'Food', loanRef, subscriptionRef, loanMeta: { isLoanPayment: true }, categorySplit: [{ category: 'Food', amountPaise: 10000 }] }, { familyId: bob.familyAccountId, createdBy: bob._id, source: 'MANUAL' });
+  const subscriptionRef = id();
+  await ingest({ ...candidate, recipient: undefined, category: 'Food', subscriptionRef, categorySplit: [{ category: 'Food', amountPaise: 10000 }] }, { familyId: bob.familyAccountId, createdBy: bob._id, source: 'MANUAL' });
   const stored = create.mock.calls[0].arguments[0];
-  assert.equal(stored.loanRef, loanRef); assert.equal(stored.subscriptionRef, subscriptionRef); assert.equal(stored.categorySplit[0].amountPaise, 10000);
+  assert.equal(stored.subscriptionRef, subscriptionRef); assert.equal(stored.categorySplit[0].amountPaise, 10000);
 });
 test('legacy membership upgrade never restores an existing revoked membership', async t => {
   t.mock.method(Membership, 'exists', async () => ({ _id: id() }));
@@ -182,16 +153,6 @@ test('legacy active users receive membership with insert-only defaults', async t
   assert.equal(upsert.mock.calls[0].arguments[1].$setOnInsert.role, 'MEMBER');
   assert.equal(upsert.mock.calls[0].arguments[1].$set, undefined);
 });
-test('deleting an investment invalidates its user recommendations through real document middleware', async t => {
-  const Investment = require('../models/investment.model');
-  const Recommendation = require('../models/taxrecommendation.model');
-  t.mock.method(Investment.collection, 'deleteOne', async () => ({ acknowledged: true, deletedCount: 1 }));
-  const update = t.mock.method(Recommendation, 'updateMany', async () => ({ modifiedCount: 1 }));
-  const doc = new Investment({ memberId: bob._id, familyAccountId: bob.familyAccountId });
-  await doc.deleteOne();
-  assert.equal(String(update.mock.calls[0].arguments[0].userId), String(bob._id));
-  assert.equal(update.mock.calls[0].arguments[1].$set.isStale, true);
-});
 test('weekly and yearly budgets use different bounded intervals', async t => {
   const Budget = require('../models/budget.model');
   const router = require('./budgets/budgets.routes');
@@ -203,28 +164,4 @@ test('weekly and yearly budgets use different bounded intervals', async t => {
   assert.equal((intervals[0].$lt - intervals[0].$gte) / 86400000, 7);
   assert.equal(intervals[1].$gte.getMonth(), 0);
   assert.equal(intervals[1].$lt.getFullYear(), intervals[1].$gte.getFullYear() + 1);
-});
-test('finalization rebuilds deductions from saved values rather than trusting an injected snapshot', async t => {
-  const Investment = require('../models/investment.model');
-  const Insurance = require('../models/insurance.model');
-  const Education = require('../models/education.model');
-  for (const Model of [Investment, Insurance, Education, Loan]) t.mock.method(Model, 'find', async () => []);
-  const doc = { userId: bob._id, financialYear: '2025-26', grossSalary: 1000000, section80C: 10000, save: async () => {} };
-  t.mock.method(Form16, 'findById', async () => doc);
-  const res = await call(formRoutes, 'patch', '/:id', { user: bob, params: { id: String(id()) }, body: { isFinalized: true, finalizedDeductions: [{ section: '80C', amount: 150000, source: 'USER_MANUAL' }] } });
-  assert.equal(res.statusCode, 200);
-  assert.equal(doc.finalizedDeductions.find(item => item.section === '80C').amount, 10000);
-});
-test('draft preview uses unsaved Form16 values without losing selected-year paid records', async t => {
-  const Investment = require('../models/investment.model');
-  const Insurance = require('../models/insurance.model');
-  const Education = require('../models/education.model');
-  t.mock.method(Investment, 'find', async () => [{ taxPayments: [{ financialYear: '2025-26', section: '80C', amount: 30000 }] }]);
-  for (const Model of [Insurance, Education, Loan]) t.mock.method(Model, 'find', async () => []);
-  const stored = { userId: bob._id, financialYear: '2025-26', grossSalary: 1000000, section80C: 10000 };
-  t.mock.method(Form16, 'findById', async () => stored);
-  const res = await call(formRoutes, 'post', '/:id/deductions-preview', { method: 'POST', user: bob, params: { id: String(id()) }, body: { section80C: 20000 } });
-  assert.equal(res.statusCode, 200);
-  assert.ok(res.body.deductions.some(item => item.section === '80C' && item.source === 'INVESTMENT_RECORD' && item.amount === 30000));
-  assert.equal(stored.section80C, 10000);
 });

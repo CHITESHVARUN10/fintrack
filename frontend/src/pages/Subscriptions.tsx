@@ -1,6 +1,6 @@
 import type { PaymentSuggestion } from '../types/api'
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
@@ -295,17 +295,22 @@ export function Subscriptions() {
     }
   })
 
+  // Fetch suggestions once. Dismissals are applied at render time, so the
+  // list is never re-fetched just because the dismissed set changed.
   const loadSuggestions = useCallback(() => {
-apiClient
+    apiClient
       .get<{ suggestions: PaymentSuggestion[] }>('/subscriptions/suggestions')
       .then((r) => {
-        const raw = r.data?.suggestions || []
-        const filtered = raw.filter((s) => !dismissedIds.includes(s.id))
-        setSuggestions(filtered)
+        setSuggestions(r.data?.suggestions || [])
       })
       .catch(() => {})
       .finally(() => setSuggLoading(false))
-  }, [dismissedIds])
+  }, [])
+
+  const visibleSuggestions = useMemo(
+    () => suggestions.filter((s) => !dismissedIds.includes(s.id)),
+    [suggestions, dismissedIds],
+  )
 
   useEffect(() => {
     load()
@@ -391,12 +396,12 @@ apiClient
         ))}
       </div>
 
-      {suggestions.length>0 && (
+      {visibleSuggestions.length>0 && (
         <div className="brutal bg-brand-yellow p-md mb-md">
           <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="lightbulb" /> Ledger Link — Suggestions from Transactions {suggLoading && <span className="text-xs opacity-60">(checking...)</span>}</h3>
           <div className="text-xs opacity-80 mb-sm">We detected payments matching your subscriptions. Accept to update your billing schedule and automatically link matching transactions to subscription payment history.</div>
           <div className="flex flex-col gap-sm">
-            {suggestions.map((s)=> (
+            {visibleSuggestions.map((s)=> (
               <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs min-w-0">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs min-w-0">
                   <span className="font-bold break-words min-w-0">{s.name}</span>

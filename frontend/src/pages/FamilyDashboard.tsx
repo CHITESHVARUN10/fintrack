@@ -1,35 +1,12 @@
 import type { ApiMember, FamilyAnalytics } from '../types/api'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { analyticsService, familyService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { formatCurrency } from '../lib/format'
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend, Cell, PieChart, Pie,
-} from 'recharts'
-
-const CAT_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','var(--chart-6)','var(--chart-7)','var(--chart-8)']
-
-function brutalTooltipStyle(): import('react').CSSProperties {
-  return {
-    background: 'var(--bg-card)',
-    border: '1px solid var(--border)',
-    borderRadius: 0,
-    boxShadow: '4px 4px 0 0 var(--shadow)',
-    fontFamily: 'Space Grotesk',
-    fontWeight: 700,
-    color: 'var(--text-primary)',
-  }
-}
-// Only show outer label for slices >=5% to avoid collision; small slices rely on legend/tooltip
-function pieLabelThreshold(props: { payload?: Partial<import('../types/api').SpendRow>; percent?: number; name?: string | number; category?: string; vendor?: string; mode?: string }, threshold = 5) {
-  const pct = props.payload?.sharePct ?? (props.percent != null ? props.percent * 100 : 0)
-  if (pct < threshold) return null
-  const name = props.name ?? props.payload?.name ?? props.category ?? props.vendor ?? props.mode ?? ''
-  const label = String(name).slice(0, 14)
-  return `${label} ${pct.toFixed(0)}%`
-}
+import { AreaTrend, BarRank, ShareDonut } from '../components/charts/ChartKit'
+import { CAT_COLORS, compactINR } from '../components/charts/chartTheme'
 
 export function FamilyDashboard(){
   const [from, setFrom] = useState(()=> new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10))
@@ -65,13 +42,25 @@ export function FamilyDashboard(){
 
   const s = data?.summary || { actualExpenditurePaise: 0, internalTransfersPaise: 0, cashWithdrawalsPaise: 0, totalMovementPaise: 0, cashRemainingPaise: 0, cashSpentPaise: 0, cashWithdrawnPaise: 0 }
 
+  // Quantile bands for the heatmap palette — computed once per data change
+  // rather than sorting inside JSX on every render.
+  const heatBands = useMemo(() => {
+    const vals = (data?.heatmap || []).map((h) => h.spendPaise).filter((v: number) => v > 0).sort((a: number, b: number) => a - b)
+    const q = (pct: number) => {
+      if (!vals.length) return 0
+      const idx = Math.ceil(pct * vals.length) - 1
+      return vals[Math.max(0, Math.min(vals.length - 1, idx))]
+    }
+    return { q20: q(0.2), q40: q(0.4), q60: q(0.6), q80: q(0.8) }
+  }, [data])
+
   return (
     <div className="flex flex-col gap-md min-w-0">
       <PageHeader title="Family Dashboard" subtitle="Power-BI style analytics over actual expenditure. Filter by time, members, mode." />
-      <div className="brutal bg-white p-md flex flex-wrap gap-sm items-end min-w-0 [&>label]:min-w-0 [&_input]:max-w-full">
-        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">From<input type="date" value={from} onChange={e=> setFrom(e.target.value)} className="brutal-thin px-sm py-xs max-w-full" /></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">To<input type="date" value={to} onChange={e=> setTo(e.target.value)} className="brutal-thin px-sm py-xs max-w-full" /></label>
-        <div className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Members
+      <div className="brutal bg-white p-md grid grid-cols-2 sm:flex sm:flex-wrap gap-sm items-end min-w-0 [&>label]:min-w-0 [&_input]:max-w-full">
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">From<input type="date" value={from} onChange={e=> setFrom(e.target.value)} className="brutal-thin px-sm py-xs max-w-full w-full" /></label>
+        <label className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">To<input type="date" value={to} onChange={e=> setTo(e.target.value)} className="brutal-thin px-sm py-xs max-w-full w-full" /></label>
+        <div className="col-span-2 sm:col-auto flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Members
           <div className="flex flex-wrap gap-xs">
             {members.map((m)=> {
               const active = selMembers.includes(m.id)
@@ -80,144 +69,124 @@ export function FamilyDashboard(){
             {members.length===0 && <span className="text-xs normal-case opacity-60">No family</span>}
           </div>
         </div>
-        <div className="flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Mode
+        <div className="col-span-2 sm:col-auto flex flex-col text-xs font-bold uppercase gap-1 min-w-0">Mode
           <div className="flex gap-xs flex-wrap">{['UPI','BANK','CASH','CARD','OTHER'].map(m=> {
             const active = selModes.includes(m)
             return <button key={m} onClick={()=> setSelModes(p=> active? p.filter(x=> x!==m): [...p,m])} className={`brutal-thin px-xs py-xs text-xs font-bold ${active?'bg-brand-yellow':'bg-white'}`}>{m}</button>
           })}</div>
         </div>
-        <button onClick={load} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase">{loading?'Loading…':'Apply'}</button>
-        {(selMembers.length||selModes.length) ? <button onClick={async()=>{ setSelMembers([]); setSelModes([]); setLoading(true); try{ const res=await analyticsService.family({ from, to }); setData(res); } finally { setLoading(false);} }} className="brutal bg-white px-md py-xs font-bold uppercase text-xs">Clear</button>: null}
+        <div className="col-span-2 sm:col-auto flex gap-sm">
+          <button onClick={load} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase min-h-[44px] flex-1 sm:flex-none">{loading?'Loading…':'Apply'}</button>
+          {(selMembers.length||selModes.length) ? <button onClick={async()=>{ setSelMembers([]); setSelModes([]); setLoading(true); try{ const res=await analyticsService.family({ from, to }); setData(res); } finally { setLoading(false);} }} className="brutal bg-white px-md py-xs font-bold uppercase text-xs min-h-[44px] flex-1 sm:flex-none">Clear</button>: null}
+        </div>
       </div>
 
       {data && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-sm min-w-0">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-sm min-w-0">
             <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold tracking-wider">Actual Spend</div><div className="text-xl font-bold">{formatCurrency((s.actualExpenditurePaise||0)/100)}</div><div className="text-xs text-on-surface-variant">{data.totalCount} txns</div></div>
             <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold tracking-wider">Avg / day</div><div className="text-xl font-bold">{formatCurrency(data.avgDaily||0)}</div><div className="text-xs text-on-surface-variant">over range</div></div>
             <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold tracking-wider">Transfers</div><div className="text-xl font-bold">{formatCurrency((s.internalTransfersPaise||0)/100)}</div><div className="text-xs text-on-surface-variant">not spend</div></div>
             <div className="brutal bg-white p-sm"><div className="text-xs uppercase font-bold tracking-wider">Highest Day</div><div className="text-sm font-bold">{data.highestDay ? `${data.highestDay.date} — ${formatCurrency(data.highestDay.spend)}` : '—'}</div></div>
           </div>
 
-          {/* 100% share pies — member / category / vendor */}
+          {/* 100% share donuts — member / category / vendor */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
             <div className="brutal bg-white p-md min-w-0">
-              <h3 className="font-bold uppercase mb-sm">Member Share (100%)</h3>
+              <h3 className="font-bold uppercase mb-sm">Member Share</h3>
               {(data.byMemberShare||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
-                <div className="h-[260px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={data.byMemberShare} dataKey="spend" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
-                        {data.byMemberShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.name]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <ShareDonut
+                  data={data.byMemberShare.map((m)=> ({ label: m.name, value: m.spend }))}
+                  height={230}
+                  centerLabel="Spent"
+                  colors={CAT_COLORS}
+                  valueFormat={(n)=> formatCurrency(n)}
+                />
               )}
               <div className="text-xs opacity-60 mt-sm">Total {formatCurrency((s.actualExpenditurePaise||0)/100)} shared across {data.byMemberShare?.length||0} members</div>
             </div>
             <div className="brutal bg-white p-md min-w-0">
-              <h3 className="font-bold uppercase mb-sm">Category Share (100%)</h3>
+              <h3 className="font-bold uppercase mb-sm">Category Share</h3>
               {(data.byCategoryShare||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
-                <div className="h-[260px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={data.byCategoryShare} dataKey="spend" nameKey="category" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
-                        {data.byCategoryShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.category]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <ShareDonut
+                  data={data.byCategoryShare.map((c)=> ({ label: c.category, value: c.spend }))}
+                  height={230}
+                  centerLabel="Spent"
+                  colors={CAT_COLORS}
+                  valueFormat={(n)=> formatCurrency(n)}
+                />
               )}
             </div>
             <div className="brutal bg-white p-md min-w-0">
-              <h3 className="font-bold uppercase mb-sm">Vendor Share (100%)</h3>
+              <h3 className="font-bold uppercase mb-sm">Vendor Share</h3>
               {(data.byVendorShare||[]).length===0 ? <div className="text-sm opacity-60">No vendors.</div> : (
-                <div className="h-[260px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={data.byVendorShare} dataKey="spend" nameKey="vendor" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
-                        {data.byVendorShare.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))} (${p.payload.sharePct.toFixed(1)}%)`, p.payload.vendor]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <ShareDonut
+                  data={data.byVendorShare.map((v)=> ({ label: v.vendor, value: v.spend }))}
+                  height={230}
+                  centerLabel="Spent"
+                  colors={CAT_COLORS}
+                  valueFormat={(n)=> formatCurrency(n)}
+                />
               )}
             </div>
           </div>
 
           <div className="brutal bg-white p-md min-w-0">
-            <h3 className="font-bold uppercase mb-sm flex flex-wrap items-center gap-sm"><Icon name="stacked_bar_chart" /> Monthly Area (Income vs Expense)</h3>
+            <h3 className="font-bold uppercase mb-sm flex items-start gap-sm"><Icon name="stacked_bar_chart" className="text-xl shrink-0" /><span className="min-w-0">Monthly Area (Income vs Expense)</span></h3>
             {(data.monthlyArea||[]).length===0 ? <div className="text-sm opacity-60">No monthly data.</div> : (
-              <div className="h-[260px] min-w-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.monthlyArea} margin={{ top:8, right:8, left:-8, bottom:0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                    <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                    <Tooltip contentStyle={brutalTooltipStyle()} />
-                    <Legend wrapperStyle={{ fontWeight:700, fontSize:12 }} />
-                    <Area type="monotone" dataKey="expense" name="Expense ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-1)" fillOpacity={0.22} />
-                    <Area type="monotone" dataKey="income" name="Income ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-2)" fillOpacity={0.22} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <AreaTrend
+                data={data.monthlyArea}
+                xKey="month"
+                height={260}
+                series={[
+                  { key: 'income', name: 'Income', color: 'var(--chart-line-primary)', fill: 'var(--chart-2)' },
+                  { key: 'expense', name: 'Expense', color: 'var(--chart-line-secondary)', fill: 'var(--chart-4)' },
+                ]}
+                valueFormat={compactINR}
+              />
             )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-md min-w-0">
             <div className="brutal bg-white p-md min-w-0">
-              <h3 className="font-bold uppercase mb-sm flex flex-wrap items-center gap-sm"><Icon name="show_chart" /> Spend Over Time</h3>
+              <h3 className="font-bold uppercase mb-sm flex items-start gap-sm"><Icon name="show_chart" className="text-xl shrink-0" /><span className="min-w-0">Spend Over Time</span></h3>
               {(data.timeSeries||[]).length===0 ? <div className="text-sm opacity-60">No spend in range.</div> : (
-                <div className="h-[280px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data.timeSeries} margin={{ top:8, right:8, left:-8, bottom:0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} tickLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} tickLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Area type="monotone" dataKey="spend" name="Spend ₹" stroke="var(--border)" strokeWidth={3} fill="var(--chart-1)" fillOpacity={0.22} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                <AreaTrend
+                  data={data.timeSeries}
+                  xKey="date"
+                  height={280}
+                  series={[{ key: 'spend', name: 'Spend', color: 'var(--chart-line-accent)', fill: 'var(--chart-1)' }]}
+                  valueFormat={compactINR}
+                />
               )}
             </div>
             <div className="brutal bg-white p-md min-w-0">
               <h3 className="font-bold uppercase mb-sm">By Category</h3>
               {(data.byCategory||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
-                <div className="h-[280px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.byCategory} layout="vertical" margin={{ left: 40, right: 8 }}>
-                      <CartesianGrid strokeDasharray="0" stroke="var(--border)" />
-                      <XAxis type="number" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <YAxis type="category" dataKey="category" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} width={90} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Bar dataKey="spend" name="Spend ₹" stroke="var(--border)" strokeWidth={2}>
-                        {data.byCategory.map((_, i)=> <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <BarRank
+                  data={data.byCategory}
+                  categoryKey="category"
+                  valueKey="spend"
+                  height={280}
+                  horizontal
+                  color="var(--chart-1)"
+                  labelWidth={92}
+                  valueFormat={compactINR}
+                />
               )}
             </div>
             <div className="brutal bg-white p-md min-w-0">
               <h3 className="font-bold uppercase mb-sm">By Member</h3>
               {(data.byMember||[]).length===0 ? <div className="text-sm opacity-60">No data.</div> : (
-                <div className="h-[260px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.byMember}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <YAxis tick={{ fill:'var(--chart-axis-text)', fontWeight:700, fontSize:10 }} axisLine={{ stroke:'var(--border)', strokeWidth:3 }} />
-                      <Tooltip contentStyle={brutalTooltipStyle()} />
-                      <Legend wrapperStyle={{ fontWeight:700, fontSize:12 }} />
-                      <Bar dataKey="spend" name="Spend ₹" fill="var(--chart-1)" stroke="var(--border)" strokeWidth={3} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <BarRank
+                  data={data.byMember}
+                  categoryKey="name"
+                  valueKey="spend"
+                  height={260}
+                  horizontal={false}
+                  color="var(--chart-line-primary)"
+                  valueFormat={compactINR}
+                />
               )}
             </div>
             <div className="brutal bg-white p-md min-w-0">
@@ -225,7 +194,7 @@ export function FamilyDashboard(){
               {(data.topVendors||[]).length===0 ? <div className="text-sm opacity-60">No vendors.</div> : (
                 <div className="flex flex-col gap-xs min-w-0">
                   {data.topVendors.map((v, i)=> (
-                    <div key={v.vendor} className="flex justify-between items-center gap-sm brutal-thin px-sm py-xs bg-surface-container-low min-w-0">
+                    <div key={v.vendor} className="flex justify-between items-center gap-sm brutal-thin px-sm py-xs bg-surface-container-low min-w-0 nb-bar-row">
                       <span className="text-xs font-bold truncate pr-sm min-w-0">{i+1}. {v.vendor}</span>
                       <span className="text-xs font-bold whitespace-nowrap">{formatCurrency(v.spend)} <span className="opacity-60">×{v.count}</span></span>
                     </div>
@@ -239,16 +208,13 @@ export function FamilyDashboard(){
             <div className="brutal bg-white p-md min-w-0">
               <h3 className="font-bold uppercase mb-sm">By Mode</h3>
               {(data.byModeShare||data.byMode||[]).length===0 ? <div className="text-sm opacity-60">No mode data.</div> : (
-                <div className="h-[260px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={data.byModeShare||data.byMode} dataKey="spend" nameKey="mode" cx="50%" cy="50%" innerRadius="45%" outerRadius="80%" paddingAngle={2} stroke="var(--border)" strokeWidth={2} label={(props)=> pieLabelThreshold(props,5)}>
-                        {(data.byModeShare||data.byMode).map((_, i)=> <Cell key={i} fill={CAT_COLORS[i%CAT_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={brutalTooltipStyle()} formatter={(v, _n, p)=> [`${formatCurrency(Number(v))}${p.payload.sharePct? ` (${p.payload.sharePct.toFixed(1)}%)`:''}`, p.payload.mode]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                <ShareDonut
+                  data={(data.byModeShare||data.byMode).map((m)=> ({ label: m.mode, value: m.spend }))}
+                  height={260}
+                  centerLabel="Spent"
+                  colors={CAT_COLORS}
+                  valueFormat={(n)=> formatCurrency(n)}
+                />
               )}
             </div>
             <div className="brutal bg-white p-md min-w-0">
@@ -274,14 +240,7 @@ export function FamilyDashboard(){
                 <div className="overflow-x-auto min-w-0">
                 <div className="grid gap-xs min-w-[560px]" style={{ gridTemplateColumns: `repeat(${Math.min(14, data.heatmap.length)}, minmax(0,1fr))` }}>
                   {(() => {
-                    const vals = data.heatmap.map((h)=> h.spendPaise).filter((v:number)=> v>0).sort((a:number,b:number)=> a-b)
-                    // quantile breaks for 5-step palette (p20,p40,p60,p80) else fallback to linear
-                    const q = (arr:number[], pct:number)=> {
-                      if(!arr.length) return 0
-                      const idx = Math.ceil(pct*arr.length)-1
-                      return arr[Math.max(0, Math.min(arr.length-1, idx))]
-                    }
-                    const q20=q(vals,0.2), q40=q(vals,0.4), q60=q(vals,0.6), q80=q(vals,0.8)
+                    const { q20, q40, q60, q80 } = heatBands
                     const palette = [
                       { bg:'var(--heat-1)', fg:'var(--heat-ink)' },   // 0
                       { bg:'var(--heat-2)', fg:'var(--heat-ink)' },   // q0-q20

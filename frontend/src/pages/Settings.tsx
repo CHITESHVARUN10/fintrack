@@ -1,6 +1,8 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { familyService } from '../services/api'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Field, Input } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
@@ -8,10 +10,120 @@ import { Icon } from '../components/ui/Icon'
 import { PasswordInput } from '../components/ui/PasswordInput'
 import { initials } from '../lib/format'
 
+function FamilySection() {
+  const { user, refreshSession } = useAuth()
+  const [mode, setMode] = useState<'idle' | 'create' | 'join'>('idle')
+  const [familyName, setFamilyName] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const inFamily = Boolean(user?.familyAccountId)
+
+  async function createFamily() {
+    setError(null)
+    if (!familyName.trim()) { setError('Enter a family name'); return }
+    setBusy(true)
+    try {
+      await familyService.create({ name: familyName.trim() })
+      await refreshSession()
+      setMode('idle')
+      setFamilyName('')
+      setMessage('Family created — you are the admin.')
+    } catch (e: unknown) {
+      const data = (e as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      setError(data?.error || 'Could not create the family.')
+    } finally { setBusy(false) }
+  }
+
+  async function joinFamily() {
+    setError(null)
+    if (!code.trim()) { setError('Enter an invite code'); return }
+    setBusy(true)
+    try {
+      await familyService.join(code.trim().toUpperCase())
+      setMode('idle')
+      setCode('')
+      setMessage('Request sent — an admin has to approve it before the family unlocks.')
+    } catch (e: unknown) {
+      const data = (e as { response?: { data?: { error?: string; details?: string[] } } })?.response?.data
+      setError(data?.error || 'Invalid invite code.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <section id="family" className="border-b-[3px] border-on-surface pb-lg scroll-mt-md">
+      <h2 className="text-2xl font-bold uppercase mb-lg flex items-center gap-2"><Icon name="group" /> Family</h2>
+      <div className="p-4 bg-white border-[3px] border-on-surface shadow-brutal min-w-0 flex flex-col gap-sm">
+        {inFamily ? (
+          <div className="flex flex-wrap items-center justify-between gap-sm">
+            <div className="min-w-0">
+              <p className="font-bold">Family account active</p>
+              <p className="font-medium text-on-surface-variant text-sm mt-1">
+                Invite members, approve join requests and manage the household from Members.
+              </p>
+            </div>
+            <Link to="/family" className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm shrink-0">
+              Manage members
+            </Link>
+          </div>
+        ) : (
+          <>
+            <p className="font-bold">Set up your family</p>
+            <p className="font-medium text-on-surface-variant text-sm">
+              Create a household as admin, or join one with an invite code. A family is required for Import, Transactions, Budgets and the family dashboard.
+            </p>
+
+            {mode === 'idle' && (
+              <div className="flex flex-col sm:flex-row gap-sm pt-xs">
+                <button onClick={() => { setMode('create'); setError(null); setMessage(null) }} className="brutal bg-brand-yellow px-md py-sm font-bold uppercase flex items-center gap-sm">
+                  <Icon name="group_add" /> Create Family
+                </button>
+                <button onClick={() => { setMode('join'); setError(null); setMessage(null) }} className="brutal bg-white px-md py-sm font-bold uppercase flex items-center gap-sm">
+                  <Icon name="login" /> Join Family
+                </button>
+              </div>
+            )}
+
+            {mode === 'create' && (
+              <div className="flex flex-col gap-sm pt-xs">
+                <Field label="Family Name">
+                  <Input value={familyName} onChange={(e) => setFamilyName(e.target.value)} placeholder="Sharma Family" />
+                </Field>
+                <div className="flex flex-col sm:flex-row gap-sm">
+                  <Button onClick={createFamily} disabled={busy}>{busy ? 'Creating…' : 'Create'}</Button>
+                  <Button variant="white" onClick={() => setMode('idle')}>Back</Button>
+                </div>
+              </div>
+            )}
+
+            {mode === 'join' && (
+              <div className="flex flex-col gap-sm pt-xs">
+                <Field label="Invite Code" hint="Six characters, e.g. VF7K92">
+                  <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="VF7K92" maxLength={6} className="uppercase tracking-widest" />
+                </Field>
+                <div className="flex flex-col sm:flex-row gap-sm">
+                  <Button onClick={joinFamily} disabled={busy}>{busy ? 'Joining…' : 'Join'}</Button>
+                  <Button variant="white" onClick={() => setMode('idle')}>Back</Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {error && <div className="brutal-thin bg-error-container text-on-error-container px-sm py-xs text-sm font-bold">{error}</div>}
+        {message && <div className="brutal-thin bg-brand-yellow text-on-surface px-sm py-xs text-sm font-bold">{message}</div>}
+      </div>
+    </section>
+  )
+}
+
+
 function Toggle({ label, desc, defaultOn = false }: { label: string; desc: string; defaultOn?: boolean }) {
   const [on, setOn] = useState(defaultOn)
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white border-[3px] border-on-surface shadow-brutal hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white border-[3px] border-on-surface shadow-brutal min-w-0">
       <div>
         <p className="font-bold">{label}</p>
         <p className="font-medium text-on-surface-variant text-sm mt-1">{desc}</p>
@@ -22,6 +134,7 @@ function Toggle({ label, desc, defaultOn = false }: { label: string; desc: strin
           on ? 'bg-brand-yellow' : 'bg-white'
         }`}
         aria-pressed={on}
+        aria-label={label}
       >
         <span
           className={`absolute top-[-3px] w-6 h-6 border-[3px] border-on-surface bg-white transition-transform ${
@@ -35,10 +148,17 @@ function Toggle({ label, desc, defaultOn = false }: { label: string; desc: strin
 
 export function Settings() {
   const { user } = useAuth()
-  const { theme, toggle, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwFlash, setPwFlash] = useState(false)
+  // Deep links from the family banner and Import land on /settings#family;
+  // bring the section into view once the page has mounted.
+  useEffect(() => {
+    if (window.location.hash !== '#family') return
+    const timer = window.setTimeout(() => document.getElementById('family')?.scrollIntoView({ block: 'start' }), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
   if (!user) return null
 
   const savePassword = () => {
@@ -76,6 +196,9 @@ export function Settings() {
         </div>
       </section>
 
+      {/* Family */}
+      <FamilySection />
+
       {/* Appearance */}
       <section className="border-b-[3px] border-on-surface pb-lg">
         <h2 className="text-2xl font-bold uppercase mb-lg">Appearance</h2>
@@ -84,27 +207,21 @@ export function Settings() {
             <div>
               <p className="font-bold">Dark Mode</p>
               <p className="font-medium text-on-surface-variant text-sm mt-1">Toggle between light and dark theme. Saved for next visit.</p>
-              <p className="text-[11px] opacity-60 mt-1">Shortcut: theme persists + respects system preference.</p>
             </div>
             <div className="flex flex-wrap items-center gap-sm sm:ml-md shrink-0 min-w-0">
               <button
                 onClick={() => setTheme('light')}
                 className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${theme === 'light' ? 'bg-brand-yellow' : 'bg-white'}`}
+                aria-pressed={theme === 'light'}
               >
                 <Icon name="light_mode" className="text-base mr-1" />Light
               </button>
               <button
                 onClick={() => setTheme('dark')}
                 className={`brutal-thin px-sm py-xs text-xs font-bold uppercase ${theme === 'dark' ? 'bg-brand-yellow text-on-surface' : 'bg-white'}`}
+                aria-pressed={theme === 'dark'}
               >
                 <Icon name="dark_mode" className="text-base mr-1" />Dark
-              </button>
-              <button
-                onClick={toggle}
-                className="brutal bg-white border-2 border-on-surface p-2"
-                title="Toggle"
-              >
-                <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} />
               </button>
             </div>
           </div>
@@ -168,8 +285,8 @@ export function Settings() {
 
       {/* Danger zone */}
       <section>
-        <h2 className="text-2xl font-bold uppercase text-error mb-lg">Danger Zone</h2>
-        <div className="border-[3px] border-error p-lg bg-error-container min-w-0 max-w-full">
+        <h2 className="text-2xl font-bold uppercase text-on-error-container mb-lg">Danger Zone</h2>
+        <div className="border-[3px] border-on-surface p-lg bg-error-container min-w-0 max-w-full">
           <h3 className="text-lg font-bold text-on-error-container mb-2">
             Delete Account
           </h3>

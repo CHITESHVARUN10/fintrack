@@ -7,7 +7,7 @@ import type {
 import { cn } from '../../lib/cn'
 
 const baseField =
-  'brutal-thin w-full px-3 py-2 bg-white text-on-surface font-medium outline-none focus:bg-brand-yellow placeholder:text-on-surface-variant/60'
+  'brutal-thin w-full px-3 py-2 bg-white text-on-surface font-medium outline-none focus:bg-brand-yellow placeholder:text-[color:var(--text-placeholder)]'
 
 export function Field({
   label,

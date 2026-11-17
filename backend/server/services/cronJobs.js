@@ -1,8 +1,6 @@
 const cron = require('node-cron');
 
 const Subscription = require('../models/subscription.model');
-const EMILoan = require('../models/loan.model');
-const Insurance = require('../models/insurance.model');
 const Investment = require('../models/investment.model');
 const User = require('../models/user.model');
 const Notification = require('../models/notification.model');
@@ -56,7 +54,6 @@ async function notifyOnce(memberId, familyAccountId, type, message, relatedModul
 async function runDailyJob() {
   const today = dateOnly(new Date());
   const in3 = addDays(today, 3);
-  const in7 = addDays(today, 7);
   const in15 = addDays(today, 15);
   const in30 = addDays(today, 30);
 
@@ -77,39 +74,7 @@ async function runDailyJob() {
       }
     }
 
-    // 2) Loan EMIs in 3 days (Active only).
-    const loans = await EMILoan.find({ status: 'Active' });
-    for (const l of loans) {
-      if (l.emiDate && dayMatches(l.emiDate, in3)) {
-        await notifyOnce(
-          l.memberId,
-          l.familyAccountId,
-          'EMI due',
-          `Your loan EMI for "${l.loanName || 'loan'}" is due on ${in3.toDateString()} (₹${l.emiAmount}).`,
-          'loan',
-          l._id,
-          in3,
-        );
-      }
-    }
-
-    // 3) Insurance premiums due in 7 days (Active only).
-    const insurances = await Insurance.find({ status: 'Active' });
-    for (const i of insurances) {
-      if (i.nextDueDate && sameDate(i.nextDueDate, in7)) {
-        await notifyOnce(
-          i.memberId,
-          i.familyAccountId,
-          'Insurance premium due',
-          `Your insurance "${i.policyName || 'policy'}" premium is due on ${in7.toDateString()}.`,
-          'insurance',
-          i._id,
-          in7,
-        );
-      }
-    }
-
-    // 4) FD maturities in 15 days (Active only).
+    // 2) FD maturities in 15 days (Active only).
     const fds = await Investment.find({ investmentType: 'fd', status: 'Active' });
     for (const iv of fds) {
       if (iv.maturityDate && sameDate(iv.maturityDate, in15)) {
@@ -125,7 +90,7 @@ async function runDailyJob() {
       }
     }
 
-    // 5) Yearly subscriptions renewing in 30 days.
+    // 3) Yearly subscriptions renewing in 30 days.
     for (const s of subs) {
       if (s.frequency === 'yearly' && s.nextRenewalDate && sameDate(s.nextRenewalDate, in30)) {
         await notifyOnce(
@@ -140,7 +105,7 @@ async function runDailyJob() {
       }
     }
 
-    // 6) On the 1st of the month, email all admins that the monthly report is ready.
+    // 4) On the 1st of the month, email all admins that the monthly report is ready.
     if (today.getDate() === 1) {
       const admins = await User.find({ role: 'admin' }).select('name email').lean();
       const label = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });

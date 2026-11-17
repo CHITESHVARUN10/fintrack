@@ -8,9 +8,9 @@ const features = [
   { icon: 'account_balance_wallet', title: 'Income Tracker', desc: 'Log multiple income streams accurately.', color: 'bg-brand-yellow' },
   { icon: 'subscriptions', title: 'Subscriptions', desc: 'Never pay for forgotten services again.', color: 'bg-white' },
   { icon: 'trending_up', title: 'SIPs & Mutuals', desc: 'Auto-sync your investment portfolios.', color: 'bg-brand-yellow' },
-  { icon: 'real_estate_agent', title: 'Loans & EMIs', desc: 'Track principal vs interest over time.', color: 'bg-white' },
   { icon: 'receipt_long', title: 'Daily Expenses', desc: 'Categorize spending with custom tags.', color: 'bg-brand-yellow' },
-  { icon: 'health_and_safety', title: 'Insurance', desc: 'Keep track of premiums and coverage.', color: 'bg-white' },
+  { icon: 'monitoring', title: 'Family Dashboard', desc: 'See every member’s spend in one place.', color: 'bg-white' },
+  { icon: 'bar_chart', title: 'Reports & Budgets', desc: 'Monthly, annual and family reports.', color: 'bg-brand-yellow' },
 ]
 
 export function Landing() {

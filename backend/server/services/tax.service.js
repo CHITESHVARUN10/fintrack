@@ -1,7 +1,4 @@
 const Investment = require('../models/investment.model');
-const Insurance = require('../models/insurance.model');
-const EMILoan = require('../models/loan.model');
-const EducationPayment = require('../models/education.model');
 const { TAX_CONFIG, DEFAULT_FY } = require('./taxConfig');
 
 const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
@@ -381,13 +378,10 @@ function annualize(amount, frequency) {
  * Values are estimates suitable for a quick comparison/recommendation.
  */
 async function aggregateDeductions(userId, financialYear = DEFAULT_FY) {
-  const groups = await Promise.all([
-    Investment.find({ memberId: userId }), Insurance.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId }), EducationPayment.find({ memberId: userId }),
-  ]);
+  const records = await Investment.find({ memberId: userId });
   const totals = { section80C: 0, section80CCD: 0, section80D: 0, section80E: 0, section80G: 0, section24: 0 };
   const fields = { '80C': 'section80C', '80CCD': 'section80CCD', '80D': 'section80D', '80E': 'section80E', '80G': 'section80G', '24b': 'section24' };
-  for (const record of groups.flat()) {
+  for (const record of records) {
     for (const payment of record.taxPayments || []) {
       const field = fields[payment.section];
       if (field && payment.financialYear === financialYear && Number.isFinite(payment.amount) && payment.amount > 0) totals[field] += payment.amount;

@@ -2,34 +2,19 @@ const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const Investment = require('../models/investment.model');
-const EMILoan = require('../models/loan.model');
-const Insurance = require('../models/insurance.model');
-const EducationPayment = require('../models/education.model');
 const Transaction = require('../models/transaction.model');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
 
 const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
-
 function subMonthlyAmount(sub) {
   if (sub.frequency === 'yearly') return (sub.amount || 0) / 12;
   return sub.amount || 0;
 }
 
-function insuranceMonthlyAmount(ins) {
-  const div = FREQ_MONTHS[ins.premiumFrequency] || 12;
-  return (ins.premiumAmount || 0) / div;
-}
-
 function investmentMonthlyAmount(inv) {
   if (inv.investmentType === 'mf_sip') return inv.sipAmount || 0;
   return 0;
-}
-
-function eduMonthlyAmount(edu) {
-  if (edu.frequency === 'One-time') return 0;
-  const div = FREQ_MONTHS[edu.frequency] || 12;
-  return (edu.amount || 0) / div;
 }
 
 // Next calendar occurrence of a day-of-month within [today, today+lookaheadDays].
@@ -48,24 +33,18 @@ function nextOccurrence(dayOfMonth, lookaheadDays = 7, base = new Date()) {
 // --- Placeholder until Phase 8 wires the real taxService.calculateTax ---
 
 async function buildDashboard(userId) {
-  const [incomes, subs, recs, invs, loans, insurances, edus] = await Promise.all([
+  const [incomes, subs, recs, invs] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: 'Active' }),
     RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId, status: 'Active' }),
-    Insurance.find({ memberId: userId, status: 'Active' }),
-    EducationPayment.find({ memberId: userId }),
   ]);
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const monthlyObligations =
     subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
     recs.reduce((s, x) => s + (x.amount || 0), 0) +
-    loans.reduce((s, x) => s + (x.emiAmount || 0), 0) +
-    invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0) +
-    insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0) +
-    edus.reduce((s, x) => s + eduMonthlyAmount(x), 0);
+    invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
 
   const netMonthlyFlow = monthlyIncome - monthlyObligations;
 
@@ -86,15 +65,12 @@ async function buildDashboard(userId) {
     }
   };
   pushUpcoming(subs.filter(s => s.frequency !== 'yearly'), (s) => s.billingDate, 'subscription', (s) => subMonthlyAmount(s));
-  pushUpcoming(loans, (l) => l.emiDate, 'loan', (l) => l.emiAmount || 0);
   const nowDue = new Date();
   const dueLimit = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate() + 8);
   const dueStart = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate());
-  for (const [items, type, dateField, amountField] of [[insurances, 'insurance', 'nextDueDate', 'premiumAmount'], [subs.filter(s => s.frequency === 'yearly'), 'subscription', 'nextRenewalDate', 'amount']]) {
-    for (const item of items) {
-      const dueDate = item[dateField] && new Date(item[dateField]);
-      if (dueDate && dueDate >= dueStart && dueDate < dueLimit) upcoming.push({ type, id: item._id, name: item.name || item.policyName, amount: item[amountField] || 0, dueDate });
-    }
+  for (const item of subs.filter(s => s.frequency === 'yearly')) {
+    const dueDate = item.nextRenewalDate && new Date(item.nextRenewalDate);
+    if (dueDate && dueDate >= dueStart && dueDate < dueLimit) upcoming.push({ type: 'subscription', id: item._id, name: item.name, amount: item.amount || 0, dueDate });
   }
   pushUpcoming(
     invs.filter((x) => x.investmentType === 'mf_sip'),
@@ -106,11 +82,8 @@ async function buildDashboard(userId) {
 
   const monthlyBurnBreakdown = {
     Subscriptions: subs.reduce((s, x) => s + subMonthlyAmount(x), 0),
-    EMI: loans.reduce((s, x) => s + (x.emiAmount || 0), 0),
     Recurring: recs.reduce((s, x) => s + (x.amount || 0), 0),
     Investments: invs.filter((x) => x.investmentType === 'mf_sip').reduce((s, x) => s + (x.sipAmount || 0), 0),
-    Insurance: insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0),
-    Education: edus.reduce((s, x) => s + eduMonthlyAmount(x), 0),
   };
 
   let totalInvested = 0;
@@ -194,24 +167,18 @@ async function buildDashboard(userId) {
 }
 
 async function buildMemberSummary(userId) {
-  const [incomes, subs, recs, invs, loans, insurances, edus] = await Promise.all([
+  const [incomes, subs, recs, invs] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: 'Active' }),
     RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
-    EMILoan.find({ memberId: userId, status: 'Active' }),
-    Insurance.find({ memberId: userId, status: 'Active' }),
-    EducationPayment.find({ memberId: userId }),
   ]);
 
   const totalIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const totalObligations =
     subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
     recs.reduce((s, x) => s + (x.amount || 0), 0) +
-    loans.reduce((s, x) => s + (x.emiAmount || 0), 0) +
-    invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0) +
-    insurances.reduce((s, x) => s + insuranceMonthlyAmount(x), 0) +
-    edus.reduce((s, x) => s + eduMonthlyAmount(x), 0);
+    invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
   const totalInvestments = invs.reduce((s, d) => s + investedValue(d), 0);
 
   return { totalIncome, totalObligations, totalInvestments };

@@ -97,15 +97,11 @@ app.use('/api/income', require('./routes/income/income.routes'));
 app.use('/api/subscriptions', require('./routes/subscriptions/subscriptions.routes'));
 app.use('/api/recurring', require('./routes/recurring/recurring.routes'));
 app.use('/api/investments', require('./routes/investments/investments.routes'));
-app.use('/api/loans', require('./routes/loans/loans.routes'));
 app.use('/api/expenses', require('./routes/expenses/expenses.routes'));
-app.use('/api/insurance', require('./routes/insurance/insurance.routes'));
-app.use('/api/education', require('./routes/education/education.routes'));
 app.use('/api/tax', require('./routes/tax/tax.routes'));
 app.use('/api/members', require('./routes/members/members.routes'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/notifications', require('./routes/notifications/notifications.routes'));
-app.use('/api/form16', require('./routes/form16/form16.routes'));
 
 // ---- 404 fallback for unknown API routes ----
 app.use('/api', (req, res) => {

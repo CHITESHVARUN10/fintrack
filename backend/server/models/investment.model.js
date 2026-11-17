@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const { hookStaleByUser } = require('../utils/taxStale');
 
 const investmentSchema = new mongoose.Schema(
   {
@@ -59,7 +58,5 @@ investmentSchema.index({ memberId: 1 });
 investmentSchema.index({ familyAccountId: 1 });
 investmentSchema.index({ sipDate: 1 });
 investmentSchema.index({ maturityDate: 1 });
-
-hookStaleByUser(investmentSchema);
 
 module.exports = mongoose.model('Investment', investmentSchema);
