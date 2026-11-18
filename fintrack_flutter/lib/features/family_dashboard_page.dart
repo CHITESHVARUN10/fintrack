@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/api_client.dart';
+import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/states.dart';
 
 class FamilyDashboardPage extends StatefulWidget {
   const FamilyDashboardPage({super.key});
@@ -22,6 +24,7 @@ String _safeRange(String s, int start, [int? end]) {
 class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   Map? data;
   bool loading = true;
+  String? error;
   DateTime? from = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime? to = DateTime.now();
   List members = [];
@@ -50,7 +53,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   String _mid(Map m) => '${m['id'] ?? m['_id'] ?? ''}';
 
   Future<void> load() async {
-    setState(() => loading = true);
+    setState(() { loading = true; error = null; });
     try {
       final qp = <String, dynamic>{};
       if (from != null) qp['from'] = from!.toIso8601String().substring(0, 10);
@@ -64,6 +67,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
       if (!mounted) return;
       setState(() => data = res.data);
     } catch (_) {
+      if (mounted) {
+        setState(() => error = 'Could not load family analytics. Check your connection and retry.');
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -72,6 +78,32 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   Future<void> clearFilters() async {
     setState(() { selMembers = []; selModes = []; });
     await load();
+  }
+
+  Widget _dateField(String label, DateTime? value, bool isFrom) {
+    return OutlinedButton(
+      onPressed: () async {
+        final d = await showDatePicker(
+          context: context,
+          firstDate: DateTime(2020),
+          lastDate: DateTime(2030),
+          initialDate: value ?? DateTime.now(),
+        );
+        if (d != null) {
+          setState(() {
+            if (isFrom) {
+              from = d;
+            } else {
+              to = d;
+            }
+          });
+        }
+      },
+      child: Text(
+        value == null ? label : dateLabel(value),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
   }
 
   @override
@@ -91,57 +123,28 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'FAMILY DASHBOARD',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                          initialDate: from ?? DateTime.now(),
-                        );
-                        if (d != null) setState(() => from = d);
-                      },
-                      child: Text(
-                        from == null
-                            ? 'From'
-                            : from!.toIso8601String().substring(0, 10),
-                      ),
-                    ),
-                  ),
+              LayoutBuilder(builder: (context, constraints) {
+                final dates = Row(children: [
+                  Expanded(child: _dateField('From', from, true)),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        final d = await showDatePicker(
-                          context: context,
-                          firstDate: DateTime(2020),
-                          lastDate: DateTime(2030),
-                          initialDate: to ?? DateTime.now(),
-                        );
-                        if (d != null) setState(() => to = d);
-                      },
-                      child: Text(
-                        to == null
-                            ? 'To'
-                            : to!.toIso8601String().substring(0, 10),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _dateField('To', to, false)),
+                ]);
+                final apply = BrutalButton(label: 'Apply', onPressed: load);
+                if (constraints.maxWidth < 380) {
+                  return Column(children: [
+                    dates,
+                    const SizedBox(height: 8),
+                    SizedBox(width: double.infinity, child: apply),
+                  ]);
+                }
+                return Row(children: [
+                  Expanded(child: _dateField('From', from, true)),
                   const SizedBox(width: 8),
-                  BrutalButton(label: 'Apply', onPressed: load),
-                ],
-              ),
+                  Expanded(child: _dateField('To', to, false)),
+                  const SizedBox(width: 8),
+                  apply,
+                ]);
+              }),
               const SizedBox(height: 8),
               const Text('MEMBERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
@@ -205,30 +208,41 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
         ),
         const SizedBox(height: 12),
         if (loading)
-          const Center(child: CircularProgressIndicator())
-        else if (data == null)
           const BrutalCard(
-            child: Text('No data. Join a family and add transactions.'),
+            child: Row(children: [
+              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 3, color: FinStackColors.onSurface)),
+              SizedBox(width: 10),
+              Text('Loading analytics…', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            ]),
           )
+        else if (error != null)
+          BrutalCard(
+            color: FinStackColors.errorContainer,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(error!, style: const TextStyle(color: FinStackColors.onErrorContainer, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
+            ]),
+          )
+        else if (data == null)
+          const BrutalEmpty(message: 'No data yet. Join a family and add transactions.')
         else ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _Kpi(
+          LayoutBuilder(builder: (context, constraints) {
+            final cell = (constraints.maxWidth - 8) / 2;
+            return Wrap(spacing: 8, runSpacing: 8, children: [
+              SizedBox(width: cell, child: _Kpi(
                 label: 'Actual Spend',
-                value:
-                    '₹${((s?['actualExpenditurePaise'] ?? 0) / 100).toStringAsFixed(0)}',
-              ),
-              _Kpi(
+                value: inr(((s?['actualExpenditurePaise'] ?? 0) as num) / 100),
+              )),
+              SizedBox(width: cell, child: _Kpi(
                 label: 'Avg / day',
-                value: '₹${(data?['avgDaily'] ?? 0).toString()}',
-              ),
-              _Kpi(label: 'Total', value: '${data?['totalCount'] ?? 0} txns'),
+                value: inr((data?['avgDaily'] ?? 0) as num),
+              )),
+              SizedBox(width: cell, child: _Kpi(label: 'Total', value: '${data?['totalCount'] ?? 0} txns')),
               if (highestDay != null)
-                _Kpi(label: 'Highest', value: '${highestDay['date']}'),
-            ],
-          ),
+                SizedBox(width: cell, child: _Kpi(label: 'Highest', value: '${highestDay['date']}')),
+            ]);
+          }),
           const SizedBox(height: 12),
           BrutalCard(
             child: Column(
@@ -249,22 +263,21 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                         ),
                     ];
                     return SizedBox(
-                      height: 180,
+                      height: timeSeries.isEmpty ? 96 : 180,
                       child: timeSeries.isEmpty
                           ? const Center(child: Text('No spend in range'))
                           : LineChart(
                               LineChartData(
-                                gridData: const FlGridData(
+                                gridData: FlGridData(
                                   show: true,
                                   drawVerticalLine: false,
-                                ),
-                                borderData: FlBorderData(
-                                  show: true,
-                                  border: const Border(
-                                    bottom: BorderSide(width: 3),
-                                    left: BorderSide(width: 3),
+                                  getDrawingHorizontalLine: (v) => const FlLine(
+                                    color: FinStackColors.chartGrid,
+                                    strokeWidth: 1,
+                                    dashArray: [2, 6],
                                   ),
                                 ),
+                                borderData: FlBorderData(show: false),
                                 titlesData: FlTitlesData(
                                   show: true,
                                   bottomTitles: AxisTitles(
@@ -284,21 +297,44 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                       },
                                     ),
                                   ),
+                                  leftTitles: AxisTitles(
+                                    sideTitles: SideTitles(
+                                      showTitles: true,
+                                      reservedSize: 42,
+                                      getTitlesWidget: (v, meta) => Text(
+                                        compactInr(v),
+                                        style: const TextStyle(fontSize: 8),
+                                      ),
+                                    ),
+                                  ),
+                                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                                 ),
                                 lineBarsData: [
                                   LineChartBarData(
                                     spots: spots,
-                                    isCurved: false,
-                                    color: FinStackColors.onSurface,
-                                    barWidth: 3,
-                                    dotData: const FlDotData(show: true),
+                                    isCurved: true,
+                                    curveSmoothness: 0.28,
+                                    color: FinStackColors.chartTeal,
+                                    barWidth: 2,
+                                    isStrokeCapRound: true,
+                                    dotData: const FlDotData(show: false),
                                     belowBarData: BarAreaData(
                                       show: true,
-                                      color: FinStackColors.brandYellow,
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          FinStackColors.chartTeal.withValues(alpha: 0.30),
+                                          FinStackColors.chartTeal.withValues(alpha: 0.01),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
+                              duration: const Duration(milliseconds: 450),
+                              curve: Curves.easeOutCubic,
                             ),
                     );
                   },
@@ -317,13 +353,21 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
-                  height: 180,
+                  height: byCategory.isEmpty ? 72 : 180,
                   child: byCategory.isEmpty
                       ? const Center(child: Text('No data'))
                       : BarChart(
                           BarChartData(
-                            gridData: FlGridData(show: true),
-                            borderData: FlBorderData(show: true),
+                            gridData: FlGridData(
+                              show: true,
+                              drawVerticalLine: false,
+                              getDrawingHorizontalLine: (v) => const FlLine(
+                                color: FinStackColors.chartGrid,
+                                strokeWidth: 1,
+                                dashArray: [2, 6],
+                              ),
+                            ),
+                            borderData: FlBorderData(show: false),
                             titlesData: FlTitlesData(
                               bottomTitles: AxisTitles(
                                 sideTitles: SideTitles(
@@ -344,6 +388,18 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                   },
                                 ),
                               ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 42,
+                                  getTitlesWidget: (v, meta) => Text(
+                                    compactInr(v),
+                                    style: const TextStyle(fontSize: 8),
+                                  ),
+                                ),
+                              ),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             ),
                             barGroups: [
                               for (int i = 0; i < byCategory.length; i++)
@@ -353,13 +409,18 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                     BarChartRodData(
                                       toY: (byCategory[i]['spend'] as num)
                                           .toDouble(),
-                                      color: FinStackColors.onSurface,
-                                      width: 14,
+                                      width: 12,
+                                      color: FinStackColors.brandYellow,
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                                      borderSide: const BorderSide(
+                                          color: FinStackColors.onSurface, width: 1.5),
                                     ),
                                   ],
                                 ),
                             ],
                           ),
+                          duration: const Duration(milliseconds: 450),
+                          curve: Curves.easeOutCubic,
                         ),
                 ),
               ],
@@ -436,7 +497,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                           ),
                         ),
                         Text(
-                          '₹${v['spend']} ×${v['count']}',
+                          '${inr((v['spend'] as num?) ?? 0)} ×${v['count']}',
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ],

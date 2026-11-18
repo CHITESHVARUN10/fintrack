@@ -35,9 +35,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ApiClient.setBaseUrl(serverCtrl.text);
       if (!mounted) return;
       setState(() => serverCtrl.text = ApiClient.baseUrl);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
+          const SnackBar(content: Text('Could not save the server URL. Try again.')),
+        );
       }
     } finally {
       if (mounted) setState(() => saving = false);

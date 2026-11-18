@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
@@ -23,6 +24,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
   List items = [];
   Map summary = {};
   bool loading = true;
+  bool adding = false;
+  String? error;
   final amountCtrl = TextEditingController();
   String type = 'EXPENSE';
   String mode = 'UPI';
@@ -54,7 +57,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
   }
 
   Future<void> load() async {
-    setState(() => loading = true);
+    setState(() { loading = true; error = null; });
     try {
       final qp = <String, dynamic>{'familyView': familyView};
       if (fromDate != null) qp['from'] = _d(fromDate!);
@@ -68,8 +71,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
         items = res.data['items'] ?? res.data ?? [];
         summary = res.data['summary'] ?? {};
       });
-    } catch (e) {
-      /* ignore */
+    } catch (_) {
+      if (mounted) setState(() => error = 'Could not load transactions. Check your connection and retry.');
     }
     if (mounted) setState(() => loading = false);
   }
@@ -85,7 +88,13 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   Future<void> add() async {
     final paise = (double.tryParse(amountCtrl.text) ?? 0) * 100;
-    if (paise <= 0) return;
+    if (paise <= 0) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Enter an amount')));
+      return;
+    }
+    if (adding) return;
+    setState(() => adding = true);
     try {
       await ApiClient.dio.post('/transactions', data: {
         'amountPaise': paise.round(),
@@ -98,12 +107,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
       amountCtrl.clear();
       recipientCtrl.clear();
       await load();
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not add transaction. Check your connection.')),
         );
       }
+    } finally {
+      if (mounted) setState(() => adding = false);
     }
   }
 
@@ -214,10 +225,18 @@ class _TransactionsPageState extends State<TransactionsPage> {
         const SizedBox(height: 8),
         TextField(controller: recipientCtrl, decoration: const InputDecoration(hintText: 'Recipient (optional)')),
         const SizedBox(height: 8),
-        Align(alignment: Alignment.centerRight, child: BrutalButton(label: '+ Add', onPressed: add)),
+        Align(alignment: Alignment.centerRight, child: BrutalButton(label: adding ? 'Adding…' : '+ Add', onPressed: adding ? null : add)),
       ])),
       const SizedBox(height: 12),
       if (loading) const Center(child: CircularProgressIndicator())
+      else if (error != null) BrutalCard(
+        color: FinStackColors.errorContainer,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(error!, style: const TextStyle(color: FinStackColors.onErrorContainer, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
+        ]),
+      )
       else if (list.isEmpty) const BrutalCard(child: Text('No transactions yet.'))
       else ...list.map((t) => GestureDetector(
         onTap: () => showDetail(Map<String, dynamic>.from(t)),
@@ -233,7 +252,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
               Text('${t['mode'] ?? ''} · ${t['status'] ?? ''}', style: const TextStyle(fontSize: 10)),
             ])),
             const SizedBox(width: 8),
-            Text('₹${((t['amountPaise'] ?? 0) / 100).toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(inr(((t['amountPaise'] ?? 0) as num) / 100), style: const TextStyle(fontWeight: FontWeight.w700)),
           ]),
         ),
       )),
@@ -345,8 +364,6 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
           Text('UPI: ${tx['upiId'] ?? detail?['sources']?[0]?['upiId'] ?? '—'}', style: const TextStyle(fontSize: 12)),
           Text('UTR: ${tx['utr'] ?? detail?['sources']?[0]?['utr'] ?? '—'}', style: const TextStyle(fontSize: 12)),
           if (tx['subscriptionRef'] != null) Text('Subscription: ${tx['subscriptionRef'] is Map ? tx['subscriptionRef']['name'] : 'linked'}',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          if (tx['loanRef'] != null) Text('Loan: ${tx['loanRef'] is Map ? (tx['loanRef']['loanName'] ?? 'linked') : 'linked'}${tx['loanMeta']?['isPrepayment'] == true ? ' (Prepayment)' : ' (EMI)'}',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           Text('Sources: ${sources.length}', style: const TextStyle(fontSize: 11)),
         ])),

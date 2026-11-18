@@ -167,7 +167,7 @@ class _TaxPageState extends State<TaxPage> {
                   const Text('TAX-SAVING TIPS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
                   if (tips.isEmpty)
-                    const BrutalCard(child: Text('No specific tips yet — add investments, insurance or loans to get personalised suggestions.'))
+                    const BrutalCard(child: Text('No specific tips yet — add investments to get personalised suggestions.'))
                   else
                     ...tips.map((t) => Container(
                       margin: const EdgeInsets.only(bottom: 8),

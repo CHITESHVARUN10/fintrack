@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/format.dart';
 import '../widgets/brutal.dart';
+import '../widgets/states.dart';
 
 const _burnColors = [0xFFFFE500, 0xFF2EC4B6, 0xFFE8487F, 0xFF7B61FF, 0xFFFF7A45, 0xFFFFB347, 0xFF6BCB77, 0xFF4D96FF];
 
@@ -54,19 +56,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null || data == null) {
-      return ListView(padding: const EdgeInsets.all(16), children: [
-        BrutalCard(child: Text(error ?? 'No data.')),
-        const SizedBox(height: 8),
-        BrutalButton(label: 'Retry', onPressed: load),
-      ]);
+    if (loading) return const BrutalLoading(label: 'Loading dashboard…');
+    if (error != null) return BrutalError(message: error!, onRetry: load);
+    if (data == null) {
+      return const BrutalError(message: 'No dashboard data yet.', onRetry: null);
     }
     final d = data!;
     final catEntries = ((d['transactionCategoryEntries'] as List?)?.isNotEmpty == true)
         ? (d['transactionCategoryEntries'] as List).map((e) => {'label': '${e['label']}', 'value': (e['value'] as num).toDouble()}).toList()
         : ((d['monthlyBurnBreakdown'] as Map?)?.entries ?? []).map((e) => {'label': e.key, 'value': (e.value as num).toDouble()}).toList();
-    final burnEntries = catEntries.where((e) => (e['value'] as double) > 0).toList();
+    final burnEntries = catEntries.where((e) => (e['value'] as double) > 0).toList()
+      ..sort((a, b) => (b['value'] as double).compareTo(a['value'] as double));
     final burnTotal = burnEntries.fold<double>(0, (s, e) => s + (e['value'] as double));
     final maxBurn = burnEntries.fold<double>(1, (m, e) => (e['value'] as double) > m ? (e['value'] as double) : m);
     final normCats = normalizeTo100(burnEntries, burnTotal);
@@ -78,13 +78,11 @@ class _DashboardPageState extends State<DashboardPage> {
     final upcoming = (d['upcomingPayments'] as List?) ?? [];
     final burnMap = (d['monthlyBurnBreakdown'] as Map?) ?? {};
 
-    String money(num v) => '₹${v.toStringAsFixed(0)}';
+    String money(num v) => inr(v);
 
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('OVERVIEW', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 12),
         // Stat card grid — cell width derived from actual constraints
         // (replaces the (screenWidth - 48) / 2 magic number).
         Builder(builder: (context) {
@@ -103,7 +101,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const Text('From your transactions this month (individual)', style: TextStyle(fontSize: 10)),
           const SizedBox(height: 8),
           if (burnEntries.isEmpty) const Text('No transactions this month — import or add one.')
-          else ...burnEntries.map((e) {
+          else ...burnEntries.take(5).map((e) {
             final pct = maxBurn == 0 ? 0.0 : (e['value'] as double) / maxBurn;
             return Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Column(children: [
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -116,15 +114,29 @@ class _DashboardPageState extends State<DashboardPage> {
                 width: double.infinity,
                 decoration: BoxDecoration(border: Border.all(width: 2)),
                 child: LayoutBuilder(builder: (ctx, constraints) {
-                  final w = (constraints.maxWidth * pct).clamp(0.0, constraints.maxWidth).toDouble();
                   return Stack(children: [
                     Container(color: const Color(0xFFE9E2CF)),
-                    Container(width: w, color: Colors.black),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: pct.clamp(0.0, 1.0)),
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOutCubic,
+                      builder: (ctx, value, _) => FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: value,
+                        child: Container(color: Colors.black),
+                      ),
+                    ),
                   ]);
                 }),
               ),
             ]));
           }),
+          if (burnEntries.length > 5)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('+${burnEntries.length - 5} more categories',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+            ),
           const Divider(),
           Text('Actual Spend: ${money(d['transactionSpendThisMonth'] ?? d['adHocSpendThisMonth'] ?? 0)} · ${d['transactionCountThisMonth'] ?? 0} txns',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
@@ -181,9 +193,7 @@ class _DashboardPageState extends State<DashboardPage> {
           final days = due == null ? 99 : due.difference(DateTime.now()).inDays;
           final action = days <= 5 ? 'Pay Now' : 'Schedule';
           // Safe date display — never substring a raw/short string (RangeError).
-          final dueText = due != null
-              ? due.toIso8601String().substring(0, 10)
-              : 'unavailable';
+          final dueText = due != null ? dateLabel(due) : 'unavailable';
           return Container(margin: const EdgeInsets.only(bottom: 8), child: BrutalCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Expanded(child: Text('${p['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700))),

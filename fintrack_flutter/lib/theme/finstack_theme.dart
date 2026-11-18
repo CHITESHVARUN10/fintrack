@@ -13,6 +13,11 @@ class FinStackColors {
   static const errorContainer = Color(0xFFFFDAD6);
   static const onErrorContainer = Color(0xFF93000A);
   static const outlineVariant = Color(0xFFCEC7AA);
+  // Chart series aligned with the web chart kit.
+  static const chartTeal = Color(0xFF0E8F8B);
+  static const chartPink = Color(0xFFD43A6C);
+  static const chartAmber = Color(0xFFB58900);
+  static const chartGrid = Color(0x1A1E1C10);
 }
 
 BoxDecoration brutal({Color color = Colors.white, double border = 4, double shadow = 4}) =>
@@ -31,6 +36,15 @@ ThemeData finStackTheme() {
       bodyMedium: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: FinStackColors.onSurface),
     ),
     appBarTheme: const AppBarTheme(backgroundColor: Colors.white, elevation: 0, surfaceTintColor: Colors.transparent, foregroundColor: FinStackColors.onSurface, shape: Border(bottom: BorderSide(color: FinStackColors.onSurface, width: 3))),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: FinStackColors.onSurface,
+        side: const BorderSide(color: FinStackColors.onSurface, width: 2),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    ),
     elevatedButtonTheme: ElevatedButtonThemeData(style: ElevatedButton.styleFrom(backgroundColor: FinStackColors.brandYellow, foregroundColor: FinStackColors.onSurface, side: const BorderSide(color: FinStackColors.onSurface, width: 2), elevation: 2, shadowColor: FinStackColors.onSurface, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero), textStyle: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.8), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12))),
     inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.white, border: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.zero, borderSide: BorderSide(color: FinStackColors.onSurface, width: 2)), hintStyle: TextStyle(color: FinStackColors.onSurface.withValues(alpha: 0.6)), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
     dividerTheme: const DividerThemeData(color: FinStackColors.onSurface, thickness: 3, space: 1),
