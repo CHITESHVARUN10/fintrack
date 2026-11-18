@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
+import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
 /// Mirrors website Login.tsx + Register: same endpoints, same validation,
@@ -67,17 +68,36 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final authErr = ref.watch(authProvider).error;
     return Scaffold(
       appBar: AppBar(title: const Text('FINSTACK', style: TextStyle(fontWeight: FontWeight.w700)), centerTitle: false),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: BrutalCard(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const Text('FINSTACK', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-                Text(isLogin ? 'LOGIN' : 'CREATE ACCOUNT', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                const Text('Enter your credentials to continue.', style: TextStyle(fontSize: 12)),
-                const SizedBox(height: 16),
+      body: BrutalGrid(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: BrutalCard(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: FinStackColors.brandYellow,
+                        border: Border.all(color: FinStackColors.onSurface, width: 2),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text('F', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(child: Text('FINSTACK', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.8))),
+                    BrutalTag(
+                      label: isLogin ? 'Welcome back' : 'New account',
+                      color: isLogin ? FinStackColors.tertiary : FinStackColors.brandYellow,
+                    ),
+                  ]),
+                  const SizedBox(height: 10),
+                  Text(isLogin ? 'LOGIN' : 'CREATE ACCOUNT', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  const Text('Enter your credentials to continue.', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 16),
                 if ((error ?? authErr) != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -118,7 +138,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     }),
                   ),
                 ],
-              ]),
+                ]),
+              ),
             ),
           ),
         ),

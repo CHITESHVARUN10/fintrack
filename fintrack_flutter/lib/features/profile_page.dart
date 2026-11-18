@@ -148,8 +148,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
     if (family != null) {
       return BrutalCard(
+        color: FinStackColors.surfaceContainer,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('FAMILY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+          const BrutalSectionTitle(
+            title: 'Family',
+            accent: FinStackColors.tertiary,
+          ),
           const SizedBox(height: 4),
           Text(family!['name'] ?? 'Family',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
@@ -183,8 +187,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
     return BrutalCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('SET UP YOUR FAMILY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
+        const BrutalSectionTitle(
+          title: 'Set up your family',
+          accent: FinStackColors.brandYellow,
+        ),
+        const SizedBox(height: 8),
         const Text(
           'Create a household as admin, or join one with an invite code. A family is required for Import, Transactions and Budgets.',
           style: TextStyle(fontSize: 12),

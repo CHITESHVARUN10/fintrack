@@ -233,10 +233,12 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
               SizedBox(width: cell, child: _Kpi(
                 label: 'Actual Spend',
                 value: inr(((s?['actualExpenditurePaise'] ?? 0) as num) / 100),
+                color: FinStackColors.brandYellow,
               )),
               SizedBox(width: cell, child: _Kpi(
                 label: 'Avg / day',
                 value: inr((data?['avgDaily'] ?? 0) as num),
+                color: FinStackColors.tertiary,
               )),
               SizedBox(width: cell, child: _Kpi(label: 'Total', value: '${data?['totalCount'] ?? 0} txns')),
               if (highestDay != null)
@@ -248,9 +250,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'SPEND OVER TIME',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                const BrutalSectionTitle(
+                  title: 'Spend over time',
+                  accent: FinStackColors.chartTeal,
                 ),
                 const SizedBox(height: 12),
                 Builder(
@@ -347,9 +349,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'BY CATEGORY',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                const BrutalSectionTitle(
+                  title: 'By category',
+                  accent: FinStackColors.accentPink,
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -431,9 +433,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'BY MEMBER',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                const BrutalSectionTitle(
+                  title: 'By member',
+                  accent: FinStackColors.tertiary,
                 ),
                 const SizedBox(height: 8),
                 ...byMember.map(
@@ -469,9 +471,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'TOP VENDORS',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                const BrutalSectionTitle(
+                  title: 'Top vendors',
+                  accent: FinStackColors.accentOrange,
                 ),
                 const SizedBox(height: 8),
                 ...topVendors.map(
@@ -513,9 +515,9 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'DAILY HEATMAP',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                const BrutalSectionTitle(
+                  title: 'Daily heatmap',
+                  accent: FinStackColors.brandYellow,
                 ),
                 const SizedBox(height: 8),
                 GridView.builder(
@@ -583,10 +585,11 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
 class _Kpi extends StatelessWidget {
   final String label;
   final String value;
-  const _Kpi({required this.label, required this.value});
+  final Color color;
+  const _Kpi({required this.label, required this.value, this.color = Colors.white});
   @override
   Widget build(BuildContext context) => Container(
-    decoration: brutal(border: 2, shadow: 2),
+    decoration: brutal(color: color, border: 2, shadow: 3),
     padding: const EdgeInsets.all(10),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,

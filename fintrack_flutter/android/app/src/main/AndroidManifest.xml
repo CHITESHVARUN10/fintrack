@@ -2,6 +2,9 @@
     <!-- Required for the app to reach its API host; previously only declared
          in the debug manifest, so release builds had no network at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- QR scanning for UPI payments. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="FinStack"
         android:name="${applicationName}"
@@ -43,6 +46,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Visibility of installed UPI apps for the payment chooser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="upi"/>
         </intent>
     </queries>
 </manifest>

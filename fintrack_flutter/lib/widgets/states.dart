@@ -15,27 +15,44 @@ class BrutalLoading extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         Row(children: [
-          const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 3, color: FinStackColors.onSurface),
+          Container(
+            width: 8,
+            height: 18,
+            color: FinStackColors.brandYellow,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
           ),
           const SizedBox(width: 10),
-          Text(label.toUpperCase(),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: FinStackColors.onSurface,
+            ),
+          ),
         ]),
         const SizedBox(height: 12),
         for (var i = 0; i < cards; i++)
           Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(16),
-            decoration: brutal(color: Colors.white, border: 2, shadow: 3),
+            decoration: brutal(color: Colors.white, border: 3, shadow: 4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(width: 120, height: 10, color: FinStackColors.surfaceHigh),
+              Container(width: 120, height: 10, color: FinStackColors.brandYellow),
               const SizedBox(height: 10),
-              Container(width: double.infinity, height: 8, color: FinStackColors.surfaceContainer),
+              Container(width: double.infinity, height: 8, color: FinStackColors.surfaceHigh),
               const SizedBox(height: 6),
               Container(width: 220, height: 8, color: FinStackColors.surfaceContainer),
+              const SizedBox(height: 10),
+              Container(width: 90, height: 8, color: FinStackColors.surfaceHigh),
             ]),
           ),
       ],
@@ -55,13 +72,20 @@ class BrutalError extends StatelessWidget {
       children: [
         BrutalCard(
           color: FinStackColors.errorContainer,
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.error_outline, color: FinStackColors.onErrorContainer),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(message,
-                  style: const TextStyle(
-                      color: FinStackColors.onErrorContainer, fontWeight: FontWeight.w700)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const BrutalTag(
+              label: 'Something broke',
+              color: FinStackColors.onErrorContainer,
+              textColor: Colors.white,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              style: const TextStyle(
+                color: FinStackColors.onErrorContainer,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
           ]),
         ),
@@ -89,15 +113,32 @@ class BrutalEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     return BrutalCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: FinStackColors.brandYellow,
+              border: Border.all(color: FinStackColors.onSurface, width: 2),
+            ),
+            child: Icon(icon, size: 20),
+          ),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(message,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
           ),
         ]),
-        if (action != null) ...[const SizedBox(height: 10), action!],
+        if (action != null) ...[const SizedBox(height: 12), action!],
       ]),
     );
   }

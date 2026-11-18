@@ -61,6 +61,15 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>FinStack uses your photo library to pick bank-statement screenshots for import.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>FinStack uses the camera to capture bank-statement screenshots for import.</string>
+	<string>FinStack uses the camera to scan UPI payment QR codes and to capture bank-statement screenshots for import.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>upi</string>
+		<string>tez</string>
+		<string>gpay</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>bhim</string>
+	</array>
 </dict>
 </plist>
