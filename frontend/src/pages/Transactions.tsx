@@ -24,6 +24,15 @@ const STATUS_STYLES: Record<string, string> = {
   PENDING_REVIEW: 'bg-brand-yellow',
   VOIDED: 'bg-surface-variant text-on-surface-variant',
 }
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL: 'Manual entry',
+  QR_SCAN: 'QR scan',
+  BANK_STATEMENT: 'Bank statement',
+  SCREENSHOT: 'Screenshot',
+  SHARE: 'Share',
+  TELEGRAM: 'Telegram',
+  WHATSAPP: 'WhatsApp',
+}
 const TYPE_STYLES: Record<string, string> = {
   EXPENSE: 'bg-error-container text-on-error-container',
   INCOME: 'bg-tertiary-container text-on-tertiary-container',
@@ -737,7 +746,7 @@ export function Transactions() {
                 <div className="flex flex-col gap-xs">
                   {(detail.sources || []).map((s) => (
                     <div key={s._id} className="brutal-thin p-sm bg-surface-container-low text-xs">
-                      <div className="font-bold">{s.source} — {new Date(s.createdAt || '').toLocaleString('en-IN')}</div>
+                      <div className="font-bold">{SOURCE_LABELS[s.source] ?? s.source} — {new Date(s.createdAt || '').toLocaleString('en-IN')}</div>
                       {s.utr && <div>UTR: {s.utr}</div>}
                       {s.upiId && <div>UPI: {s.upiId}</div>}
                       {s.transactionIdExt && <div>TxnId: {s.transactionIdExt}</div>}

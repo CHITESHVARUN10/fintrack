@@ -51,7 +51,7 @@ export interface TransactionCategory {
 
 export type TxType = 'EXPENSE' | 'INCOME' | 'INTERNAL_TRANSFER' | 'CASH_WITHDRAWAL' | 'CASH_EXPENSE'
 export type TxMode = 'UPI' | 'BANK' | 'CASH' | 'CARD' | 'OTHER'
-export type TxSource = 'MANUAL' | 'BANK_STATEMENT' | 'SCREENSHOT' | 'SHARE' | 'TELEGRAM' | 'WHATSAPP'
+export type TxSource = 'MANUAL' | 'QR_SCAN' | 'BANK_STATEMENT' | 'SCREENSHOT' | 'SHARE' | 'TELEGRAM' | 'WHATSAPP'
 export type TxStatus = 'ACTIVE' | 'PENDING_REVIEW' | 'RECONCILED' | 'VOIDED'
 
 export interface CanonicalTransaction {

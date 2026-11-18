@@ -55,20 +55,36 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     }
   }
 
-  // Search recent candidates for reconciliation
+  // Search recent candidates for reconciliation. This is family-wide: a QR
+  // payment can be made by one member and the bank CSV imported by another.
+  // Other members' PRIVATE transactions stay invisible.
   const windowFrom = new Date(new Date(candidate.occurredAt).getTime() - 2*86400000);
   const windowTo = new Date(new Date(candidate.occurredAt).getTime() + 2*86400000);
-  const recent = await Transaction.find({ familyId, createdBy, type: candidate.type, amountPaise: candidate.amountPaise, occurredAt: { $gte: windowFrom, $lte: windowTo }, status: { $ne: 'VOIDED' } }).lean();
+  const recent = await Transaction.find({
+    familyId,
+    type: candidate.type,
+    amountPaise: candidate.amountPaise,
+    occurredAt: { $gte: windowFrom, $lte: windowTo },
+    status: { $ne: 'VOIDED' },
+    $or: [{ createdBy }, { visibility: { $ne: 'PRIVATE' } }],
+  }).lean();
   // SourceRecord has no occurredAt — pull signals by the matching
   // transactions' ids instead (the old query could never match anything,
   // which silently disabled UPI/UTR reconciliation for every import).
   const sourceRecents = recent.length
     ? await SourceRecord.find({ familyId, transactionId: { $in: recent.map((t) => t._id) } }).lean().catch(() => [])
     : [];
-  // Merge signals: map transaction id → upi/utr/tx
+  // Merge signals across every source attached to a transaction: a QR source
+  // may carry the UPI and a later bank row the UTR, and both are useful.
   const txSignals = new Map();
   for (const sr of sourceRecents) {
-    if (!txSignals.has(String(sr.transactionId))) txSignals.set(String(sr.transactionId), { upi: sr.upiId, utr: sr.utr, _extTx: sr.transactionIdExt });
+    const id = String(sr.transactionId);
+    const prior = txSignals.get(id) || {};
+    txSignals.set(id, {
+      upi: sr.upiId || prior.upi,
+      utr: sr.utr || prior.utr,
+      _extTx: sr.transactionIdExt || prior._extTx,
+    });
   }
 
   let best = null; let bestScore = 0; let bestLevel = 'NONE';
@@ -82,7 +98,11 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
 
   if (decision === 'AUTO' && best) {
     const sr = await SourceRecord.create({ transactionId: best._id, familyId, createdBy, source, rawPayload, parsedFields: candidate, batchId, fingerprint: fp, upiId: candidate.upiId, transactionIdExt: candidate.transactionIdExt, utr: candidate.utr, confidence: bestScore });
-    await Transaction.findByIdAndUpdate(best._id, { $addToSet: { sourceIds: sr._id }, confidence: bestScore, status: 'RECONCILED' });
+    const mergedMetadata = { ...(best.metadata || {}), ...(candidate.metadata || {}) };
+    if (best.metadata?.origin === 'QR_SCAN' || candidate.metadata?.origin === 'QR_SCAN') mergedMetadata.origin = 'QR_SCAN';
+    if (best.metadata?.timePrecision === 'minute' && candidate.metadata?.timePrecision === 'day') mergedMetadata.timePrecision = 'minute';
+    mergedMetadata.reconciledAt = new Date().toISOString();
+    await Transaction.findByIdAndUpdate(best._id, { $addToSet: { sourceIds: sr._id }, confidence: bestScore, status: 'RECONCILED', metadata: mergedMetadata });
     try{
       const rVk = normalizeVendorKey(candidate.recipient?.name||'', candidate.upiId||candidate.recipient?.upiId||'');
       const rUpi = candidate.upiId||candidate.recipient?.upiId||null;

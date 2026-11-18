@@ -125,6 +125,130 @@ test('date-only bank rows are never treated as same-minute payments', () => {
   const dayOnly = { ...candidate, metadata: { timePrecision: 'day' } };
   assert.notEqual(classifyConfidence(scoreCandidate(dayOnly, dayOnly).confidence), 'AUTO');
 });
+test('an app-scanned UPI payment matches the later bank narration', () => {
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'UPI/DR/416123456789/CHAI WALA/YESB/chai.wala@paytm/Payment' },
+    upiId: 'chai.wala@paytm',
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  const scored = scoreCandidate(bank, appTx);
+  assert.equal(scored.level, 'APP_UPI_AMOUNT_DATE');
+  assert.equal(classifyConfidence(scored.confidence), 'AUTO');
+});
+test('a QR payment still matches a bank row with no payee name in the narration', () => {
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'UPI/DR/416123456789' },
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  const scored = scoreCandidate(bank, appTx);
+  assert.equal(scored.level, 'APP_AMOUNT_DATE');
+  assert.equal(classifyConfidence(scored.confidence), 'AUTO');
+});
+test('a QR payment does not absorb a different merchant with the same amount', () => {
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'UPI/DR/416123456789/CORNER STORE/YESB' },
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  assert.equal(scoreCandidate(bank, appTx).confidence, 0);
+});
+test('a QR payment survives a bank-reference vs UPI-UTR mismatch when the payee is the same', () => {
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    utr: '416123456789',
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'UPI/DR/CHAI WALA/YESB' },
+    upiId: 'chai.wala@paytm',
+    utr: 'BANKREF9988',
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  assert.equal(classifyConfidence(scoreCandidate(bank, appTx).confidence), 'AUTO');
+});
+test('a QR merchant reference does not block a matching bank transaction id', () => {
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    transactionIdExt: 'QR-MERCHANT-REF',
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'CHAI WALA', upiId: 'chai.wala@paytm' },
+    transactionIdExt: 'BANK-TXN-999',
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  assert.equal(classifyConfidence(scoreCandidate(bank, appTx).confidence), 'AUTO');
+});
+test('a QR payment reconciles onto a bank row imported earlier', () => {
+  const bank = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T12:00:00Z',
+    mode: 'BANK',
+    recipient: { name: 'UPI/DR/CHAI WALA/YESB', upiId: 'chai.wala@paytm' },
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+  };
+  const appTx = {
+    type: 'EXPENSE',
+    amountPaise: 12000,
+    occurredAt: '2026-11-18T10:05:00Z',
+    mode: 'UPI',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  assert.equal(classifyConfidence(scoreCandidate(appTx, bank).confidence), 'AUTO');
+});
 test('ingest persists accepted references and split amounts', async t => {
   t.mock.method(SourceRecord, 'findOne', () => ({ lean: async () => null, then: resolve => Promise.resolve(null).then(resolve) }));
   t.mock.method(Transaction, 'find', () => ({ lean: async () => [] }));
@@ -135,6 +259,49 @@ test('ingest persists accepted references and split amounts', async t => {
   await ingest({ ...candidate, recipient: undefined, category: 'Food', subscriptionRef, categorySplit: [{ category: 'Food', amountPaise: 10000 }] }, { familyId: bob.familyAccountId, createdBy: bob._id, source: 'MANUAL' });
   const stored = create.mock.calls[0].arguments[0];
   assert.equal(stored.subscriptionRef, subscriptionRef); assert.equal(stored.categorySplit[0].amountPaise, 10000);
+});
+test('ingest links an imported bank row to an app QR payment instead of duplicating it', async t => {
+  t.mock.method(SourceRecord, 'findOne', () => ({ lean: async () => null, then: resolve => Promise.resolve(null).then(resolve) }));
+  const qrId = id();
+  const qr = {
+    _id: qrId,
+    familyId: alice.familyAccountId,
+    createdBy: bob._id,
+    type: 'EXPENSE',
+    mode: 'UPI',
+    amountPaise: 12000,
+    occurredAt: new Date('2026-11-18T10:05:00Z'),
+    status: 'ACTIVE',
+    recipient: { name: 'Chai Wala', upiId: 'chai.wala@paytm' },
+    metadata: { origin: 'QR_SCAN', timePrecision: 'minute' },
+  };
+  t.mock.method(Transaction, 'find', () => ({ lean: async () => [qr] }));
+  t.mock.method(SourceRecord, 'find', () => ({ lean: async () => [{ transactionId: qrId, upiId: 'chai.wala@paytm' }] }));
+  const sourceCreate = t.mock.method(SourceRecord, 'create', async fields => ({ ...fields, _id: id() }));
+  const update = t.mock.method(Transaction, 'findByIdAndUpdate', async () => ({}));
+  const txCreate = t.mock.method(Transaction, 'create', async () => assert.fail('must not create a duplicate transaction'));
+  t.mock.method(Transaction, 'findById', async () => ({ ...qr, status: 'RECONCILED' }));
+  const { ingest } = require('../services/transactionEngine.service');
+  const bank = {
+    amountPaise: 12000,
+    occurredAt: new Date('2026-11-18T12:00:00Z'),
+    type: 'EXPENSE',
+    mode: 'BANK',
+    category: 'Other',
+    recipient: { name: 'UPI/DR/416123456789/CHAI WALA/YESB' },
+    utr: '416123456789',
+    metadata: { timePrecision: 'day', channel: 'UPI' },
+    visibility: 'PRIVATE',
+  };
+  const result = await ingest(bank, { familyId: alice.familyAccountId, createdBy: bob._id, source: 'BANK_STATEMENT', batchId: 'batch-1' });
+  assert.equal(result.reconciled, true);
+  assert.equal(result.transaction._id, qrId);
+  assert.equal(sourceCreate.mock.callCount(), 1);
+  assert.equal(update.mock.callCount(), 1);
+  assert.equal(txCreate.mock.callCount(), 0);
+  const updateArgs = update.mock.calls[0].arguments;
+  assert.equal(updateArgs[1].status, 'RECONCILED');
+  assert.equal(updateArgs[1].metadata.origin, 'QR_SCAN');
 });
 test('legacy membership upgrade never restores an existing revoked membership', async t => {
   t.mock.method(Membership, 'exists', async () => ({ _id: id() }));

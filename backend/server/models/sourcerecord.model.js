@@ -5,7 +5,7 @@ const sourceRecordSchema = new mongoose.Schema(
     transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' },
     familyId: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilyAccount' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    source: { type: String, enum: ['MANUAL','BANK_STATEMENT','SCREENSHOT','SHARE','TELEGRAM','WHATSAPP'], required: true },
+    source: { type: String, enum: ['MANUAL','QR_SCAN','BANK_STATEMENT','SCREENSHOT','SHARE','TELEGRAM','WHATSAPP'], required: true },
     rawPayload: { type: mongoose.Schema.Types.Mixed },
     parsedFields: { type: mongoose.Schema.Types.Mixed },
     fileRef: { type: String },

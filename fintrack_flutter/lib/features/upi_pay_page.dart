@@ -48,6 +48,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   bool _opening = false;
   bool _saving = false;
   bool _saved = false;
+  bool _savedMatched = false;
   bool _needsFamily = false;
   bool _awaitingPayment = false;
   bool _sawPause = false;
@@ -362,9 +363,10 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       },
       'upiId': widget.request.payeeVpa,
       'visibility': 'FAMILY',
+      'origin': 'QR_SCAN',
       if (product.isNotEmpty) 'productName': product,
       if (widget.request.txnRef != null && widget.request.txnRef!.isNotEmpty)
-        'transactionIdExt': widget.request.txnRef,
+        'metadata': {'qrRef': widget.request.txnRef},
       if (_utrCtrl.text.trim().isNotEmpty) 'utr': _utrCtrl.text.trim(),
     };
     try {
@@ -372,9 +374,11 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       if (!mounted) return;
       final body = res.data;
       final txn = body is Map ? (body['transaction'] ?? body) : body;
+      final matched = body is Map && body['reconciled'] == true;
       setState(() {
         _saving = false;
         _saved = true;
+        _savedMatched = matched;
         _savedTxn = txn is Map ? Map<String, dynamic>.from(txn) : null;
       });
     } on DioException catch (e) {
@@ -685,6 +689,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     final savedCategory = '${_savedTxn?['category'] ?? _selectedCategory}';
     final status = '${_savedTxn?['status'] ?? ''}';
     final needsReview = status == 'PENDING_REVIEW';
+    final matched = _savedMatched || status == 'RECONCILED';
     return Scaffold(
       appBar: AppBar(
         title: const Text('PAYMENT SAVED'),
@@ -715,8 +720,12 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                     ),
                   ),
                   BrutalTag(
-                    label: needsReview ? 'Needs review' : 'Saved',
-                    color: needsReview ? FinStackColors.errorContainer : Colors.white,
+                    label: needsReview ? 'Needs review' : matched ? 'Matched' : 'Saved',
+                    color: needsReview
+                        ? FinStackColors.errorContainer
+                        : matched
+                            ? FinStackColors.tertiary
+                            : Colors.white,
                   ),
                 ]),
                 const SizedBox(height: 12),
@@ -753,6 +762,24 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 if (_utrCtrl.text.trim().isNotEmpty)
                   _SavedRow(label: 'UTR', value: _utrCtrl.text.trim()),
                 const _SavedRow(label: 'Mode', value: 'UPI'),
+                if (matched) ...[
+                  const _SavedRow(
+                    label: 'Bank import',
+                    value: 'Linked to an existing bank row',
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: FinStackColors.surfaceContainer,
+                      border: Border.all(color: FinStackColors.onSurface, width: 2),
+                    ),
+                    child: const Text(
+                      'This payment matched an existing imported bank row. FinStack linked the two entries instead of adding a duplicate.',
+                      style: TextStyle(fontSize: 11, height: 1.35),
+                    ),
+                  ),
+                ],
                 if (needsReview) ...[
                   const SizedBox(height: 8),
                   const Text(

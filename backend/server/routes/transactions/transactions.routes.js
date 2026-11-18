@@ -205,6 +205,8 @@ router.get('/duplicate-groups', async (req, res, next) => {
         familyTransfer: Joi.object({ fromUserId: Joi.string().allow(null), toUserId: Joi.string().required() }).allow(null),
         cashLeg: Joi.object({ from: Joi.string().valid('BANK','CASH'), to: Joi.string().valid('BANK','CASH') }).allow(null),
         visibility: Joi.string().valid('FAMILY','PRIVATE').default('FAMILY'),
+        origin: Joi.string().valid('MANUAL','QR_SCAN').default('MANUAL'),
+        metadata: Joi.object().unknown(true).allow(null),
         upiId: Joi.string().allow('', null),
         transactionIdExt: Joi.string().allow('', null),
         utr: Joi.string().allow('', null),
@@ -221,11 +223,20 @@ router.get('/duplicate-groups', async (req, res, next) => {
       const member = await require('../../models/user.model').exists({ _id: value.familyTransfer.toUserId, familyAccountId: req.user.familyAccountId, isActive: true });
       if (!member || String(value.familyTransfer.toUserId) === String(req.user._id)) return res.status(400).json({ error: 'Choose another active member of your family' });
     }
-    const candidate = { ...value, occurredAt: new Date(value.occurredAt) };
+    const origin = value.origin || 'MANUAL';
+    const candidate = {
+      ...value,
+      occurredAt: new Date(value.occurredAt),
+      metadata: {
+        ...(value.metadata || {}),
+        origin,
+        ...(origin === 'QR_SCAN' ? { timePrecision: 'minute' } : {}),
+      },
+    };
     if (candidate.type==='INTERNAL_TRANSFER' && candidate.familyTransfer?.toUserId) {
       candidate.familyTransfer.fromUserId = req.user._id;
     }
-    const result = await ingest(candidate, { familyId: req.user.familyAccountId, createdBy: req.user._id, source: 'MANUAL', rawPayload: req.body });
+    const result = await ingest(candidate, { familyId: req.user.familyAccountId, createdBy: req.user._id, source: origin, rawPayload: req.body });
     res.status(201).json(result);
   } catch (err) { next(err); }
 });

@@ -136,15 +136,17 @@ function parseCSV(buffer) {
     const chqRef = chqIdx !== -1 ? (cols[chqIdx] || '').trim() : '';
     const upiCell = upiIdx !== -1 ? (cols[upiIdx] || '').trim() : '';
     const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
+    const linkedUpi = upiCell || upiFromDesc;
+    const channel = linkedUpi || /\bupi\b/i.test(description) ? 'UPI' : 'BANK';
     rows.push({
       occurredAt,
       amountPaise: Math.round(amount * 100),
       type,
       mode: 'BANK',
-      recipient: description ? { name: description } : undefined,
+      recipient: description ? { name: description, upiId: linkedUpi || undefined } : undefined,
       utr: chqRef || undefined,
-      upiId: upiCell || upiFromDesc || undefined,
-      metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(cols[dateIdx])) ? 'minute' : 'day' },
+      upiId: linkedUpi || undefined,
+      metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(cols[dateIdx])) ? 'minute' : 'day', channel },
       rawPayload: { line, rowNumber: i + 1 },
     });
   }
@@ -224,7 +226,9 @@ async function parseXLSX(buffer) {
           const chqRef = chqIdx !== -1 ? String(cols[chqIdx] || '').trim() : '';
           const upiCell = upiIdx !== -1 ? String(cols[upiIdx] || '').trim() : '';
           const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
-          rows.push({ occurredAt, metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(dateRaw)) ? 'minute' : 'day' }, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: n } });
+          const linkedUpi = upiCell || upiFromDesc;
+          const channel = linkedUpi || /\bupi\b/i.test(description) ? 'UPI' : 'BANK';
+          rows.push({ occurredAt, metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(dateRaw)) ? 'minute' : 'day', channel }, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description, upiId: linkedUpi || undefined } : undefined, utr: chqRef || undefined, upiId: linkedUpi || undefined, rawPayload: { row: n } });
         });
         if (rows.length) return rows;
       }
@@ -305,7 +309,9 @@ async function parseXLSX(buffer) {
       const chqRef = chqIdx !== -1 ? String(cols[chqIdx] || '').trim() : '';
       const upiCell = upiIdx !== -1 ? String(cols[upiIdx] || '').trim() : '';
       const upiFromDesc = description.match(/[A-Z0-9._-]+@[a-z]+/i)?.[0];
-      out.push({ occurredAt, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description } : undefined, utr: chqRef || undefined, upiId: upiCell || upiFromDesc || undefined, rawPayload: { row: i + 1 } });
+      const linkedUpi = upiCell || upiFromDesc;
+      const channel = linkedUpi || /\bupi\b/i.test(description) ? 'UPI' : 'BANK';
+      out.push({ occurredAt, metadata: { timePrecision: /\d{1,2}:\d{2}/.test(String(dateRaw)) ? 'minute' : 'day', channel }, amountPaise: Math.round(amount * 100), type, mode: 'BANK', recipient: description ? { name: description, upiId: linkedUpi || undefined } : undefined, utr: chqRef || undefined, upiId: linkedUpi || undefined, rawPayload: { row: i + 1 } });
     }
     if (out.length) return out;
   } catch (e2) {
