@@ -86,6 +86,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await ApiClient.dio.post('/auth/logout');
     } catch (_) {}
+    await ApiClient.clearCookies();
     state = const AuthState(loading: false);
   }
 

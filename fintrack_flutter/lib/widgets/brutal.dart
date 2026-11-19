@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import '../theme/finstack_theme.dart';
 
+/// Closes the keyboard before navigation or a network action. Numeric pads on
+/// iOS have no return key, so every action that leaves the field must do this.
+void dismissKeyboard(BuildContext context) {
+  FocusManager.instance.primaryFocus?.unfocus();
+  FocusScope.of(context).unfocus();
+}
+
 class BrutalCard extends StatelessWidget {
   final Widget child;
   final Color color;
@@ -17,10 +24,10 @@ class BrutalCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Container(
-        decoration: brutal(color: color, border: border, shadow: shadow),
-        padding: padding,
-        child: child,
-      );
+    decoration: brutal(color: color, border: border, shadow: shadow),
+    padding: padding,
+    child: child,
+  );
 }
 
 /// Pressable, hard-shadow button. Replaces Material's soft elevation with the
@@ -88,7 +95,7 @@ class _BrutalButtonState extends State<BrutalButton> {
                         color: FinStackColors.onSurface,
                         offset: Offset(widget.shadow, widget.shadow),
                         blurRadius: 0,
-                      )
+                      ),
                     ]
                   : const [],
             ),
@@ -159,7 +166,7 @@ class BrutalIconButton extends StatelessWidget {
                   color: FinStackColors.onSurface,
                   offset: Offset(2, 2),
                   blurRadius: 0,
-                )
+                ),
               ],
             ),
             child: Icon(icon, size: size * 0.5),
@@ -181,8 +188,13 @@ class BrutalField extends StatelessWidget {
   final String? suffixText;
   final int maxLines;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final bool enabled;
   final TextCapitalization textCapitalization;
+  final Iterable<String>? autofillHints;
+  final bool enableSuggestions;
+  final bool autocorrect;
+  final Widget? suffixIcon;
   const BrutalField({
     super.key,
     required this.label,
@@ -195,46 +207,56 @@ class BrutalField extends StatelessWidget {
     this.suffixText,
     this.maxLines = 1,
     this.onChanged,
+    this.onSubmitted,
     this.enabled = true,
     this.textCapitalization = TextCapitalization.none,
+    this.autofillHints,
+    this.enableSuggestions = true,
+    this.autocorrect = true,
+    this.suffixIcon,
   });
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.1,
-              color: FinStackColors.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: controller,
-            obscureText: obscure,
-            enabled: enabled,
-            keyboardType: keyboardType,
-            textInputAction: textInputAction,
-            maxLines: obscure ? 1 : maxLines,
-            onChanged: onChanged,
-            textCapitalization: textCapitalization,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: FinStackColors.onSurface,
-            ),
-            decoration: InputDecoration(
-              hintText: hint,
-              prefixText: prefixText,
-              suffixText: suffixText,
-            ),
-          ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.1,
+          color: FinStackColors.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 6),
+      TextField(
+        controller: controller,
+        obscureText: obscure,
+        enabled: enabled,
+        keyboardType: keyboardType,
+        textInputAction: textInputAction,
+        maxLines: obscure ? 1 : maxLines,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        textCapitalization: textCapitalization,
+        autofillHints: autofillHints,
+        enableSuggestions: enableSuggestions,
+        autocorrect: autocorrect,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: FinStackColors.onSurface,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixText: prefixText,
+          suffixText: suffixText,
+          suffixIcon: suffixIcon,
+        ),
+      ),
+    ],
+  );
 }
 
 class BrutalTag extends StatelessWidget {
@@ -252,30 +274,30 @@ class BrutalTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: FinStackColors.onSurface, width: 1.5),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: FinStackColors.onSurface, width: 1.5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 11, color: textColor),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.7,
+            color: textColor,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 11, color: textColor),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              label.toUpperCase(),
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.7,
-                color: textColor,
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 class BrutalSectionTitle extends StatelessWidget {
@@ -293,42 +315,42 @@ class BrutalSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
         children: [
-          Row(
-            children: [
-              Container(width: 8, height: 18, color: accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.1,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+          Container(width: 8, height: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.1,
               ),
-              if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-            ],
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 3),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Text(
-                subtitle!,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: FinStackColors.onSurfaceVariant,
-                ),
-              ),
+              overflow: TextOverflow.ellipsis,
             ),
-          ],
+          ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
-      );
+      ),
+      if (subtitle != null) ...[
+        const SizedBox(height: 3),
+        Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Text(
+            subtitle!,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: FinStackColors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    ],
+  );
 }
 
 /// Faint 24px planning grid — the site's `.bg-grid-pattern`.
@@ -369,4 +391,106 @@ class _GridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GridPainter oldDelegate) =>
       oldDelegate.color != color;
+}
+
+class BrutalNavItem {
+  final String label;
+  final IconData icon;
+  const BrutalNavItem(this.label, this.icon);
+}
+
+/// iOS-style bottom navigation in the FinStack neo-brutalist language: hard
+/// ink border on top, yellow block for the active destination, and an optional
+/// raised centre action.
+class BrutalBottomNav extends StatelessWidget {
+  final int index;
+  final List<BrutalNavItem> items;
+  final int? actionIndex;
+  final ValueChanged<int> onTap;
+  const BrutalBottomNav({
+    super.key,
+    required this.index,
+    required this.items,
+    required this.onTap,
+    this.actionIndex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: FinStackColors.onSurface, width: 3),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              for (var i = 0; i < items.length; i++) Expanded(child: _item(i)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _item(int i) {
+    final item = items[i];
+    final active = i == index;
+    final isAction = i == actionIndex;
+    return Semantics(
+      button: true,
+      selected: active,
+      label: item.label,
+      child: InkWell(
+        onTap: () => onTap(i),
+        splashColor: FinStackColors.brandYellow.withValues(alpha: 0.35),
+        highlightColor: Colors.transparent,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isAction)
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: FinStackColors.brandYellow,
+                  border: Border.all(color: FinStackColors.onSurface, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: FinStackColors.onSurface,
+                      offset: Offset(2, 2),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Icon(item.icon, size: 21),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                color: active ? FinStackColors.brandYellow : Colors.transparent,
+                child: Icon(item.icon, size: 21),
+              ),
+            const SizedBox(height: 3),
+            Text(
+              item.label.toUpperCase(),
+              style: TextStyle(
+                fontSize: 8.5,
+                fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                letterSpacing: 0.3,
+                color: active
+                    ? FinStackColors.onSurface
+                    : FinStackColors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

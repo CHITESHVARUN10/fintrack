@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../widgets/brutal.dart';
+import '../widgets/states.dart';
 
 String _date10(dynamic v) {
   final s = '$v';
@@ -86,9 +87,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const BrutalLoading(label: 'Loading notifications', cards: 3)
           : error != null
-              ? Center(child: BrutalCard(child: Text(error!)))
+              ? BrutalError(message: error!, onRetry: load)
               : ListView(padding: const EdgeInsets.all(16), children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     Expanded(child: Text('NOTIFICATIONS\nYou have $unreadCount unread alerts.', style: const TextStyle(fontSize: 12))),

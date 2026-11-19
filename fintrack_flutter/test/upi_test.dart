@@ -21,8 +21,7 @@ void main() {
     });
 
     test('leaves amount empty when the QR has none', () {
-      final parsed =
-          parseUpiQr('upi://pay?pa=shop@ybl&pn=Shop&cu=INR');
+      final parsed = parseUpiQr('upi://pay?pa=shop@ybl&pn=Shop&cu=INR');
       expect(parsed, isNotNull);
       expect(parsed!.amountPaise, isNull);
       expect(parsed.hasAmount, isFalse);
@@ -38,18 +37,21 @@ void main() {
     });
 
     test('handles amount with thousands separator', () {
-      final parsed =
-          parseUpiQr('upi://pay?pa=store@okaxis&am=1%2C250.00&cu=INR');
+      final parsed = parseUpiQr(
+        'upi://pay?pa=store@okaxis&am=1%2C250.00&cu=INR',
+      );
       expect(parsed, isNotNull);
       expect(parsed!.amountPaise, 125000);
     });
 
     test('parses an EMVCo / Bharat QR payload', () {
-      final merchant = tlv('00', 'com.upi') +
+      final merchant =
+          tlv('00', 'com.upi') +
           tlv('01', 'merchant@okhdfcbank') +
           tlv('02', 'Corner Store') +
           tlv('03', '5411');
-      final emv = tlv('00', '01') +
+      final emv =
+          tlv('00', '01') +
           tlv('01', '12') +
           tlv('26', merchant) +
           tlv('52', '5411') +
@@ -91,6 +93,32 @@ void main() {
       expect(uri.queryParameters['cu'], 'INR');
       expect(uri.queryParameters['tn'], 'Groceries');
       expect(uri.queryParameters['mc'], '5411');
+    });
+
+    test('targets a specific app when one is chosen', () {
+      Uri forApp(String? appId) => buildUpiUri(
+        payeeVpa: 'merchant@okhdfcbank',
+        payeeName: 'Corner Store',
+        amountPaise: 25050,
+        appId: appId,
+      );
+
+      final gpay = forApp('gpay');
+      expect(gpay.scheme, 'tez');
+      expect(gpay.host, 'upi');
+      expect(gpay.path, '/pay');
+
+      final paytm = forApp('paytm');
+      expect(paytm.scheme, 'paytmmp');
+      expect(paytm.host, 'pay');
+
+      final any = forApp('any');
+      expect(any.scheme, 'upi');
+      expect(any.host, 'pay');
+
+      final unknown = forApp('removed-app');
+      expect(unknown.scheme, 'upi');
+      expect(unknown.queryParameters['am'], '250.50');
     });
   });
 }

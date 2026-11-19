@@ -131,6 +131,12 @@ ThemeData finStackTheme() {
       outlineVariant: FinStackColors.outlineVariant,
     ),
     textTheme: textTheme,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.white,
       elevation: 0,

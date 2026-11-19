@@ -87,6 +87,27 @@ test('family admin cannot rotate another family invite code', async t => {
   t.mock.method(Family, 'findById', async () => ({ _id: alice.familyAccountId, adminId: alice._id }));
   assert.equal((await call(familyRoutes, 'post', '/:id/rotate-code', { user: outsider })).statusCode, 403);
 });
+test('transaction list paginates and reports the true total', async t => {
+  const chain = {
+    sort() { return chain; },
+    skip(n) { chain.skipped = n; return chain; },
+    limit(n) { chain.limited = n; return chain; },
+    select() { return chain; },
+    populate() { return chain; },
+    lean: async () => [],
+  };
+  t.mock.method(Transaction, 'countDocuments', async () => 137);
+  t.mock.method(Transaction, 'find', () => chain);
+  const res = await call(txRoutes, 'get', '/', { user: alice, query: { page: '2', limit: '50' } });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.total, 137);
+  assert.equal(res.body.page, 2);
+  assert.equal(res.body.limit, 50);
+  assert.equal(res.body.hasMore, true);
+  assert.equal(chain.skipped, 50);
+  assert.equal(chain.limited, 50);
+  assert.deepEqual(res.body.items, []);
+});
 test('member removal clears current user family access', async t => {
   t.mock.method(Family, 'findById', async () => ({ _id: alice.familyAccountId, adminId: alice._id }));
   const membership = { status: 'ACTIVE', save: async () => {} };

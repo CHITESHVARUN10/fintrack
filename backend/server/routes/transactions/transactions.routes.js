@@ -64,9 +64,47 @@ router.get('/', async (req, res, next) => {
         filter.occurredAt.$lte = to;
       }
     }
-    const items = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(500).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('subscriptionRef').lean();
-    const summary = computeLedgerSummary(items);
-    res.json({ items, summary });
+    const pageParam = req.query.page;
+    const paginated = pageParam !== undefined || req.query.limit !== undefined;
+    const limit = Math.min(
+      200,
+      Math.max(1, Number(req.query.limit) || (paginated ? 50 : 500)),
+    );
+    const page = Math.max(1, Number(pageParam) || 1);
+    const skip = paginated ? (page - 1) * limit : 0;
+
+    const [total, items] = await Promise.all([
+      Transaction.countDocuments(filter),
+      Transaction.find(filter)
+        .sort({ occurredAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('createdBy', 'name email')
+        .populate('familyTransfer.fromUserId', 'name email')
+        .populate('familyTransfer.toUserId', 'name email')
+        .populate('subscriptionRef')
+        .lean(),
+    ]);
+
+    // The summary covers every matching row, not just the current page, so the
+    // header totals stay correct while the list is paginated. Only the first
+    // page computes it.
+    let summary = {};
+    if (!paginated || page === 1) {
+      const all = paginated
+        ? await Transaction.find(filter).select('amountPaise type status').lean()
+        : items;
+      summary = computeLedgerSummary(all);
+    }
+
+    res.json({
+      items,
+      summary,
+      total,
+      page,
+      limit,
+      hasMore: skip + items.length < total,
+    });
   } catch (err) { next(err); }
 });
 

@@ -136,7 +136,9 @@ Map<String, String> _parseTlv(String data) {
 
 int? _parseAmount(String? raw) {
   if (raw == null) return null;
-  final match = RegExp(r'([0-9]+(?:\.[0-9]{1,2})?)').firstMatch(raw.replaceAll(',', ''));
+  final match = RegExp(
+    r'([0-9]+(?:\.[0-9]{1,2})?)',
+  ).firstMatch(raw.replaceAll(',', ''));
   if (match == null) return null;
   final value = double.tryParse(match.group(1)!);
   if (value == null || value <= 0) return null;
@@ -159,8 +161,53 @@ String _prettyName(String vpa) {
       .join(' ');
 }
 
+/// A UPI app the payment intent can be handed to.
+///
+/// iOS always routes `upi://` to whichever app claimed the scheme, which is
+/// how a payment ended up inside WhatsApp. Each app also registers its own
+/// scheme, so listing those lets the user pick an app once and reuse it.
+class UpiApp {
+  final String id;
+  final String label;
+  final String probeScheme;
+  final String? note;
+
+  const UpiApp({
+    required this.id,
+    required this.label,
+    required this.probeScheme,
+    this.note,
+  });
+}
+
+const upiApps = <UpiApp>[
+  UpiApp(id: 'gpay', label: 'Google Pay', probeScheme: 'tez'),
+  UpiApp(id: 'phonepe', label: 'PhonePe', probeScheme: 'phonepe'),
+  UpiApp(id: 'paytm', label: 'Paytm', probeScheme: 'paytmmp'),
+  UpiApp(
+    id: 'bhim',
+    label: 'BHIM',
+    probeScheme: 'bhim',
+    // BHIM 4.0.30 only opens payment screens for merchant VPAs. Personal UPI
+    // IDs get "This request type is not supported" — verified Oct 2026.
+    note: 'iPhone BHIM rejects personal UPI IDs with “request type is not supported”.',
+  ),
+  UpiApp(id: 'any', label: 'Any other UPI app', probeScheme: 'upi'),
+];
+
+UpiApp? upiAppById(String? id) {
+  if (id == null) return null;
+  for (final app in upiApps) {
+    if (app.id == id) return app;
+  }
+  return null;
+}
+
 /// Builds the intent every UPI app (GPay, PhonePe, Paytm, BHIM, bank apps)
 /// understands. `am` is omitted when no amount was set.
+///
+/// [appId] targets one app's own scheme; omit it for the OS-wide `upi://`
+/// intent.
 Uri buildUpiUri({
   required String payeeVpa,
   required String payeeName,
@@ -168,6 +215,7 @@ Uri buildUpiUri({
   String? note,
   String? merchantCode,
   String? txnRef,
+  String? appId,
 }) {
   final params = <String, String>{
     'pa': payeeVpa,
@@ -180,5 +228,27 @@ Uri buildUpiUri({
     params['mc'] = merchantCode.trim();
   }
   if (txnRef != null && txnRef.trim().isNotEmpty) params['tr'] = txnRef.trim();
-  return Uri(scheme: 'upi', host: 'pay', queryParameters: params);
+
+  switch (appId) {
+    case 'gpay':
+      return Uri(
+        scheme: 'tez',
+        host: 'upi',
+        path: '/pay',
+        queryParameters: params,
+      );
+    case 'phonepe':
+      return Uri(
+        scheme: 'phonepe',
+        host: 'upi',
+        path: '/pay',
+        queryParameters: params,
+      );
+    case 'paytm':
+      return Uri(scheme: 'paytmmp', host: 'pay', queryParameters: params);
+    case 'bhim':
+      return Uri(scheme: 'bhim', host: 'pay', queryParameters: params);
+    default:
+      return Uri(scheme: 'upi', host: 'pay', queryParameters: params);
+  }
 }

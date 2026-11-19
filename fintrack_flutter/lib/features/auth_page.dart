@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
@@ -31,6 +32,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   }
 
   Future<void> submit() async {
+    dismissKeyboard(context);
     final email = emailCtrl.text.trim();
     final pass = passCtrl.text;
     if (!email.contains('@') || pass.isEmpty) {
@@ -53,6 +55,8 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       } else {
         await auth.register(nameCtrl.text, email, pass);
       }
+      // Hands the credential pair to iOS so Keychain can offer to save it.
+      TextInput.finishAutofillContext(shouldSave: true);
     } on DioException catch (e) {
       final d = e.response?.data;
       setState(() => error = (d is Map && d['error'] != null) ? '${d['error']}' : 'Failed. Check server URL.');
@@ -105,13 +109,51 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     decoration: BoxDecoration(color: const Color(0xFFFFDAD6), border: Border.all(width: 3)),
                     child: Text(error ?? authErr ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                   ),
-                if (!isLogin) ...[
-                  BrutalField(label: 'Name', controller: nameCtrl, hint: 'Your name'),
-                  const SizedBox(height: 12),
-                ],
-                BrutalField(label: 'Email Address', controller: emailCtrl, hint: 'you@example.com'),
-                const SizedBox(height: 12),
-                BrutalField(label: 'Password', controller: passCtrl, hint: '••••••••', obscure: true),
+                AutofillGroup(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!isLogin) ...[
+                        BrutalField(
+                          label: 'Name',
+                          controller: nameCtrl,
+                          hint: 'Your name',
+                          autofillHints: const [AutofillHints.name],
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      BrutalField(
+                        label: 'Email Address',
+                        controller: emailCtrl,
+                        hint: 'you@example.com',
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [
+                          AutofillHints.username,
+                          AutofillHints.email,
+                        ],
+                        enableSuggestions: false,
+                        autocorrect: false,
+                      ),
+                      const SizedBox(height: 12),
+                      BrutalField(
+                        label: 'Password',
+                        controller: passCtrl,
+                        hint: '••••••••',
+                        obscure: true,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: [
+                          isLogin ? AutofillHints.password : AutofillHints.newPassword,
+                        ],
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        onSubmitted: (_) => submit(),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 BrutalButton(label: busy ? 'Please wait…' : (isLogin ? 'Login' : 'Create account'), onPressed: busy ? null : submit),
                 TextButton(
