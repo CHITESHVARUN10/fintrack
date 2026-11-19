@@ -38,7 +38,7 @@ router.get('/', async (req, res, next) => {
     if (req.query.status) filter.status = req.query.status;
     if (req.query.mode) filter.mode = req.query.mode;
     if (req.query.vendor) {
-      const v = String(req.query.vendor).trim();
+      const v = String(req.query.vendor).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // case-insensitive substring on recipient.name or upiId/utr
       filter.$or = [
         { 'recipient.name': { $regex: v, $options: 'i' } },
@@ -377,36 +377,72 @@ router.post('/bulk-categorize', async (req, res, next) => {
       }
       if (req.body.subscriptionRef === '' || req.body.subscriptionRef === null) req.body.subscriptionRef = null;
       const allowed = ['category','subcategory','productName','productRef','subscriptionRef','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
-      for (const k of allowed) if (req.body[k]!==undefined) tx[k]=req.body[k] || null;
-    // if category changed, also learn vendor directory
-    try{
-      if (req.body.category && req.body.category!=='Other' && tx.recipientVendorRef){
-        const RecipientDirectory = require('../../models/recipientdirectory.model');
-        const vendor = await RecipientDirectory.findById(tx.recipientVendorRef);
-        if (vendor){
-          const cats = [req.body.category];
-          const { upsertFromCategory } = require('../../services/recipient.service');
-          await upsertFromCategory({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, categories: cats, amountPaise: tx.amountPaise });
-        }
-      }
-      // if product info changed, upsert product
-      if ((req.body.productName || (req.body.lineItems && req.body.lineItems.length)) && tx.recipientVendorRef){
-        const RecipientDirectory = require('../../models/recipientdirectory.model');
-        const vendor = await RecipientDirectory.findById(tx.recipientVendorRef);
-        if (vendor){
-          const { upsertProduct } = require('../../services/recipient.service');
-          if (req.body.productName){
-            await upsertProduct({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, product: { name: req.body.productName, category: req.body.category || vendor.primaryCategory, subcategory: req.body.subcategory||'', typicalAmountPaise: tx.amountPaise } });
+      const categoryChanged = req.body.category && req.body.category !== tx.category;
+      const productChanged = req.body.productName && req.body.productName !== tx.productName;
+      for (const k of allowed) if (req.body[k] !== undefined) tx[k] = req.body[k] || null;
+      await tx.save();
+
+      const lineItems = Array.isArray(req.body.lineItems) ? req.body.lineItems : [];
+      if (tx.visibility !== 'PRIVATE' && (categoryChanged || productChanged || lineItems.length)) {
+        try {
+          const RecipientDirectory = require('../../models/recipientdirectory.model');
+          const { upsertFromCategory, upsertProduct } = require('../../services/recipient.service');
+          const directoryEntry = tx.recipientVendorRef
+            ? await RecipientDirectory.findOne({ _id: tx.recipientVendorRef, familyId: tx.familyId })
+            : null;
+          let vendor = directoryEntry && {
+            familyId: tx.familyId,
+            vendorKey: directoryEntry.vendorKey,
+            upiId: directoryEntry.upiId,
+            label: directoryEntry.label,
+          };
+
+          // A QR scan attached to a bank transaction or queued for review can lack a vendor reference.
+          if (!vendor && SourceRecord) {
+            const scan = await SourceRecord.findOne({
+              transactionId: tx._id,
+              familyId: tx.familyId,
+              createdBy: req.user._id,
+              source: 'QR_SCAN',
+            }).sort({ createdAt: -1 }).lean();
+            const upiId = scan?.parsedFields?.recipient?.upiId || scan?.upiId;
+            const label = scan?.parsedFields?.recipient?.name;
+            if (upiId) vendor = { familyId: tx.familyId, upiId, label };
           }
-          if (req.body.lineItems){
-            for(const li of req.body.lineItems){
-              if(li.productName) await upsertProduct({ familyId: vendor.familyId, vendorKey: vendor.vendorKey, upiId: vendor.upiId, label: vendor.label, product: { name: li.productName, category: li.category||req.body.category||vendor.primaryCategory, subcategory: li.subcategory||'', typicalAmountPaise: li.amountPaise } });
+
+          if (vendor) {
+            if (categoryChanged && tx.category !== 'Other') {
+              await upsertFromCategory({ ...vendor, category: tx.category, amountPaise: tx.amountPaise });
+            }
+            if (tx.productName && (productChanged || categoryChanged)) {
+              await upsertProduct({
+                ...vendor,
+                product: {
+                  name: tx.productName,
+                  category: tx.category || directoryEntry?.primaryCategory,
+                  subcategory: tx.subcategory,
+                  typicalAmountPaise: tx.amountPaise,
+                },
+              });
+            }
+            for (const item of lineItems) {
+              if (item.productName) {
+                await upsertProduct({
+                  ...vendor,
+                  product: {
+                    name: item.productName,
+                    category: item.category || tx.category || directoryEntry?.primaryCategory,
+                    subcategory: item.subcategory,
+                    typicalAmountPaise: item.amountPaise,
+                  },
+                });
+              }
             }
           }
+        } catch (error) {
+          console.warn('[patch vendor learn]', error.message);
         }
       }
-    } catch(e){ console.warn('[patch vendor learn]', e.message); }
-    await tx.save();
     res.json({ transaction: tx });
   } catch (err) { next(err); }
 });

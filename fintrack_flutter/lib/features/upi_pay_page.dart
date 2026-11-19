@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
@@ -39,6 +42,7 @@ class UpiPayPage extends StatefulWidget {
 class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   static const _appKey = 'fintrack_upi_app';
   static const _storage = FlutterSecureStorage();
+  static const _feedbackChannel = MethodChannel('finstack/payment_feedback');
 
   late final TextEditingController _amountCtrl;
   late final TextEditingController _vendorCtrl;
@@ -64,6 +68,18 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   bool _sawPause = false;
   String? _error;
   Map? _savedTxn;
+  bool _savingDetails = false;
+  bool _detailsSaved = false;
+  String? _detailsError;
+
+  String get _payeeName => _vendorCtrl.text.trim().isEmpty
+      ? widget.request.payeeName
+      : _vendorCtrl.text.trim();
+  String get _savedCategory => '${_savedTxn?['category'] ?? 'Other'}';
+  String get _savedProduct => '${_savedTxn?['productName'] ?? ''}';
+  bool get _detailsChanged =>
+      _selectedCategory != _savedCategory ||
+      _productCtrl.text.trim() != _savedProduct;
 
   @override
   void initState() {
@@ -94,7 +110,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   int? _amountPaise() {
     final raw = _amountCtrl.text.replaceAll(',', '').trim();
     final parsed = double.tryParse(raw);
-    if (parsed == null || parsed <= 0) return null;
+    if (parsed == null || !parsed.isFinite || parsed < 0.01) return null;
     return (parsed * 100).round();
   }
 
@@ -133,7 +149,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         },
       );
       final vendor = res.data['vendor'];
-      if (vendor is Map && mounted) {
+      if (vendor is Map && mounted && !_saving && !_saved) {
         final map = Map<String, dynamic>.from(vendor);
         setState(() {
           _vendor = map;
@@ -278,13 +294,9 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     });
 
     final note = widget.request.note ?? _productCtrl.text.trim();
-    final payee = _vendorCtrl.text.trim().isEmpty
-        ? widget.request.payeeName
-        : _vendorCtrl.text.trim();
-
     Uri uriFor(String? id) => buildUpiUri(
       payeeVpa: widget.request.payeeVpa,
-      payeeName: payee,
+      payeeName: _payeeName,
       amountPaise: paise,
       note: note.isEmpty ? null : note,
       merchantCode: widget.request.merchantCode,
@@ -465,7 +477,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 8),
               Text(
-                '${inr((paise ?? widget.request.amountPaise ?? 0) / 100)} to ${_vendorCtrl.text.trim().isEmpty ? widget.request.payeeName : _vendorCtrl.text.trim()}',
+                '${inr((paise ?? widget.request.amountPaise ?? 0) / 100)} to $_payeeName',
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: FinStackColors.onSurfaceVariant,
@@ -588,23 +600,20 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       setState(() => _error = 'Enter the amount you need to pay.');
       return;
     }
-    if (_saving) return;
+    if (_saving || _saved) return;
     setState(() {
       _saving = true;
       _error = null;
       _needsFamily = false;
     });
-    final vendorName = _vendorCtrl.text.trim().isEmpty
-        ? widget.request.payeeName
-        : _vendorCtrl.text.trim();
     final product = _productCtrl.text.trim();
     final data = <String, dynamic>{
       'amountPaise': paise,
       'type': 'EXPENSE',
       'mode': 'UPI',
-      'occurredAt': DateTime.now().toIso8601String(),
+      'occurredAt': DateTime.now().toUtc().toIso8601String(),
       'category': _selectedCategory,
-      'recipient': {'name': vendorName, 'upiId': widget.request.payeeVpa},
+      'recipient': {'name': _payeeName, 'upiId': widget.request.payeeVpa},
       'upiId': widget.request.payeeVpa,
       'visibility': 'FAMILY',
       'origin': 'QR_SCAN',
@@ -624,7 +633,10 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         _saved = true;
         _savedMatched = matched;
         _savedTxn = txn is Map ? Map<String, dynamic>.from(txn) : null;
+        if (_selectedCategory == 'Other') _selectedCategory = _savedCategory;
+        _productCtrl.text = product.isEmpty ? _savedProduct : product;
       });
+      unawaited(_playPaymentFeedback());
     } on DioException catch (e) {
       if (!mounted) return;
       final body = e.response?.data;
@@ -1101,165 +1113,272 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     return base;
   }
 
+  Future<void> _playPaymentFeedback() async {
+    unawaited(HapticFeedback.lightImpact());
+    try {
+      await _feedbackChannel.invokeMethod<void>('playSuccess');
+    } on MissingPluginException {
+      // The payment result is also used in Flutter tests and desktop previews.
+    } on PlatformException {
+      // Audio availability does not affect the saved payment.
+    }
+  }
+
+  Future<void> _savePurchaseDetails() async {
+    final id = _savedTxn?['_id'] ?? _savedTxn?['id'];
+    if (id == null || _savingDetails || !_detailsChanged) return;
+    dismissKeyboard(context);
+    final product = _productCtrl.text.trim();
+    setState(() {
+      _savingDetails = true;
+      _detailsSaved = false;
+      _detailsError = null;
+    });
+
+    try {
+      final res = await ApiClient.dio.patch(
+        '/transactions/$id',
+        data: {
+          'category': _selectedCategory,
+          if (product != _savedProduct) 'productName': product,
+        },
+      );
+      final transaction = Map<String, dynamic>.from(
+        res.data['transaction'] as Map,
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedTxn = transaction;
+        _selectedCategory = _savedCategory;
+        _productCtrl.text = _savedProduct;
+        _detailsSaved = true;
+      });
+    } on DioException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _detailsError = switch (error.response?.statusCode) {
+          401 => 'Your session expired. Sign in again to edit this payment.',
+          403 => 'You don’t have permission to edit this payment.',
+          404 => 'This transaction is no longer available.',
+          _ => 'Could not save purchase details. Try again.',
+        };
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _detailsError = 'Could not save purchase details. Try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingDetails = false);
+    }
+  }
+
+  void _editPurchaseDetails(VoidCallback edit) {
+    setState(() {
+      edit();
+      _detailsSaved = false;
+      _detailsError = null;
+    });
+  }
+
   Widget _savedView(BuildContext context) {
     final paise = _amountPaise() ?? widget.request.amountPaise ?? 0;
-    final savedCategory = '${_savedTxn?['category'] ?? _selectedCategory}';
     final status = '${_savedTxn?['status'] ?? ''}';
     final needsReview = status == 'PENDING_REVIEW';
     final matched = _savedMatched || status == 'RECONCILED';
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('PAYMENT SAVED'),
-        automaticallyImplyLeading: false,
-      ),
-      body: BrutalGrid(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            BrutalCard(
-              color: FinStackColors.brandYellow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    final canEdit = _savedTxn?['_id'] != null || _savedTxn?['id'] != null;
+    return PopScope(
+      canPop: !_savingDetails,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('PAYMENT SAVED'),
+          automaticallyImplyLeading: false,
+        ),
+        body: SafeArea(
+          top: false,
+          child: BrutalGrid(
+            child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 16, 20, 24),
+              children: [
+                BrutalCard(
+                  color: FinStackColors.surfaceLow,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: FinStackColors.onSurface,
-                          border: Border.all(
-                            color: FinStackColors.onSurface,
-                            width: 2,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _PaymentCheck(),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Semantics(
+                              header: true,
+                              liveRegion: true,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Payment recorded',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    inr(paise / 100),
+                                    style: const TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                        child: const Icon(
-                          Icons.check,
-                          color: FinStackColors.brandYellow,
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'PAYMENT RECORDED',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _payeeName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      BrutalTag(
-                        label: needsReview
-                            ? 'Needs review'
-                            : matched
-                            ? 'Matched'
-                            : 'Saved',
-                        color: needsReview
-                            ? FinStackColors.errorContainer
-                            : matched
-                            ? FinStackColors.tertiary
-                            : Colors.white,
+                      Text(
+                        widget.request.payeeVpa,
+                        style: const TextStyle(
+                          color: FinStackColors.onSurfaceVariant,
+                        ),
                       ),
+                      if (_utrCtrl.text.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text('UPI reference: ${_utrCtrl.text.trim()}'),
+                      ],
+                      if (needsReview || matched) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          needsReview
+                              ? 'A similar entry exists. This payment is saved for review.'
+                              : 'Linked to an existing bank transaction.',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    inr(paise / 100),
-                    style: const TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_vendorCtrl.text.trim().isEmpty ? widget.request.payeeName : _vendorCtrl.text.trim()} · ${widget.request.payeeVpa}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                ),
+                if (canEdit) ...[
+                  const SizedBox(height: 16),
+                  _purchaseDetailsCard(),
                 ],
-              ),
+                const SizedBox(height: 20),
+                BrutalButton(
+                  block: true,
+                  label: 'Done',
+                  icon: Icons.check,
+                  padding: const EdgeInsets.all(15),
+                  onPressed: _savingDetails
+                      ? null
+                      : () => Navigator.of(context).popUntil((r) => r.isFirst),
+                ),
+                const SizedBox(height: 10),
+                BrutalButton(
+                  block: true,
+                  color: Colors.white,
+                  label: 'Scan another QR',
+                  icon: Icons.qr_code_scanner,
+                  padding: const EdgeInsets.all(15),
+                  onPressed: _savingDetails
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            BrutalCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const BrutalSectionTitle(
-                    title: 'What FinStack stored',
-                    accent: FinStackColors.tertiary,
-                  ),
-                  const SizedBox(height: 12),
-                  _SavedRow(label: 'Category', value: savedCategory),
-                  _SavedRow(
-                    label: 'Vendor',
-                    value: _vendorCtrl.text.trim().isEmpty
-                        ? widget.request.payeeName
-                        : _vendorCtrl.text.trim(),
-                  ),
-                  _SavedRow(
-                    label: 'Vendor status',
-                    value: _vendor == null
-                        ? 'Created automatically'
-                        : 'Matched to existing vendor',
-                  ),
-                  if (_productCtrl.text.trim().isNotEmpty)
-                    _SavedRow(label: 'Item', value: _productCtrl.text.trim()),
-                  if (_utrCtrl.text.trim().isNotEmpty)
-                    _SavedRow(label: 'UTR', value: _utrCtrl.text.trim()),
-                  const _SavedRow(label: 'Mode', value: 'UPI'),
-                  if (matched) ...[
-                    const _SavedRow(
-                      label: 'Bank import',
-                      value: 'Linked to an existing bank row',
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: FinStackColors.surfaceContainer,
-                        border: Border.all(
-                          color: FinStackColors.onSurface,
-                          width: 2,
-                        ),
-                      ),
-                      child: const Text(
-                        'This payment matched an existing imported bank row. FinStack linked the two entries instead of adding a duplicate.',
-                        style: TextStyle(fontSize: 11, height: 1.35),
-                      ),
-                    ),
-                  ],
-                  if (needsReview) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'A similar payment already exists, so this one was saved for review instead of being merged automatically.',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            BrutalButton(
-              block: true,
-              label: 'Scan another QR',
-              icon: Icons.qr_code_scanner,
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            const SizedBox(height: 8),
-            BrutalButton(
-              block: true,
-              color: Colors.white,
-              label: 'Done',
-              onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _purchaseDetailsCard() => BrutalCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: const Text(
+            'Purchase details',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Optional. Add details to help FinStack categorize future payments.',
+          style: TextStyle(color: FinStackColors.onSurfaceVariant),
+        ),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          key: ValueKey(_savedCategory),
+          isExpanded: true,
+          initialValue: _selectedCategory,
+          decoration: const InputDecoration(labelText: 'Category'),
+          items: [
+            for (final category in {..._categories, _selectedCategory})
+              DropdownMenuItem(value: category, child: Text(category)),
+          ],
+          onChanged: _savingDetails
+              ? null
+              : (value) {
+                  if (value != null) {
+                    _editPurchaseDetails(() => _selectedCategory = value);
+                  }
+                },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _productCtrl,
+          enabled: !_savingDetails,
+          textCapitalization: TextCapitalization.sentences,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: 'What did you buy?',
+            hintText: 'e.g. Coffee, groceries, bus ticket',
+          ),
+          onChanged: (_) => _editPurchaseDetails(() {}),
+          onSubmitted: (_) => _savePurchaseDetails(),
+        ),
+        const SizedBox(height: 14),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            backgroundColor: FinStackColors.surfaceContainer,
+          ),
+          onPressed: _detailsChanged && !_savingDetails
+              ? _savePurchaseDetails
+              : null,
+          child: Text(_savingDetails ? 'Saving details…' : 'Save details'),
+        ),
+        if (_detailsSaved || _detailsError != null) ...[
+          const SizedBox(height: 8),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _detailsError ?? 'Purchase details saved.',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: _detailsError != null
+                    ? FinStackColors.onErrorContainer
+                    : FinStackColors.onTertiaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
 }
 
 class _AppRow extends StatelessWidget {
@@ -1346,39 +1465,69 @@ class _AppRow extends StatelessWidget {
   }
 }
 
-class _SavedRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _SavedRow({required this.label, required this.value});
+class _PaymentCheck extends StatelessWidget {
+  const _PaymentCheck();
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.7,
-                color: FinStackColors.onSurfaceVariant,
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return ExcludeSemantics(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: reduceMotion ? 1.0 : 0.0, end: 1.0),
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 580),
+        builder: (context, progress, _) {
+          final arrival = Curves.easeOutCubic.transform(
+            (progress / .46).clamp(0.0, 1.0),
+          );
+          final stroke = Curves.easeOutCubic.transform(
+            ((progress - .18) / .82).clamp(0.0, 1.0),
+          );
+          return Transform.scale(
+            scale: .78 + .22 * arrival,
+            child: Container(
+              width: 60,
+              height: 60,
+              decoration: brutal(
+                color: FinStackColors.accentBlue,
+                border: 2,
+                shadow: 4,
               ),
+              child: CustomPaint(painter: _CheckStroke(stroke)),
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
+}
+
+class _CheckStroke extends CustomPainter {
+  const _CheckStroke(this.progress);
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final check = Path()
+      ..moveTo(size.width * .23, size.height * .52)
+      ..lineTo(size.width * .43, size.height * .70)
+      ..lineTo(size.width * .77, size.height * .32);
+    final metric = check.computeMetrics().first;
+    canvas.drawPath(
+      metric.extractPath(0, progress * metric.length),
+      Paint()
+        ..color = FinStackColors.onSurface
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CheckStroke oldDelegate) =>
+      progress != oldDelegate.progress;
 }
 
 class _CategoryPill extends StatelessWidget {

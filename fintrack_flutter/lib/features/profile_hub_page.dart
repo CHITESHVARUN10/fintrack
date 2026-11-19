@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/auth_state.dart';
+import '../core/bank_import.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import 'budgets_page.dart';
@@ -43,7 +44,7 @@ class _WorkspaceEntry {
   );
 }
 
-final _workspace = <_WorkspaceEntry>[
+List<_WorkspaceEntry> _workspace(BankImport bankImport) => <_WorkspaceEntry>[
   _WorkspaceEntry(
     'Family board',
     Icons.analytics,
@@ -63,7 +64,7 @@ final _workspace = <_WorkspaceEntry>[
     Icons.upload_file,
     FinStackColors.accentOrange,
     'IMPORT',
-    (_) => ImportPageWidget(),
+    (_) => ImportPageWidget(bankImport: bankImport),
   ),
   _WorkspaceEntry(
     'Budgets',
@@ -120,13 +121,15 @@ final _workspace = <_WorkspaceEntry>[
 /// daily (notifications, settings), then everything else folded into one
 /// workspace grid. This is what keeps the bottom bar to five destinations.
 class ProfileHubPage extends ConsumerWidget {
-  const ProfileHubPage({super.key});
+  const ProfileHubPage({super.key, required this.bankImport});
+
+  final BankImport bankImport;
 
   void _push(BuildContext context, String title, Widget page) {
     dismissKeyboard(context);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => Scaffold(
+        builder: (routeContext) => Scaffold(
           appBar: AppBar(
             title: Text(title),
             leadingWidth: 56,
@@ -136,7 +139,7 @@ class ProfileHubPage extends ConsumerWidget {
                 icon: Icons.arrow_back,
                 tooltip: 'Back',
                 color: Colors.white,
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => Navigator.of(routeContext).pop(),
               ),
             ),
           ),
@@ -273,7 +276,7 @@ class ProfileHubPage extends ConsumerWidget {
           crossAxisSpacing: 8,
           childAspectRatio: 2.35,
           children: [
-            for (final entry in _workspace)
+            for (final entry in _workspace(bankImport))
               _WorkspaceTile(
                 entry: entry,
                 onTap: () =>

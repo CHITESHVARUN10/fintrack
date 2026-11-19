@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/bank_import.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import 'dashboard_page.dart';
@@ -19,7 +20,26 @@ class Shell extends ConsumerStatefulWidget {
 
 class _ShellState extends ConsumerState<Shell> {
   int idx = 0;
+  int _activityRefresh = 0;
   final Set<int> visited = {0};
+  final _profileNavigator = GlobalKey<NavigatorState>();
+  late final _bankImport = BankImport(
+    onLedgerChanged: (message) {
+      if (!mounted) return;
+      setState(() => _activityRefresh++);
+      if (idx != 4 || _profileNavigator.currentState?.canPop() == false) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+    },
+  );
+
+  @override
+  void dispose() {
+    _bankImport.dispose();
+    super.dispose();
+  }
 
   static const _items = [
     BrutalNavItem('Home', Icons.home_outlined),
@@ -29,11 +49,12 @@ class _ShellState extends ConsumerState<Shell> {
     BrutalNavItem('Profile', Icons.person_outline),
   ];
 
-  void _openScan() {
+  Future<void> _openScan() async {
     dismissKeyboard(context);
-    Navigator.of(
+    await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
+    if (mounted && idx == 1) setState(() => _activityRefresh++);
   }
 
   void _onTab(int i) {
@@ -42,7 +63,12 @@ class _ShellState extends ConsumerState<Shell> {
       return;
     }
     dismissKeyboard(context);
+    if (i == 4 && idx == 4) {
+      _profileNavigator.currentState?.popUntil((route) => route.isFirst);
+      return;
+    }
     setState(() {
+      if (i == 1 && idx != 1 && visited.contains(1)) _activityRefresh++;
       idx = i;
       visited.add(i);
     });
@@ -53,53 +79,71 @@ class _ShellState extends ConsumerState<Shell> {
       case 0:
         return const DashboardPage();
       case 1:
-        return const TransactionsPage();
+        return TransactionsPage(refresh: _activityRefresh);
       case 3:
         return const FamilyPage();
       case 4:
-        return const ProfileHubPage();
+        return NavigatorPopHandler<Object?>(
+          enabled: idx == 4,
+          onPopWithResult: (result) {
+            if (idx == 4) _profileNavigator.currentState?.maybePop(result);
+          },
+          child: Navigator(
+            key: _profileNavigator,
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (_) => Scaffold(
+                appBar: _tabHeader(4),
+                body: BrutalGrid(
+                  child: ProfileHubPage(bankImport: _bankImport),
+                ),
+              ),
+            ),
+          ),
+        );
       default:
         return const SizedBox.shrink();
     }
   }
 
+  PreferredSizeWidget _tabHeader(int index) => AppBar(
+    title: Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: FinStackColors.brandYellow,
+            border: Border.all(color: FinStackColors.onSurface, width: 2),
+          ),
+          alignment: Alignment.center,
+          child: const Text(
+            'F',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            _items[index].label.toUpperCase(),
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                color: FinStackColors.brandYellow,
-                border: Border.all(color: FinStackColors.onSurface, width: 2),
-              ),
-              alignment: Alignment.center,
-              child: const Text(
-                'F',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                _items[idx].label.toUpperCase(),
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      appBar: idx == 4 ? null : _tabHeader(idx),
       body: BrutalGrid(
         child: IndexedStack(
           index: idx,

@@ -6,6 +6,7 @@ const Membership = require('../models/familymembership.model');
 const Family = require('../models/familyaccount.model');
 const Transaction = require('../models/transaction.model');
 const SourceRecord = require('../models/sourcerecord.model');
+const recipientService = require('../services/recipient.service');
 const ImportBatch = require('../models/importbatch.model');
 const { isAuthenticated } = require('../middleware/auth.middleware');
 const { buildListFilter, canModify, canModifyTransaction } = require('../utils/scope');
@@ -73,6 +74,44 @@ test('foreign family administrator cannot patch a transaction', async t => {
 test('family admin cannot patch another member transaction', async t => {
   t.mock.method(Transaction, 'findById', async () => ({ createdBy: bob._id, familyId: alice.familyAccountId }));
   assert.equal((await call(txRoutes, 'patch', '/:id', { user: alice })).statusCode, 403);
+});
+test('purchase edits learn from the payer’s QR source when the ledger row has no vendor reference', async t => {
+  const tx = {
+    _id: id(),
+    createdBy: bob._id,
+    familyId: bob.familyAccountId,
+    category: 'Other',
+    amountPaise: 18500,
+    status: 'PENDING_REVIEW',
+    save: async () => {},
+  };
+  t.mock.method(Transaction, 'findById', async () => tx);
+  const source = t.mock.method(SourceRecord, 'findOne', () => ({
+    sort: () => ({
+      lean: async () => ({ upiId: 'coffee@upi', parsedFields: { recipient: { name: 'Corner Coffee' } } }),
+    }),
+  }));
+  const learnCategory = t.mock.method(recipientService, 'upsertFromCategory', async () => {});
+  const learnProduct = t.mock.method(recipientService, 'upsertProduct', async () => {});
+  const request = {
+    user: bob,
+    params: { id: tx._id },
+    body: { category: 'Food', productName: 'Coffee' },
+  };
+  const res = await call(txRoutes, 'patch', '/:id', request);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.transaction.productName, 'Coffee');
+  assert.equal(res.body.transaction.status, 'PENDING_REVIEW');
+  assert.deepEqual(source.mock.calls[0].arguments[0], {
+    transactionId: tx._id, familyId: bob.familyAccountId, createdBy: bob._id, source: 'QR_SCAN',
+  });
+  assert.equal(learnCategory.mock.calls[0].arguments[0].category, 'Food');
+  assert.deepEqual(learnProduct.mock.calls[0].arguments[0].product, {
+    name: 'Coffee', category: 'Food', subcategory: undefined, typicalAmountPaise: 18500,
+  });
+  await call(txRoutes, 'patch', '/:id', request);
+  assert.equal(learnCategory.mock.callCount(), 1);
+  assert.equal(learnProduct.mock.callCount(), 1);
 });
 test('unrelated user cannot resolve another transaction', async t => {
   t.mock.method(Transaction, 'findById', async () => ({ createdBy: bob._id, familyId: alice.familyAccountId, status: 'PENDING_REVIEW' }));

@@ -1,23 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import '../core/api_client.dart';
+import '../core/bank_import.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
 class ImportPageWidget extends StatefulWidget {
-  const ImportPageWidget({super.key});
+  const ImportPageWidget({super.key, required this.bankImport});
+
+  final BankImport bankImport;
   @override
   State<ImportPageWidget> createState() => _ImportPageWidgetState();
 }
 
 class _ImportPageWidgetState extends State<ImportPageWidget> {
-  bool bankBusy = false;
   bool shotBusy = false;
-  String? bankResult;
   String? shotResult;
-  String? bankError;
   String? shotError;
 
   String _describe(Map data) {
@@ -31,45 +30,9 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
           '${summary['reconciled'] ?? 0} reconciled, '
           '${summary['pendingReview'] ?? 0} pending review.';
     }
-    return status.isEmpty ? 'Upload complete.' : status.replaceAll('_', ' ').toUpperCase();
-  }
-
-  Future<void> pickBank() async {
-    if (bankBusy) return;
-    setState(() {
-      bankBusy = true;
-      bankError = null;
-      bankResult = null;
-    });
-    try {
-      final res = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv', 'xlsx', 'xls'],
-        withData: true,
-      );
-      if (res == null || res.files.first.bytes == null) return;
-      final f = res.files.first;
-      final fd = FormData.fromMap({
-        'file': MultipartFile.fromBytes(f.bytes!, filename: f.name),
-      });
-      final r = await ApiClient.dio.post('/imports/bank', data: fd);
-      if (!mounted) return;
-      final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
-      setState(() => bankResult = _describe(data));
-    } on DioException catch (e) {
-      final detail = e.response?.data is Map ? '${(e.response!.data as Map)['error'] ?? ''}' : '';
-      if (mounted) {
-        setState(() => bankError = detail.isEmpty
-            ? 'Upload failed. Check your connection and file type.'
-            : detail);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => bankError = 'Could not read that file. Try another CSV or Excel export.');
-      }
-    } finally {
-      if (mounted) setState(() => bankBusy = false);
-    }
+    return status.isEmpty
+        ? 'Upload complete.'
+        : status.replaceAll('_', ' ').toUpperCase();
   }
 
   Future<void> pickScreenshot() async {
@@ -89,18 +52,27 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
       });
       final r = await ApiClient.dio.post('/imports/screenshot', data: fd);
       if (!mounted) return;
-      final data = r.data is Map ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
+      final data = r.data is Map
+          ? Map<String, dynamic>.from(r.data as Map)
+          : <String, dynamic>{};
       setState(() => shotResult = _describe(data));
     } on DioException catch (e) {
-      final detail = e.response?.data is Map ? '${(e.response!.data as Map)['error'] ?? ''}' : '';
+      final detail = e.response?.data is Map
+          ? '${(e.response!.data as Map)['error'] ?? ''}'
+          : '';
       if (mounted) {
-        setState(() => shotError = detail.isEmpty
-            ? 'Could not extract the screenshot. Check your connection and retry.'
-            : detail);
+        setState(
+          () => shotError = detail.isEmpty
+              ? 'Could not extract the screenshot. Check your connection and retry.'
+              : detail,
+        );
       }
     } catch (_) {
       if (mounted) {
-        setState(() => shotError = 'Could not read the screenshot. Check the photo permission and retry.');
+        setState(
+          () => shotError =
+              'Could not read the screenshot. Check the photo permission and retry.',
+        );
       }
     } finally {
       if (mounted) setState(() => shotBusy = false);
@@ -115,7 +87,9 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: isError ? FinStackColors.errorContainer : FinStackColors.surfaceContainer,
+        color: isError
+            ? FinStackColors.errorContainer
+            : FinStackColors.surfaceContainer,
         border: Border.all(width: 2, color: FinStackColors.onSurface),
       ),
       child: Text(
@@ -123,53 +97,170 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          color: isError ? FinStackColors.onErrorContainer : FinStackColors.onSurface,
+          color: isError
+              ? FinStackColors.onErrorContainer
+              : FinStackColors.onSurface,
         ),
+      ),
+    );
+  }
+
+  Widget _bankCard(BankImport bank) {
+    final progress = switch (bank.stage) {
+      BankImportStage.choosing => 'Choosing a statement…',
+      BankImportStage.uploading => 'Uploading statement…',
+      BankImportStage.processing => 'Processing transactions…',
+      BankImportStage.checking => 'Checking import history…',
+      BankImportStage.idle => null,
+    };
+    return BrutalCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            header: true,
+            child: const Text(
+              'Bank statement',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Import a CSV or Excel statement.',
+            style: TextStyle(color: FinStackColors.onSurfaceVariant),
+          ),
+          if (bank.fileName != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              bank.fileName!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (progress != null) ...[
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                progress,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+            if (bank.stage == BankImportStage.processing) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'You can switch tabs while FinStack imports the rows.',
+              ),
+            ],
+          ] else ...[
+            if (bank.title != null) ...[
+              Semantics(
+                liveRegion: true,
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: bank.hasError
+                        ? FinStackColors.errorContainer
+                        : FinStackColors.surfaceContainer,
+                    border: Border.all(
+                      color: FinStackColors.onSurface,
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        bank.title!,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      if (bank.detail != null) ...[
+                        const SizedBox(height: 4),
+                        Text(bank.detail!),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (bank.canCheck) ...[
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(48, 48),
+                ),
+                onPressed: bank.checkStatus,
+                child: const Text('Check import status'),
+              ),
+              const SizedBox(height: 8),
+            ],
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(48, 48),
+                backgroundColor: bank.canCheck
+                    ? Colors.white
+                    : FinStackColors.brandYellow,
+              ),
+              onPressed: bank.pickFile,
+              icon: const Icon(Icons.upload_file),
+              label: Text(
+                bank.fileName == null
+                    ? 'Choose statement'
+                    : 'Choose another statement',
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      BrutalCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('BANK STATEMENT',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-          const Text('Upload CSV or Excel (.xlsx). Re-uploads are deduplicated.',
-              style: TextStyle(fontSize: 12, color: FinStackColors.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          BrutalButton(
-            label: bankBusy ? 'Uploading…' : 'Pick File',
-            icon: Icons.upload_file,
-            onPressed: bankBusy ? null : pickBank,
-          ),
-          _resultBox(bankResult, bankError),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      BrutalCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('UPI SCREENSHOT',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-          const Text('Gemini extracts amount/date/UPI from the image.',
-              style: TextStyle(fontSize: 12, color: FinStackColors.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          BrutalButton(
-            label: shotBusy ? 'Reading…' : 'Pick Image',
-            icon: Icons.image,
-            onPressed: shotBusy ? null : pickScreenshot,
-          ),
-          _resultBox(shotResult, shotError),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      const BrutalCard(
-        child: Text(
-          'Tip: imports need a family. Create or join one from Profile before uploading.',
-          style: TextStyle(fontSize: 11),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ListenableBuilder(
+          listenable: widget.bankImport,
+          builder: (context, _) => _bankCard(widget.bankImport),
         ),
-      ),
-    ]);
+        const SizedBox(height: 12),
+        BrutalCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'UPI SCREENSHOT',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+              const Text(
+                'Gemini extracts amount/date/UPI from the image.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: FinStackColors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              BrutalButton(
+                label: shotBusy ? 'Reading…' : 'Pick Image',
+                icon: Icons.image,
+                onPressed: shotBusy ? null : pickScreenshot,
+              ),
+              _resultBox(shotResult, shotError),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        const BrutalCard(
+          child: Text(
+            'Tip: imports need a family. Create or join one from Profile before uploading.',
+            style: TextStyle(fontSize: 11),
+          ),
+        ),
+      ],
+    );
   }
 }
