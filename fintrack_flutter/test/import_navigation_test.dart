@@ -8,6 +8,7 @@ import 'package:fintrack_flutter/features/shell.dart';
 import 'package:fintrack_flutter/widgets/brutal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final _statement = Uint8List.fromList([1, 2, 3]);
@@ -38,6 +39,7 @@ class _StatementPicker extends FilePicker {
 
 void main() {
   setUpAll(() => FilePicker.platform = _StatementPicker());
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   Future<void> openImport(WidgetTester tester) async {
     tester.view.devicePixelRatio = 1;

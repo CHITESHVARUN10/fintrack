@@ -3,6 +3,8 @@ const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const Investment = require('../models/investment.model');
 const Transaction = require('../models/transaction.model');
+const RecipientDirectory = require('../models/recipientdirectory.model');
+const { vendorDisplayName, paymentId } = require('../utils/vendorDisplayName');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
 
@@ -118,22 +120,41 @@ async function buildDashboard(userId) {
     }).lean();
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
-    // Build category breakdown from transactions (individual, current month)
+    const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];
+    const upiFor = t => {
+      const recipient = t.recipient;
+      return (recipient?.upiId?.trim() ||
+        recipient?.name?.split('/').map(part => part.trim()).find(part => paymentId.test(part)) ||
+        '').toLowerCase();
+    };
+    const upiIds = [...new Set(txs.map(upiFor).filter(Boolean))];
+    const directory = vendorIds.length || upiIds.length
+      ? await RecipientDirectory.find({
+          familyId: me.familyAccountId,
+          $or: [{ _id: { $in: vendorIds } }, { upiId: { $in: upiIds } }],
+        }).select('label upiId').lean()
+      : [];
+    const labelsById = new Map(directory.map(v => [String(v._id), v.label]));
+    const labelsByUpi = new Map(directory.filter(v => v.upiId).map(v => [v.upiId.toLowerCase(), v.label]));
+
     const byCat = {};
-    const byVendor = {};
+    const vendorGroups = new Map();
     for (const t of txs) {
       const cat = t.category || 'Other';
       byCat[cat] = (byCat[cat] || 0) + (t.amountPaise || 0) / 100;
-      const vendor = (t.recipient?.name || 'Unknown').trim().slice(0, 40) || 'Unknown';
-      byVendor[vendor] = (byVendor[vendor] || 0) + (t.amountPaise || 0) / 100;
+      const savedLabel = labelsById.get(String(t.recipientVendorRef)) || labelsByUpi.get(upiFor(t));
+      const label = vendorDisplayName(t.recipient, savedLabel);
+      const key = label.toLowerCase().replace(/\s+/g, ' ');
+      const group = vendorGroups.get(key) || { label, value: 0 };
+      if (label === savedLabel?.trim()) group.label = label;
+      group.value += (t.amountPaise || 0) / 100;
+      vendorGroups.set(key, group);
     }
     transactionCategoryBreakdown = byCat;
-    transactionVendorBreakdown = byVendor;
+    transactionVendorBreakdown = Object.fromEntries([...vendorGroups.values()].map(({ label, value }) => [label, value]));
     transactionCategoryEntries = Object.entries(byCat).map(([label, value]) => ({ label, value }));
     // Vendor: keep top 8 + Other bucket so distribution is complete and percentages sum to 100 of total spend
-    const allVendorEntries = Object.entries(byVendor)
-      .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value);
+    const allVendorEntries = [...vendorGroups.values()].sort((a, b) => b.value - a.value);
     const totalVendorAmount = allVendorEntries.reduce((s, e) => s + e.value, 0);
     const topVendors = allVendorEntries.slice(0, 8);
     const topSum = topVendors.reduce((s, e) => s + e.value, 0);
@@ -153,6 +174,7 @@ async function buildDashboard(userId) {
     monthlyBurnBreakdown,
     transactionCategoryBreakdown,
     transactionVendorBreakdown,
+    transactionVendorNamesResolved: true,
     transactionCategoryEntries,
     transactionVendorEntries,
     investmentPortfolioValue: { totalInvested, totalCurrentValue },

@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
+import '../widgets/spending_breakdown.dart';
 import 'scan_pay_page.dart';
 
 const _burnColors = [
@@ -25,25 +29,62 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-/// Hamilton largest-remainder so rounded percents sum to exactly 100.
-List<Map<String, dynamic>> normalizeTo100(
-    List<Map<String, dynamic>> entries, double total) {
-  if (entries.isEmpty || total <= 0) {
-    return entries.map((e) => {...e, 'percent': 0}).toList();
+List<({String label, double value})> _chartEntries(
+  List rows,
+  String other, {
+  bool cleanLegacyVendors = false,
+}) {
+  final grouped = <String, ({String label, double value})>{};
+  for (final row in rows.whereType<Map>()) {
+    final value = _asNum(row['value']).toDouble();
+    if (!value.isFinite || value <= 0) continue;
+    final original = '${row['label']}';
+    final label = cleanLegacyVendors ? _legacyVendorName(original) : original;
+    final key = label.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final current = grouped[key];
+    grouped[key] = (
+      label: current?.label ?? label,
+      value: (current?.value ?? 0) + value,
+    );
   }
-  final raws =
-      entries.map((e) => (e['value'] as num).toDouble() / total * 100).toList();
-  final floors = raws.map((r) => r.floor()).toList();
-  final order = List.generate(entries.length, (i) => i)
-    ..sort((a, b) => (raws[b] - floors[b]).compareTo(raws[a] - floors[a]));
-  final remaining = 100 - floors.fold<int>(0, (a, b) => a + b);
-  final pct = List<int>.from(floors);
-  for (var i = 0; i < remaining && i < order.length; i++) {
-    pct[order[i]] += 1;
-  }
-  return List.generate(
-      entries.length, (i) => {...entries[i], 'percent': pct[i], 'raw': raws[i]});
+  final entries = [
+    ...grouped.values,
+  ]..sort((a, b) => b.value.compareTo(a.value));
+  if (entries.length <= 8) return entries;
+  return [
+    ...entries.take(7),
+    (
+      label: other,
+      value: entries.skip(7).fold<double>(0, (sum, row) => sum + row.value),
+    ),
+  ];
 }
+
+// Older servers return raw statement descriptions as chart labels.
+String _legacyVendorName(String original) {
+  if (!RegExp(r'^upi\s*/', caseSensitive: false).hasMatch(original)) {
+    return original;
+  }
+  final parts = original.split('/').skip(1).map((part) => part.trim()).toList();
+  if (const ['dr', 'cr', 'p2p', 'p2m'].contains(parts.first.toLowerCase())) {
+    parts.removeAt(0);
+  }
+  final hasReference = parts.isNotEmpty && RegExp(r'^\d{6,}$').hasMatch(parts.first);
+  if (hasReference) parts.removeAt(0);
+  if (parts.isEmpty || (parts.length < 2 && !hasReference)) return original;
+  final name = parts.first;
+  final bankOrPlaceholder = RegExp(
+    r'^(?:[a-z]{4}0[a-z\d]{6}|(?:axis|hdfc|icici|idbi|kotak|sbi|pnb|bob|union|canara|yes|indusind|idfc)(?:\s+bank)?|bank(?:\s+of\b.*)?|payment|transfer|upi|unknown|na|n\.a\.)$',
+    caseSensitive: false,
+  );
+  return RegExp(r'\p{L}{2}', unicode: true).hasMatch(name) &&
+          !name.contains('@') &&
+          !bankOrPlaceholder.hasMatch(name)
+      ? name
+      : original;
+}
+
+String _occurrenceKey(Map payment) => '${payment['id']}|${payment['dueDate']}';
 
 /// Coerces API values (num | numeric String) into num; null-safe.
 num _asNum(Object? v) => v is num ? v : (num.tryParse('$v') ?? 0);
@@ -53,11 +94,82 @@ class _DashboardPageState extends State<DashboardPage> {
   bool loading = true;
   String? error;
   DateTime? loadedAt;
+  static const _storage = FlutterSecureStorage();
+  static const _paidStorageKey = 'finstack_paid_subscription_reminders';
+  static const _paidAnimation = Duration(milliseconds: 670);
+  Set<String> _paid = {};
+  String? _savingOccurrence;
+  String? _leavingOccurrence;
 
   @override
   void initState() {
     super.initState();
-    load();
+    _loadInitial();
+  }
+
+  Future<void> _loadInitial() async {
+    try {
+      final stored = await _storage.read(key: _paidStorageKey);
+      if (stored != null) {
+        final decoded = jsonDecode(stored);
+        if (decoded is List) _paid = decoded.whereType<String>().toSet();
+      }
+    } catch (_) {
+      // Reminders stay available if local storage cannot be read.
+    }
+    if (mounted) await load();
+  }
+
+  Future<void> _markPaid(Map payment) async {
+    if (_savingOccurrence != null) return;
+    final key = _occurrenceKey(payment);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    setState(() => _savingOccurrence = key);
+    try {
+      final updated = {..._paid, key};
+      // Keep recent occurrences without growing reminder storage indefinitely.
+      final cutoff = DateTime.now().subtract(const Duration(days: 45));
+      updated.removeWhere((entry) {
+        final due = DateTime.tryParse(entry.split('|').last);
+        return due == null || due.isBefore(cutoff);
+      });
+      await _storage.write(
+        key: _paidStorageKey,
+        value: jsonEncode(updated.toList()),
+      );
+      if (!mounted) return;
+      setState(() {
+        _paid = updated;
+        _leavingOccurrence = key;
+      });
+      await Future<void>.delayed(
+        reduceMotion ? const Duration(milliseconds: 280) : _paidAnimation,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${payment['name']} marked paid for this billing date.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not mark the subscription paid. Try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingOccurrence = null;
+          _leavingOccurrence = null;
+        });
+      }
+    }
   }
 
   Future<void> load() async {
@@ -80,9 +192,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _openScanner() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ScanPayPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
   }
 
   @override
@@ -90,44 +202,59 @@ class _DashboardPageState extends State<DashboardPage> {
     if (loading) return const BrutalLoading(label: 'Loading dashboard…');
     if (error != null) return BrutalError(message: error!, onRetry: load);
     if (data == null) {
-      return const BrutalError(message: 'No dashboard data yet.', onRetry: null);
+      return const BrutalError(
+        message: 'No dashboard data yet.',
+        onRetry: null,
+      );
     }
     final d = data!;
     final catEntries =
         ((d['transactionCategoryEntries'] as List?)?.isNotEmpty == true)
-            ? (d['transactionCategoryEntries'] as List)
-                .map((e) => {
-                      'label': '${e['label']}',
-                      'value': (e['value'] as num).toDouble()
-                    })
-                .toList()
-            : ((d['monthlyBurnBreakdown'] as Map?)?.entries ?? [])
-                .map((e) => {
-                      'label': e.key,
-                      'value': (e.value as num).toDouble()
-                    })
-                .toList();
-    final burnEntries = catEntries.where((e) => (e['value'] as double) > 0).toList()
-      ..sort((a, b) => (b['value'] as double).compareTo(a['value'] as double));
-    final burnTotal =
-        burnEntries.fold<double>(0, (s, e) => s + (e['value'] as double));
+        ? (d['transactionCategoryEntries'] as List)
+              .map(
+                (e) => {
+                  'label': '${e['label']}',
+                  'value': (e['value'] as num).toDouble(),
+                },
+              )
+              .toList()
+        : ((d['monthlyBurnBreakdown'] as Map?)?.entries ?? [])
+              .map(
+                (e) => {'label': e.key, 'value': (e.value as num).toDouble()},
+              )
+              .toList();
+    final burnEntries =
+        catEntries.where((e) => (e['value'] as double) > 0).toList()..sort(
+          (a, b) => (b['value'] as double).compareTo(a['value'] as double),
+        );
     final maxBurn = burnEntries.fold<double>(
-        1.0,
-        (m, e) =>
-            (e['value'] as double) > m ? (e['value'] as double) : m);
-    final normCats = normalizeTo100(burnEntries, burnTotal);
-
-    final vendorEntries = ((d['transactionVendorEntries'] as List?) ?? [])
-        .map((e) => {
-              'label': '${e['label']}',
-              'value': (e['value'] as num).toDouble()
-            })
+      1.0,
+      (m, e) => (e['value'] as double) > m ? (e['value'] as double) : m,
+    );
+    final categories = _chartEntries(
+      (d['transactionCategoryEntries'] as List?) ?? [],
+      'Other categories',
+    );
+    final vendorTotals = d['transactionVendorBreakdown'];
+    final vendors = _chartEntries(
+      vendorTotals is Map && vendorTotals.isNotEmpty
+          ? [
+              for (final entry in vendorTotals.entries)
+                {'label': entry.key, 'value': entry.value},
+            ]
+          : (d['transactionVendorEntries'] as List?) ?? [],
+      'Other vendors',
+      cleanLegacyVendors: d['transactionVendorNamesResolved'] != true,
+    );
+    final upcoming = ((d['upcomingPayments'] as List?) ?? [])
+        .whereType<Map>()
+        .where((payment) {
+          final key = _occurrenceKey(payment);
+          return payment['type'] != 'subscription' ||
+              key == _leavingOccurrence ||
+              !_paid.contains(key);
+        })
         .toList();
-    final vendorTotal =
-        vendorEntries.fold<double>(0, (s, e) => s + (e['value'] as double));
-    final normVendors = normalizeTo100(vendorEntries, vendorTotal);
-
-    final upcoming = (d['upcomingPayments'] as List?) ?? [];
     final burnMap = (d['monthlyBurnBreakdown'] as Map?) ?? {};
 
     String money(num v) => inr(v);
@@ -358,108 +485,19 @@ class _DashboardPageState extends State<DashboardPage> {
             ]),
           ),
           const SizedBox(height: 12),
-          BrutalCard(
-            color: FinStackColors.surfaceContainer,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const BrutalSectionTitle(
-                title: 'Category breakdown',
-                subtitle: 'Share of this month’s spend',
-                accent: FinStackColors.accentPink,
-              ),
-              const SizedBox(height: 12),
-              if (normCats.isEmpty)
-                const Text('No data.')
-              else
-                ...normCats.asMap().entries.map((en) {
-                  final i = en.key;
-                  final c = en.value;
-                  final color = Color(_burnColors[i % _burnColors.length]);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: FinStackColors.onSurface, width: 2),
-                    ),
-                    child: Row(children: [
-                      Container(width: 12, height: 12, color: color),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text('${c['label']}',
-                            style: const TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w700),
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                      Text('${c['percent']}%',
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w900)),
-                    ]),
-                  );
-                }),
-            ]),
+          SpendingBreakdown(
+            title: 'Category breakdown',
+            emptyMessage: 'No category spending this month.',
+            entries: categories,
+            accent: FinStackColors.accentPink,
+            background: FinStackColors.surfaceContainer,
           ),
           const SizedBox(height: 12),
-          BrutalCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const BrutalSectionTitle(
-                title: 'Vendor breakdown',
-                subtitle: 'Your top vendors this month',
-                accent: FinStackColors.tertiary,
-              ),
-              const SizedBox(height: 12),
-              if (normVendors.isEmpty)
-                const Text('No vendor spend yet.')
-              else
-                ...normVendors.asMap().entries.map((en) {
-                  final i = en.key;
-                  final v = en.value;
-                  final color = Color(_burnColors[i % _burnColors.length]);
-                  final label = '${v['label']}';
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 7),
-                    padding: const EdgeInsets.all(9),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: FinStackColors.onSurface, width: 2),
-                    ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Row(children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          color: color,
-                          alignment: Alignment.center,
-                          child: Text('${i + 1}',
-                              style: const TextStyle(
-                                  fontSize: 10, fontWeight: FontWeight.w900)),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(label,
-                              style: const TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w700),
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        Text(money(v['value'] as num),
-                            style: const TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w800)),
-                      ]),
-                      const SizedBox(height: 6),
-                      Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: FinStackColors.surfaceVariant,
-                          border: Border.all(color: FinStackColors.onSurface, width: 1),
-                        ),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: ((v['percent'] as num) / 100).clamp(0.0, 1.0),
-                          child: ColoredBox(color: color),
-                        ),
-                      ),
-                    ]),
-                  );
-                }),
-            ]),
+          SpendingBreakdown(
+            title: 'Vendor breakdown',
+            emptyMessage: 'No vendor spending this month.',
+            entries: vendors,
+            accent: FinStackColors.tertiary,
           ),
           const SizedBox(height: 16),
           const BrutalSectionTitle(
@@ -474,71 +512,215 @@ class _DashboardPageState extends State<DashboardPage> {
               message: 'No payments due in the next 7 days.',
             )
           else
-            ...upcoming.map((p) {
-              final due = DateTime.tryParse('${p['dueDate'] ?? ''}');
-              final days = due == null ? 99 : due.difference(DateTime.now()).inDays;
-              final label = days < 0
-                  ? 'OVERDUE'
-                  : days == 0
-                      ? 'TODAY'
-                      : 'IN $days DAYS';
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: BrutalCard(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: FinStackColors.brandYellow,
-                          border: Border.all(color: FinStackColors.onSurface, width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          due == null ? '—' : '${due.day}',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${p['name'] ?? ''}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800, fontSize: 13),
-                              overflow: TextOverflow.ellipsis),
-                          Text('Due ${due != null ? dateLabel(due) : 'unavailable'}',
-                              style: const TextStyle(fontSize: 10)),
-                        ]),
-                      ),
-                      BrutalTag(
-                        label: label,
-                        color: days <= 2
-                            ? FinStackColors.errorContainer
-                            : FinStackColors.surfaceContainer,
-                      ),
-                    ]),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Text(money(_asNum(p['amount'])),
-                          style: const TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.w900)),
-                      const Spacer(),
-                      BrutalButton(
-                        label: 'Pay via UPI',
-                        icon: Icons.qr_code_2,
-                        onPressed: _openScanner,
-                      ),
-                    ]),
-                  ]),
-                ),
-              );
-            }),
+            for (final payment in upcoming) _upcomingCard(payment),
         ],
       ),
     );
   }
+
+  Widget _upcomingCard(Map payment) {
+    final key = _occurrenceKey(payment);
+    final due = DateTime.tryParse('${payment['dueDate'] ?? ''}')?.toLocal();
+    final now = DateTime.now();
+    final days = due == null
+        ? null
+        : DateTime.utc(
+            due.year,
+            due.month,
+            due.day,
+          ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+    final label = switch (days) {
+      null => 'Date unavailable',
+      < 0 => 'Overdue',
+      0 => 'Today',
+      1 => 'Tomorrow',
+      _ => 'In $days days',
+    };
+    final subscription = payment['type'] == 'subscription';
+    final leaving = _leavingOccurrence == key;
+    final pending = _savingOccurrence == key;
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    final card = Padding(
+      padding: const EdgeInsets.only(bottom: 8, right: 4),
+      child: BrutalCard(
+        color: leaving ? FinStackColors.surfaceContainer : Colors.white,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: leaving
+                        ? FinStackColors.accentGreen
+                        : FinStackColors.brandYellow,
+                    border: Border.all(
+                      color: FinStackColors.onSurface,
+                      width: 2,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: leaving
+                      ? const Icon(Icons.check)
+                      : Text(
+                          due == null ? '—' : '${due.day}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${payment['name'] ?? ''}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        due == null
+                            ? 'Due date unavailable'
+                            : 'Due ${dateLabel(due)}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!leaving)
+                  BrutalTag(
+                    label: label,
+                    color: (days ?? 99) <= 2
+                        ? FinStackColors.errorContainer
+                        : FinStackColors.surfaceContainer,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    inr(_asNum(payment['amount'])),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (leaving)
+                  SizedBox(
+                    height: 48,
+                    child: Center(
+                      child: Semantics(
+                        liveRegion: true,
+                        child: const BrutalTag(
+                          label: 'Paid',
+                          color: FinStackColors.accentGreen,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (subscription)
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      backgroundColor: FinStackColors.brandYellow,
+                    ),
+                    onPressed: _savingOccurrence != null || due == null
+                        ? null
+                        : () => _markPaid(payment),
+                    icon: const Icon(Icons.check, size: 18),
+                    label: Text(pending ? 'Saving…' : 'Paid'),
+                  )
+                else
+                  BrutalButton(
+                    label: 'Pay via UPI',
+                    icon: Icons.qr_code_2,
+                    onPressed: _openScanner,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    return KeyedSubtree(
+      key: ValueKey(key),
+      child: !leaving || reduced
+          ? card
+          : TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: _paidAnimation,
+              child: card,
+              builder: (context, progress, child) {
+                final strike = const Interval(
+                  0,
+                  .44,
+                  curve: Curves.easeOutCubic,
+                ).transform(progress);
+                final exit = const Interval(
+                  .50,
+                  1,
+                  curve: Curves.easeInOutCubic,
+                ).transform(progress);
+                return ClipRect(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: 1 - exit,
+                    child: Opacity(
+                      opacity: 1 - exit,
+                      child: Stack(
+                        children: [
+                          child!,
+                          Positioned.fill(
+                            bottom: 8,
+                            right: 4,
+                            child: IgnorePointer(
+                              child: CustomPaint(painter: _PaidStrike(strike)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _PaidStrike extends CustomPainter {
+  const _PaidStrike(this.progress);
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final start = Offset(8, size.height * .60);
+    final end = Offset(size.width - 8, size.height * .40);
+    final tip = Offset.lerp(start, end, progress)!;
+    final paint = Paint()
+      ..strokeCap = StrokeCap.square
+      ..strokeWidth = 7
+      ..color = FinStackColors.onSurface;
+    canvas.drawLine(start, tip, paint);
+    paint
+      ..strokeWidth = 3
+      ..color = FinStackColors.accentGreen;
+    canvas.drawLine(start, tip, paint);
+  }
+
+  @override
+  bool shouldRepaint(_PaidStrike oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class _Stat extends StatelessWidget {
