@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../core/upi.dart';
@@ -40,6 +42,7 @@ class UpiPayPage extends StatefulWidget {
 }
 
 class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
+  static const _upiChannel = MethodChannel('finstack/upi');
   static const _appKey = 'fintrack_upi_app';
   static const _storage = FlutterSecureStorage();
   static const _feedbackChannel = MethodChannel('finstack/payment_feedback');
@@ -212,77 +215,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       appId = await _chooseApp(firstTime: true);
       if (appId == null) return;
     }
-    // BHIM 4.0.30 on iOS only opens merchant VPAs; everything else dies with
-    // "This request type is not supported". Warn before wasting the trip.
-    if (appId == 'bhim') {
-      final action = await _bhimWarning();
-      if (action == 'switch') {
-        final next = await _chooseApp();
-        if (next == null || next == 'bhim') return;
-        appId = next;
-      } else if (action != 'open') {
-        return;
-      }
-    }
-    await _launchPayment(paise, appId);
-  }
-
-  Future<String?> _bhimWarning() {
-    return showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-        side: BorderSide(color: FinStackColors.onSurface, width: 3),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: BrutalTag(
-                  label: 'BHIM limitation',
-                  color: FinStackColors.errorContainer,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'BHIM MAY REJECT THIS PAYMENT',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'BHIM 4.0.30 on iPhone only accepts merchant UPI IDs. This QR looks like a personal UPI ID, so BHIM will probably show “This request type is not supported”.',
-                style: TextStyle(color: FinStackColors.onSurfaceVariant),
-              ),
-              const SizedBox(height: 16),
-              BrutalButton(
-                block: true,
-                label: 'Use another app',
-                icon: Icons.swap_horiz,
-                onPressed: () => Navigator.of(sheetContext).pop('switch'),
-              ),
-              const SizedBox(height: 8),
-              BrutalButton(
-                block: true,
-                color: Colors.white,
-                label: 'Open BHIM anyway',
-                onPressed: () => Navigator.of(sheetContext).pop('open'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (mounted) await _launchPayment(paise, appId);
   }
 
   Future<void> _launchPayment(int paise, String appId) async {
@@ -293,30 +226,37 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       _needsFamily = false;
     });
 
-    final note = widget.request.note ?? _productCtrl.text.trim();
-    Uri uriFor(String? id) => buildUpiUri(
-      payeeVpa: widget.request.payeeVpa,
-      payeeName: _payeeName,
-      amountPaise: paise,
-      note: note.isEmpty ? null : note,
-      merchantCode: widget.request.merchantCode,
-      txnRef: widget.request.txnRef,
-      appId: id,
-    );
+    String linkFor(String? id) =>
+        buildScannedUpiLink(widget.request, amountPaise: paise, appId: id);
 
     _awaitingPayment = true;
     _sawPause = false;
     try {
-      var opened = await launchUrl(
-        uriFor(appId),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened && appId != 'any') {
-        // Bank apps vary: fall back to the untargeted UPI intent.
-        opened = await launchUrl(
-          uriFor(null),
-          mode: LaunchMode.externalApplication,
-        );
+      final app = upiAppById(appId)!;
+      final bool opened;
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        opened =
+            await _upiChannel.invokeMethod<bool>('open', {
+              'uri': linkFor(null),
+              'package': app.androidPackage,
+            }) ??
+            false;
+      } else {
+        final fallback = switch (appId) {
+          'gpay' => 'tez',
+          'phonepe' => 'phonepeLegacy',
+          _ => null,
+        };
+        opened =
+            await launchUrlString(
+              linkFor(appId),
+              mode: LaunchMode.externalApplication,
+            ) ||
+            (fallback != null &&
+                await launchUrlString(
+                  linkFor(fallback),
+                  mode: LaunchMode.externalApplication,
+                ));
       }
       if (!mounted) return;
       if (!opened) {
@@ -324,7 +264,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         _sawPause = false;
         setState(
           () => _error =
-              'That app did not accept the payment. Pick another UPI app, or save the payment below.',
+              '${_appLabel(appId)} could not open this payment link. Choose another app or scan the QR in your UPI app.',
         );
         return;
       }
@@ -334,7 +274,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       if (mounted) {
         setState(
           () => _error =
-              'Could not open ${_appLabel(appId)}. Pick another app, or save the payment below.',
+              'Could not open ${_appLabel(appId)}. Choose another app or scan the QR in your UPI app.',
         );
       }
     } finally {
@@ -345,11 +285,17 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   String _appLabel(String? id) => upiAppById(id)?.label ?? 'Any UPI app';
 
   Future<bool> _isInstalled(UpiApp app) async {
-    // The generic intent is always available to the OS, even when none of the
-    // probed schemes resolve.
     if (app.id == 'any') return true;
     try {
-      return await canLaunchUrl(Uri.parse('${app.probeScheme}://'));
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return await _upiChannel.invokeMethod<bool>('supports', {
+              'uri': 'upi://pay',
+              'package': app.androidPackage,
+            }) ??
+            false;
+      }
+      return await canLaunchUrl(Uri.parse('${app.probeScheme}://')) ||
+          (app.id == 'gpay' && await canLaunchUrl(Uri.parse('gpay://')));
     } catch (_) {
       return false;
     }
@@ -416,7 +362,6 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               for (final app in ordered) ...[
                 _AppRow(
                   label: app.label,
-                  note: app.note,
                   installed: installed[app.id] == true,
                   selected: app.id == (_preferredAppId ?? ''),
                   onTap: () => Navigator.of(sheetContext).pop(app.id),
@@ -494,7 +439,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Only tap “Yes” once your UPI app shows the payment as successful.',
+                'Check your UPI app’s transaction history. Save only if it shows success. If the payment is pending or your account was debited, check its status before paying again.',
                 style: TextStyle(
                   fontSize: 11,
                   color: FinStackColors.onSurfaceVariant,
@@ -514,7 +459,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               BrutalButton(
                 block: true,
                 color: Colors.white,
-                label: 'Not yet',
+                label: 'Payment failed or pending',
                 onPressed: () => Navigator.of(sheetContext).pop(false),
               ),
             ],
@@ -524,6 +469,12 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     );
     if (saved == true) {
       await _saveTransaction();
+    } else if (saved == false && mounted) {
+      setState(() {
+        _utrCtrl.clear();
+        _error =
+            'Check the payment status in your UPI app before trying again. If the app rejected the link, try its own QR scanner.';
+      });
     }
   }
 
@@ -837,6 +788,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               Expanded(
                 child: TextField(
                   controller: _amountCtrl,
+                  readOnly: widget.request.isSigned && widget.request.hasAmount,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -866,6 +818,14 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               ),
             ],
           ),
+          if (widget.request.isSigned) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.request.hasAmount
+                  ? 'The merchant set the amount on this QR.'
+                  : 'Enter the same amount in your UPI app when it opens.',
+            ),
+          ],
           if (paise != null) ...[
             const SizedBox(height: 6),
             Text(
@@ -1065,16 +1025,14 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 ],
               ),
               const SizedBox(height: 8),
-              if (_preferredAppId == 'bhim')
+              if (_preferredAppId == 'bhim' &&
+                  defaultTargetPlatform == TargetPlatform.iOS &&
+                  !widget.request.isMerchant)
                 const Padding(
-                  padding: EdgeInsets.only(bottom: 6),
+                  padding: EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'BHIM 4.0.30 on iPhone rejects personal UPI IDs — switch apps if it errors.',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: FinStackColors.onErrorContainer,
-                    ),
+                    'BHIM on iPhone can reject links to personal UPI IDs.',
+                    style: TextStyle(fontSize: 11),
                   ),
                 ),
               BrutalButton(
@@ -1383,7 +1341,6 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
 
 class _AppRow extends StatelessWidget {
   final String label;
-  final String? note;
   final bool installed;
   final bool selected;
   final VoidCallback onTap;
@@ -1392,7 +1349,6 @@ class _AppRow extends StatelessWidget {
     required this.installed,
     required this.selected,
     required this.onTap,
-    this.note,
   });
 
   @override
@@ -1425,17 +1381,6 @@ class _AppRow extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (note != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      note!,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        height: 1.25,
-                        color: FinStackColors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -1445,11 +1390,6 @@ class _AppRow extends StatelessWidget {
               const BrutalTag(
                 label: 'Installed',
                 color: FinStackColors.tertiary,
-              )
-            else if (note != null)
-              const BrutalTag(
-                label: 'Limited',
-                color: FinStackColors.errorContainer,
               )
             else
               const BrutalTag(

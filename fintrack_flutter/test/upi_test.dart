@@ -76,6 +76,57 @@ void main() {
     });
   });
 
+  group('scanned payment handoff', () {
+    test('preserves the entire encoded signed query for all payment apps', () {
+      const query =
+          'pa=store%40upi&pn=Corner%20Store&cu=INR&am=25&mc=5411'
+          '&tr=ORDER123&tid=TX1&mode=02&orgid=000000&mid=123&url=https%3A%2F%2Fexample.com'
+          '&signatureExtension=%41&sign=abc%2Bdef%3D';
+      final request = parseUpiQr('upi://pay?$query')!;
+      expect(request.isSigned, isTrue);
+      const targets = {
+        'bhim': 'bhim://pay',
+        'gpay': 'gpay://upi/pay',
+        'tez': 'tez://upi/pay',
+        'paytm': 'paytmmp://pay',
+        'phonepe': 'phonepe://pay',
+        'any': 'upi://pay',
+      };
+      for (final target in targets.entries) {
+        expect(
+          buildScannedUpiLink(request, amountPaise: 9999, appId: target.key),
+          '${target.value}?$query',
+        );
+      }
+    });
+
+    test('keeps a signed variable-amount QR intact', () {
+      const raw = 'upi://pay?pa=store@upi&pn=Store&am=0&sign=example';
+      final request = parseUpiQr(raw)!;
+      expect(request.hasAmount, isFalse);
+      expect(buildScannedUpiLink(request, amountPaise: 1250), raw);
+    });
+
+    test('adds an amount without rebuilding an unsigned QR', () {
+      const raw = 'upi://pay?pa=store@upi&pn=Store&am=0&mode=01&orgid=000000';
+      final link = buildScannedUpiLink(parseUpiQr(raw)!, amountPaise: 1250);
+      expect(
+        link,
+        'upi://pay?pa=store@upi&pn=Store&mode=01&orgid=000000&am=12.50',
+      );
+    });
+
+    test(
+      'rejects ambiguous payees, duplicate amounts and non-payment links',
+      () {
+        expect(parseUpiQr('upi://mandate?pa=store@upi'), isNull);
+        expect(parseUpiQr('upi://pay?pa=store@upi&pa=other@upi'), isNull);
+        expect(parseUpiQr('upi://pay?pa=store@upi&am=10&am=20'), isNull);
+        expect(parseUpiQr('upi://pay?pa=store@upi&cu=USD'), isNull);
+      },
+    );
+  });
+
   group('buildUpiUri', () {
     test('builds the intent every UPI app understands', () {
       final uri = buildUpiUri(
@@ -104,7 +155,7 @@ void main() {
       );
 
       final gpay = forApp('gpay');
-      expect(gpay.scheme, 'tez');
+      expect(gpay.scheme, 'gpay');
       expect(gpay.host, 'upi');
       expect(gpay.path, '/pay');
 

@@ -20,6 +20,12 @@ class UpiPaymentRequest {
 
   bool get hasAmount => amountPaise != null && amountPaise! > 0;
   bool get isMerchant => merchantCode != null && merchantCode!.isNotEmpty;
+  Uri? get paymentUri => _canonicalPaymentUri(raw);
+  bool get isSigned =>
+      paymentUri?.queryParameters.keys.any(
+        (key) => key.toLowerCase() == 'sign',
+      ) ??
+      false;
 }
 
 final _vpaPattern = RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9.\-_]{1,}@[a-zA-Z]{2,}$');
@@ -31,7 +37,11 @@ UpiPaymentRequest? parseUpiQr(String raw) {
   if (value.isEmpty) return null;
 
   if (value.contains('://')) {
-    return _parseUri(value);
+    try {
+      return _parseUri(value);
+    } on FormatException {
+      return null;
+    }
   }
 
   if (value.contains('@') && !value.contains('\n') && value.length < 120) {
@@ -52,13 +62,44 @@ UpiPaymentRequest? parseUpiQr(String raw) {
   return null;
 }
 
+Uri? _canonicalPaymentUri(String raw) {
+  final uri = Uri.tryParse(raw);
+  if (uri == null ||
+      uri.scheme != 'upi' ||
+      uri.host != 'pay' ||
+      (uri.path.isNotEmpty && uri.path != '/') ||
+      uri.hasFragment ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasPort) {
+    return null;
+  }
+  if (!uri.queryParameters.containsKey('pa')) return null;
+  return uri;
+}
+
 UpiPaymentRequest? _parseUri(String raw) {
   final uri = Uri.tryParse(raw);
-  if (uri == null || uri.scheme.toLowerCase() != 'upi') return null;
-
+  if (uri == null ||
+      uri.scheme != 'upi' ||
+      uri.host != 'pay' ||
+      uri.hasFragment ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasPort) {
+    return null;
+  }
   final params = <String, String>{};
-  for (final entry in uri.queryParameters.entries) {
-    params[entry.key.toLowerCase()] = entry.value;
+  for (final entry in uri.queryParametersAll.entries) {
+    final key = entry.key.toLowerCase();
+    if (const {'pa', 'am', 'cu', 'sign'}.contains(key) &&
+        (params.containsKey(key) || entry.value.length != 1)) {
+      return null;
+    }
+    params[key] = entry.value.last;
+  }
+
+  if (params['cu'] != null && params['cu']!.toUpperCase() != 'INR') return null;
+  if (params.containsKey('sign') && _canonicalPaymentUri(raw) == null) {
+    return null;
   }
 
   var vpa = (params['pa'] ?? params['payeevpa'] ?? params['vpa'] ?? '').trim();
@@ -74,6 +115,12 @@ UpiPaymentRequest? _parseUri(String raw) {
   if (!_vpaPattern.hasMatch(vpa)) return null;
 
   final amount = _parseAmount(params['am'] ?? params['amount']);
+  if (params.containsKey('sign') &&
+      params['am']?.isNotEmpty == true &&
+      amount == null &&
+      num.tryParse(params['am']!) != 0) {
+    return null;
+  }
   final name = (params['pn'] ?? params['payeename'] ?? '').trim();
   return UpiPaymentRequest(
     raw: raw,
@@ -137,11 +184,11 @@ Map<String, String> _parseTlv(String data) {
 int? _parseAmount(String? raw) {
   if (raw == null) return null;
   final match = RegExp(
-    r'([0-9]+(?:\.[0-9]{1,2})?)',
-  ).firstMatch(raw.replaceAll(',', ''));
+    r'^([0-9]+(?:\.[0-9]{1,2})?)$',
+  ).firstMatch(raw.trim().replaceAll(',', ''));
   if (match == null) return null;
   final value = double.tryParse(match.group(1)!);
-  if (value == null || value <= 0) return null;
+  if (value == null || !value.isFinite || value <= 0) return null;
   return (value * 100).round();
 }
 
@@ -170,29 +217,47 @@ class UpiApp {
   final String id;
   final String label;
   final String probeScheme;
-  final String? note;
+  final String androidPackage;
 
   const UpiApp({
     required this.id,
     required this.label,
     required this.probeScheme,
-    this.note,
+    required this.androidPackage,
   });
 }
 
 const upiApps = <UpiApp>[
-  UpiApp(id: 'gpay', label: 'Google Pay', probeScheme: 'tez'),
-  UpiApp(id: 'phonepe', label: 'PhonePe', probeScheme: 'phonepe'),
-  UpiApp(id: 'paytm', label: 'Paytm', probeScheme: 'paytmmp'),
+  UpiApp(
+    id: 'gpay',
+    label: 'Google Pay',
+    probeScheme: 'tez',
+    androidPackage: 'com.google.android.apps.nbu.paisa.user',
+  ),
+  UpiApp(
+    id: 'phonepe',
+    label: 'PhonePe',
+    probeScheme: 'phonepe',
+    androidPackage: 'com.phonepe.app',
+  ),
+  UpiApp(
+    id: 'paytm',
+    label: 'Paytm',
+    probeScheme: 'paytmmp',
+    androidPackage: 'net.one97.paytm',
+  ),
   UpiApp(
     id: 'bhim',
     label: 'BHIM',
     probeScheme: 'bhim',
-    // BHIM 4.0.30 only opens payment screens for merchant VPAs. Personal UPI
-    // IDs get "This request type is not supported" — verified Oct 2026.
-    note: 'iPhone BHIM rejects personal UPI IDs with “request type is not supported”.',
+    androidPackage: 'in.org.npci.upiapp',
   ),
-  UpiApp(id: 'any', label: 'Any other UPI app', probeScheme: 'upi'),
+  UpiApp(
+    id: 'any',
+    label: 'Any other UPI app',
+    probeScheme: 'upi',
+    androidPackage: '',
+  ),
 ];
 
 UpiApp? upiAppById(String? id) {
@@ -203,11 +268,52 @@ UpiApp? upiAppById(String? id) {
   return null;
 }
 
-/// Builds the intent every UPI app (GPay, PhonePe, Paytm, BHIM, bank apps)
-/// understands. `am` is omitted when no amount was set.
-///
-/// [appId] targets one app's own scheme; omit it for the OS-wide `upi://`
-/// intent.
+/// Keeps the encoded query from a scanned payment link in its original order.
+String buildScannedUpiLink(
+  UpiPaymentRequest request, {
+  required int amountPaise,
+  String? appId,
+}) {
+  final original = request.paymentUri;
+  if (original == null) {
+    return buildUpiUri(
+      payeeVpa: request.payeeVpa,
+      payeeName: request.payeeName,
+      amountPaise: amountPaise,
+      note: request.note,
+      merchantCode: request.merchantCode,
+      txnRef: request.txnRef,
+      appId: appId,
+    ).toString();
+  }
+
+  var query = request.raw.substring(request.raw.indexOf('?') + 1);
+  if (!request.isSigned && request.amountPaise != amountPaise) {
+    // Keep all other values as encoded by the issuer, including repeated keys.
+    query = [
+      for (final part in query.split('&'))
+        if (Uri.decodeQueryComponent(part.split('=').first).toLowerCase() !=
+            'am')
+          part,
+      'am=${_intentAmount(amountPaise)}',
+    ].join('&');
+  }
+  return '${_upiTarget(appId)}?$query';
+}
+
+String _intentAmount(int paise) => (paise / 100).toStringAsFixed(2);
+
+String _upiTarget(String? appId) => switch (appId) {
+  'gpay' => 'gpay://upi/pay',
+  'tez' => 'tez://upi/pay',
+  'phonepe' => 'phonepe://pay',
+  'phonepeLegacy' => 'phonepe://upi/pay',
+  'paytm' => 'paytmmp://pay',
+  'bhim' => 'bhim://pay',
+  _ => 'upi://pay',
+};
+
+/// Builds a UPI payment link for sources without a canonical payment URI.
 Uri buildUpiUri({
   required String payeeVpa,
   required String payeeName,
@@ -220,35 +326,15 @@ Uri buildUpiUri({
   final params = <String, String>{
     'pa': payeeVpa,
     'pn': payeeName,
-    'am': (amountPaise / 100).toStringAsFixed(2),
+    'am': _intentAmount(amountPaise),
     'cu': 'INR',
+    if (note != null && note.trim().isNotEmpty) 'tn': note.trim(),
+    if (merchantCode != null && merchantCode.trim().isNotEmpty)
+      'mc': merchantCode.trim(),
+    if (txnRef != null && txnRef.trim().isNotEmpty) 'tr': txnRef.trim(),
   };
-  if (note != null && note.trim().isNotEmpty) params['tn'] = note.trim();
-  if (merchantCode != null && merchantCode.trim().isNotEmpty) {
-    params['mc'] = merchantCode.trim();
-  }
-  if (txnRef != null && txnRef.trim().isNotEmpty) params['tr'] = txnRef.trim();
-
-  switch (appId) {
-    case 'gpay':
-      return Uri(
-        scheme: 'tez',
-        host: 'upi',
-        path: '/pay',
-        queryParameters: params,
-      );
-    case 'phonepe':
-      return Uri(
-        scheme: 'phonepe',
-        host: 'upi',
-        path: '/pay',
-        queryParameters: params,
-      );
-    case 'paytm':
-      return Uri(scheme: 'paytmmp', host: 'pay', queryParameters: params);
-    case 'bhim':
-      return Uri(scheme: 'bhim', host: 'pay', queryParameters: params);
-    default:
-      return Uri(scheme: 'upi', host: 'pay', queryParameters: params);
-  }
+  final query = params.entries
+      .map((entry) => '${entry.key}=${Uri.encodeComponent(entry.value)}')
+      .join('&');
+  return Uri.parse('${_upiTarget(appId)}?$query');
 }
