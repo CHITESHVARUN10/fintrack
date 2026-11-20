@@ -76,7 +76,7 @@ router.get('/', async (req, res, next) => {
     const [total, items] = await Promise.all([
       Transaction.countDocuments(filter),
       Transaction.find(filter)
-        .sort({ occurredAt: -1 })
+        .sort({ occurredAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .populate('createdBy', 'name email')

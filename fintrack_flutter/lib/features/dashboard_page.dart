@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
@@ -39,7 +40,7 @@ List<({String label, double value})> _chartEntries(
     final value = _asNum(row['value']).toDouble();
     if (!value.isFinite || value <= 0) continue;
     final original = '${row['label']}';
-    final label = cleanLegacyVendors ? _legacyVendorName(original) : original;
+    final label = cleanLegacyVendors ? readableVendorName(original) : original;
     final key = label.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     final current = grouped[key];
     grouped[key] = (
@@ -58,30 +59,6 @@ List<({String label, double value})> _chartEntries(
       value: entries.skip(7).fold<double>(0, (sum, row) => sum + row.value),
     ),
   ];
-}
-
-// Older servers return raw statement descriptions as chart labels.
-String _legacyVendorName(String original) {
-  if (!RegExp(r'^upi\s*/', caseSensitive: false).hasMatch(original)) {
-    return original;
-  }
-  final parts = original.split('/').skip(1).map((part) => part.trim()).toList();
-  if (const ['dr', 'cr', 'p2p', 'p2m'].contains(parts.first.toLowerCase())) {
-    parts.removeAt(0);
-  }
-  final hasReference = parts.isNotEmpty && RegExp(r'^\d{6,}$').hasMatch(parts.first);
-  if (hasReference) parts.removeAt(0);
-  if (parts.isEmpty || (parts.length < 2 && !hasReference)) return original;
-  final name = parts.first;
-  final bankOrPlaceholder = RegExp(
-    r'^(?:[a-z]{4}0[a-z\d]{6}|(?:axis|hdfc|icici|idbi|kotak|sbi|pnb|bob|union|canara|yes|indusind|idfc)(?:\s+bank)?|bank(?:\s+of\b.*)?|payment|transfer|upi|unknown|na|n\.a\.)$',
-    caseSensitive: false,
-  );
-  return RegExp(r'\p{L}{2}', unicode: true).hasMatch(name) &&
-          !name.contains('@') &&
-          !bankOrPlaceholder.hasMatch(name)
-      ? name
-      : original;
 }
 
 String _occurrenceKey(Map payment) => '${payment['id']}|${payment['dueDate']}';

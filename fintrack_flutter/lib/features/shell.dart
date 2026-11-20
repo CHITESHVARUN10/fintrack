@@ -7,11 +7,11 @@ import 'dashboard_page.dart';
 import 'family_page.dart';
 import 'profile_hub_page.dart';
 import 'scan_pay_page.dart';
+import 'statistics_page.dart';
 import 'transactions_page.dart';
 
-/// Five destinations, the same shape iOS users expect from WhatsApp or
-/// Instagram: Home, Activity, a raised Scan action, Family and Profile.
-/// Everything else lives inside Profile → Workspace.
+enum _Tab { home, activity, scan, statistics, family, profile }
+
 class Shell extends ConsumerStatefulWidget {
   const Shell({super.key});
   @override
@@ -19,15 +19,20 @@ class Shell extends ConsumerStatefulWidget {
 }
 
 class _ShellState extends ConsumerState<Shell> {
-  int idx = 0;
+  _Tab _tab = _Tab.home;
   int _activityRefresh = 0;
-  final Set<int> visited = {0};
+  int _statisticsRefresh = 0;
+  final _visited = {_Tab.home};
   final _profileNavigator = GlobalKey<NavigatorState>();
   late final _bankImport = BankImport(
     onLedgerChanged: (message) {
       if (!mounted) return;
-      setState(() => _activityRefresh++);
-      if (idx != 4 || _profileNavigator.currentState?.canPop() == false) {
+      setState(() {
+        _activityRefresh++;
+        _statisticsRefresh++;
+      });
+      if (_tab != _Tab.profile ||
+          _profileNavigator.currentState?.canPop() == false) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(message)));
@@ -45,6 +50,7 @@ class _ShellState extends ConsumerState<Shell> {
     BrutalNavItem('Home', Icons.home_outlined),
     BrutalNavItem('Activity', Icons.receipt_long_outlined),
     BrutalNavItem('Scan', Icons.qr_code_scanner),
+    BrutalNavItem('Stats', Icons.bar_chart_outlined),
     BrutalNavItem('Family', Icons.group_outlined),
     BrutalNavItem('Profile', Icons.person_outline),
   ];
@@ -54,45 +60,57 @@ class _ShellState extends ConsumerState<Shell> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
-    if (mounted && idx == 1) setState(() => _activityRefresh++);
+    if (!mounted) return;
+    setState(() {
+      if (_tab == _Tab.activity) _activityRefresh++;
+      if (_tab == _Tab.statistics) _statisticsRefresh++;
+    });
   }
 
-  void _onTab(int i) {
-    if (i == 2) {
+  void _onTab(int index) {
+    final next = _Tab.values[index];
+    if (next == _Tab.scan) {
       _openScan();
       return;
     }
     dismissKeyboard(context);
-    if (i == 4 && idx == 4) {
+    if (next == _Tab.profile && _tab == next) {
       _profileNavigator.currentState?.popUntil((route) => route.isFirst);
       return;
     }
     setState(() {
-      if (i == 1 && idx != 1 && visited.contains(1)) _activityRefresh++;
-      idx = i;
-      visited.add(i);
+      if (_tab != next && _visited.contains(next)) {
+        if (next == _Tab.activity) _activityRefresh++;
+        if (next == _Tab.statistics) _statisticsRefresh++;
+      }
+      _tab = next;
+      _visited.add(next);
     });
   }
 
-  Widget _pageFor(int i) {
-    switch (i) {
-      case 0:
+  Widget _pageFor(_Tab tab) {
+    switch (tab) {
+      case _Tab.home:
         return const DashboardPage();
-      case 1:
+      case _Tab.activity:
         return TransactionsPage(refresh: _activityRefresh);
-      case 3:
+      case _Tab.statistics:
+        return StatisticsPage(refresh: _statisticsRefresh);
+      case _Tab.family:
         return const FamilyPage();
-      case 4:
+      case _Tab.profile:
         return NavigatorPopHandler<Object?>(
-          enabled: idx == 4,
+          enabled: _tab == _Tab.profile,
           onPopWithResult: (result) {
-            if (idx == 4) _profileNavigator.currentState?.maybePop(result);
+            if (_tab == _Tab.profile) {
+              _profileNavigator.currentState?.maybePop(result);
+            }
           },
           child: Navigator(
             key: _profileNavigator,
             onGenerateRoute: (_) => MaterialPageRoute<void>(
               builder: (_) => Scaffold(
-                appBar: _tabHeader(4),
+                appBar: _tabHeader(_Tab.profile),
                 body: BrutalGrid(
                   child: ProfileHubPage(bankImport: _bankImport),
                 ),
@@ -100,12 +118,12 @@ class _ShellState extends ConsumerState<Shell> {
             ),
           ),
         );
-      default:
+      case _Tab.scan:
         return const SizedBox.shrink();
     }
   }
 
-  PreferredSizeWidget _tabHeader(int index) => AppBar(
+  PreferredSizeWidget _tabHeader(_Tab tab) => AppBar(
     title: Row(
       children: [
         Container(
@@ -128,7 +146,8 @@ class _ShellState extends ConsumerState<Shell> {
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            _items[index].label.toUpperCase(),
+            (tab == _Tab.statistics ? 'Statistics' : _items[tab.index].label)
+                .toUpperCase(),
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontWeight: FontWeight.w800,
@@ -143,20 +162,20 @@ class _ShellState extends ConsumerState<Shell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: idx == 4 ? null : _tabHeader(idx),
+      appBar: _tab == _Tab.profile ? null : _tabHeader(_tab),
       body: BrutalGrid(
         child: IndexedStack(
-          index: idx,
+          index: _tab.index,
           children: [
-            for (var i = 0; i < _items.length; i++)
-              visited.contains(i) ? _pageFor(i) : const SizedBox.shrink(),
+            for (final tab in _Tab.values)
+              _visited.contains(tab) ? _pageFor(tab) : const SizedBox.shrink(),
           ],
         ),
       ),
       bottomNavigationBar: BrutalBottomNav(
-        index: idx,
+        index: _tab.index,
         items: _items,
-        actionIndex: 2,
+        actionIndex: _Tab.scan.index,
         onTap: _onTab,
       ),
     );

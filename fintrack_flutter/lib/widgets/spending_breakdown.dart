@@ -25,6 +25,8 @@ class SpendingBreakdown extends StatefulWidget {
     required this.entries,
     required this.accent,
     this.background = Colors.white,
+    this.subtitle = 'Share of this month’s spend',
+    this.formatAmount = inr,
   });
 
   final String title;
@@ -32,6 +34,8 @@ class SpendingBreakdown extends StatefulWidget {
   final List<({String label, double value})> entries;
   final Color accent;
   final Color background;
+  final String subtitle;
+  final String Function(num) formatAmount;
 
   @override
   State<SpendingBreakdown> createState() => _SpendingBreakdownState();
@@ -137,7 +141,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
         children: [
           BrutalSectionTitle(
             title: widget.title,
-            subtitle: 'Share of this month’s spend',
+            subtitle: widget.subtitle,
             accent: widget.accent,
           ),
           const SizedBox(height: 12),
@@ -284,7 +288,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          inr(entries[i].value),
+                          widget.formatAmount(entries[i].value),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(width: 8),

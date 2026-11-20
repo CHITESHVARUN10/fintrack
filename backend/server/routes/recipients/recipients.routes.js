@@ -27,7 +27,7 @@ router.get('/', async (req,res,next)=>{
     else if(catOr) filter.$or = catOr;
     const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit||100),10)||100));
     const skip = Math.max(0, parseInt(String(req.query.skip||0),10)||0);
-    const items = await RecipientDirectory.find(filter).sort({ hits:-1 }).skip(skip).limit(limit);
+    const items = await RecipientDirectory.find(filter).sort({ hits:-1, _id:-1 }).skip(skip).limit(limit);
     res.json({ items });
   } catch(err){ next(err) }
 });
