@@ -46,7 +46,7 @@ export function AcceptInvite() {
       >
         <div>
           <Link to="/" className="fse-brand" aria-label="FinStack home">
-            <span className="fse-brand-sq" aria-hidden="true">F</span>
+            <img className="fse-brand-sq" src="/finstack-logo.png" alt="" />
             <span className="fse-brand-word">FinStack</span>
           </Link>
           <h1 className="fse-auth-h1">Accept Invite</h1>

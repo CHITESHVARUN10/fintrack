@@ -12,7 +12,6 @@ import 'income_page.dart';
 import 'investments_page.dart';
 import 'notifications_page.dart';
 import 'profile_page.dart';
-import 'recurring_page.dart';
 import 'reports_page.dart';
 import 'settings_page.dart';
 import 'subscriptions_page.dart';
@@ -77,12 +76,6 @@ List<_WorkspaceEntry> _workspace(BankImport bankImport) => <_WorkspaceEntry>[
     Icons.autorenew,
     FinStackColors.accentPurple,
     (_) => SubscriptionsPage(),
-  ),
-  _WorkspaceEntry(
-    'Recurring',
-    Icons.event_repeat,
-    FinStackColors.accentCyan,
-    (_) => RecurringPage(),
   ),
   _WorkspaceEntry(
     'Investments',

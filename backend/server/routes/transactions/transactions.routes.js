@@ -210,7 +210,7 @@ router.get('/duplicate-groups', async (req, res, next) => {
       if (tx.candidateOf) {
         candidateOfTx = await Transaction.findOne({ _id: tx.candidateOf, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
       }
-      res.json({ transaction: tx, sources, candidateOfTx });
+      res.json({ transaction: tx, sources, candidateOfTx, canModify: canModifyTransaction(req, tx) });
     } catch (err) { next(err); }
   });
 
@@ -290,6 +290,7 @@ router.post('/bulk-categorize', async (req, res, next) => {
     const filter = {
       familyId: req.user.familyAccountId,
       status: { $ne: 'VOIDED' },
+      financeLink: null,
       $and: [
         { $or: [{ category: 'Other' }, { category: '' }, { category: { $exists: false } }, { category: null }] },
         { $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] },
@@ -315,9 +316,9 @@ router.post('/bulk-categorize', async (req, res, next) => {
     for (const tx of items) {
       const vk = normalizeVendorKey(tx.recipient?.name || '', tx.upiId || tx.recipient?.upiId || '');
       const upiId = tx.upiId || tx.recipient?.upiId || '';
-      const description = tx.recipient?.name || '';
+      const description = tx.recipient?.name || tx.sender?.name || '';
       try {
-        const pred = await predictCategory({ familyId: tx.familyId, vendorKey: vk, upiId, amountPaise: tx.amountPaise, description });
+        const pred = await predictCategory({ familyId: tx.familyId, vendorKey: vk, upiId, amountPaise: tx.amountPaise, description, type: tx.type });
         if (pred.category && pred.category !== 'Other' && pred.confidence >= threshold) {
           details.push({ id: tx._id, oldCategory: tx.category || 'Other', newCategory: pred.category, confidence: pred.confidence, rule: pred.rule, amount: tx.amountPaise });
           if (!dryRun) {
@@ -335,7 +336,8 @@ router.post('/bulk-categorize', async (req, res, next) => {
             if (pred.subscriptionRef && !tx.subscriptionRef) {
               updateDoc.subscriptionRef = pred.subscriptionRef;
             }
-            await Transaction.updateOne({ _id: tx._id }, { $set: updateDoc });
+            const change = await Transaction.updateOne({ _id: tx._id, financeLink: null }, { $set: updateDoc });
+            if (!change.modifiedCount) continue;
             // also teach vendor directory for future
             try {
               const { upsertFromCategory } = require('../../services/recipient.service');
@@ -364,6 +366,12 @@ router.post('/bulk-categorize', async (req, res, next) => {
       const tx = await Transaction.findById(req.params.id);
       if (!tx) return res.status(404).json({ error: 'Not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Forbidden' });
+      if (tx.financeLink && (
+        ['category', 'subcategory', 'type'].some(field => Object.hasOwn(req.body, field) &&
+          (req.body[field] || null) !== (tx[field] || null)) || req.body.subscriptionRef
+      )) {
+        return res.status(409).json({ error: 'Unlink this transaction from its investment or income source before reclassifying it' });
+      }
       // Validate subscriptionRef belongs to same family if provided
       if (req.body.subscriptionRef) {
         const Subscription = require('../../models/subscription.model');
@@ -379,6 +387,10 @@ router.post('/bulk-categorize', async (req, res, next) => {
       const allowed = ['category','subcategory','productName','productRef','subscriptionRef','categorySplit','lineItems','mode','type','visibility','recipient','sender','recipientVendorRef'];
       const categoryChanged = req.body.category && req.body.category !== tx.category;
       const productChanged = req.body.productName && req.body.productName !== tx.productName;
+      if (!tx.financeLink && ['category', 'subcategory', 'type', 'subscriptionRef'].some(field => Object.hasOwn(req.body, field))) {
+        tx.$where = { financeLink: null };
+      }
+      if (categoryChanged && !Object.hasOwn(req.body, 'subcategory')) tx.subcategory = undefined;
       for (const k of allowed) if (req.body[k] !== undefined) tx[k] = req.body[k] || null;
       await tx.save();
 
@@ -443,9 +455,12 @@ router.post('/bulk-categorize', async (req, res, next) => {
           console.warn('[patch vendor learn]', error.message);
         }
       }
-    res.json({ transaction: tx });
-  } catch (err) { next(err); }
-});
+      res.json({ transaction: tx });
+    } catch (err) {
+      if (err.name === 'DocumentNotFoundError') return res.status(409).json({ error: 'This transaction changed. Reload it and try again.' });
+      next(err);
+    }
+  });
 
 // POST /api/transactions/bulk-merge-duplicates — user-selected ids are treated
 // as duplicates. Groups by type+amountPaise so e.g. 5x ₹500 + 5x ₹20 collapse
@@ -473,7 +488,7 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
     }
     const resultGroups = [];
     let voided = 0;
-    const skipped = docs.length < value.ids.length ? value.ids.length - docs.length : 0;
+    let skipped = Math.max(0, value.ids.length - docs.length);
     for (const [key, arr] of groups.entries()) {
       if (arr.length < 2) {
         resultGroups.push({ key, type: arr[0].type, amountPaise: arr[0].amountPaise, count: 1, keptId: String(arr[0]._id), mergedIds: [] });
@@ -482,6 +497,7 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
       // Survivor: prefer already-reconciled/active, then earliest occurredAt
       const rank = { RECONCILED: 0, ACTIVE: 1, PENDING_REVIEW: 2 };
       arr.sort((a, b) => {
+        if (Boolean(a.financeLink) !== Boolean(b.financeLink)) return a.financeLink ? -1 : 1;
         const r = (rank[a.status] ?? 3) - (rank[b.status] ?? 3);
         if (r !== 0) return r;
         const t = new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime();
@@ -489,7 +505,9 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
         return String(a._id).localeCompare(String(b._id));
       });
       const survivor = arr[0];
-      const rest = arr.slice(1);
+      const rest = arr.slice(1).filter(tx => !tx.financeLink && !(survivor.financeLink && tx.subscriptionRef));
+      skipped += arr.length - rest.length - 1;
+      if (!rest.length) continue;
       const restIds = rest.map((d) => d._id);
       if (SourceRecord) {
         await SourceRecord.updateMany({ transactionId: { $in: restIds } }, { transactionId: survivor._id });
@@ -510,7 +528,7 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
         key,
         type: survivor.type,
         amountPaise: survivor.amountPaise,
-        count: arr.length,
+        count: rest.length + 1,
         keptId: String(survivor._id),
         mergedIds: restIds.map(String),
       });

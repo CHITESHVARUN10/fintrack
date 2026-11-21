@@ -27,6 +27,15 @@ const transactionSchema = new mongoose.Schema(
     ],
     recipientVendorRef: { type: mongoose.Schema.Types.ObjectId, ref: 'RecipientDirectory' },
     subscriptionRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Subscription' },
+    financeLink: {
+      type: new mongoose.Schema({
+        resource: { type: String, enum: ['investments', 'income'], required: true },
+        recordId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        role: { type: String, enum: ['deposit', 'maturity', 'purchase', 'dividend', 'receipt'], required: true },
+        previousCategory: String,
+        previousSubcategory: String,
+      }, { _id: false }),
+    },
     sender: { name: String, upiId: String, accountRef: String },
     recipient: { name: String, upiId: String, accountRef: String },
     familyTransfer: { fromUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, toUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } },
@@ -53,6 +62,7 @@ transactionSchema.index({ familyId: 1, recipientVendorRef: 1, occurredAt: -1 });
 transactionSchema.index({ familyId: 1, subscriptionRef: 1 });
 transactionSchema.index({ amountPaise: 1, occurredAt: 1 });
 transactionSchema.index({ status: 1 });
+transactionSchema.index({ 'financeLink.recordId': 1 }, { sparse: true });
 transactionSchema.index({ batchId: 1 });
 transactionSchema.index({ fingerprint: 1 });
 transactionSchema.index({ 'lineItems.productName': 1 });

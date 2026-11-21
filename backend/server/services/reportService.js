@@ -4,7 +4,6 @@ const { PassThrough } = require('stream');
 
 const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
-const RecurringPayment = require('../models/recurring.model');
 const Investment = require('../models/investment.model');
 const AdHocExpense = require('../models/expense.model');
 const User = require('../models/user.model');
@@ -49,25 +48,23 @@ function monthName(m) {
 // ---------------------------------------------------------------------------
 
 async function baseData(userId) {
-  const [user, incomes, subs, recs, invs, expenses] =
+  const [user, incomes, subs, invs, expenses] =
     await Promise.all([
       User.findById(userId).select('name email').lean(),
       Income.find({ memberId: userId }),
       Subscription.find({ memberId: userId }),
-      RecurringPayment.find({ memberId: userId }),
       Investment.find({ memberId: userId }),
       AdHocExpense.find({ memberId: userId }),
     ]);
-  return { user: user || {}, incomes, subs, recs, invs, expenses };
+  return { user: user || {}, incomes, subs, invs, expenses };
 }
 
-function buildObligations(subs, recs, invs) {
+function buildObligations(subs, invs) {
   const subsActive = subs.filter((s) => s.status !== 'Cancelled');
   const sipInvs = invs.filter((i) => i.investmentType === 'mf_sip');
 
   const items = [
     ...subsActive.map((s) => ({ type: 'Subscription', name: s.name || 'Subscription', amount: subMonthlyAmount(s) })),
-    ...recs.map((r) => ({ type: 'Recurring', name: r.title || 'Recurring', amount: r.amount || 0 })),
     ...sipInvs.map((i) => ({ type: 'SIP', name: i.fundName || i.stockName || 'SIP', amount: i.sipAmount || 0 })),
   ];
   const total = items.reduce((s, o) => s + (o.amount || 0), 0);
@@ -93,7 +90,7 @@ function buildInvestmentSnapshot(invs) {
 }
 
 async function buildMonthlyData(userId, month, year) {
-  const { user, incomes, subs, recs, invs, expenses } = await baseData(userId);
+  const { user, incomes, subs, invs, expenses } = await baseData(userId);
 
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 1);
@@ -108,7 +105,7 @@ async function buildMonthlyData(userId, month, year) {
   }
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-  const obligations = buildObligations(subs, recs, invs);
+  const obligations = buildObligations(subs, invs);
   const inv = buildInvestmentSnapshot(invs);
 
   return {
@@ -129,7 +126,7 @@ async function buildMonthlyData(userId, month, year) {
 }
 
 async function buildAnnualData(userId, year) {
-  const { user, incomes, subs, recs, invs, expenses } = await baseData(userId);
+  const { user, incomes, subs, invs, expenses } = await baseData(userId);
 
   const start = new Date(year, 0, 1);
   const end = new Date(year + 1, 0, 1);
@@ -147,7 +144,7 @@ async function buildAnnualData(userId, year) {
   }
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-  const monthlyObligations = buildObligations(subs, recs, invs);
+  const monthlyObligations = buildObligations(subs, invs);
   const inv = buildInvestmentSnapshot(invs);
 
   return {

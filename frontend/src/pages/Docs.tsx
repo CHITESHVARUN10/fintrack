@@ -38,7 +38,7 @@ const SECTIONS: DocSection[] = [
     icon: 'dashboard',
     summary: 'Sidebar, header search, theme, and global navigation.',
     steps: [
-      { title: 'Sidebar (fixed 240px)', detail: 'All primary modules: Dashboard, Income, Subscriptions, Recurring, Investments, Tax Calculator, Reports, Family Dashboard, Members, Vendors, Transactions, Import, Budgets, Settings. Active route is highlighted with the yellow indicator.' },
+      { title: 'Sidebar (fixed 240px)', detail: 'All primary modules: Dashboard, Income, Subscriptions, Investments, Tax Calculator, Reports, Family Dashboard, Members, Vendors, Transactions, Import, Budgets, Settings. Active route is highlighted with the yellow indicator.' },
       { title: 'Header', detail: 'Left: page title + member switcher (admin). Right: global search (⌘K / Ctrl+K / “/”) → palette that ranks pages/transactions/vendors/subscriptions/investments; theme toggle (light/dark, persisted in localStorage fintrack-theme); notifications; avatar → /settings.' },
       { title: 'Family banner', detail: 'If !familyAccountId, a yellow brutal banner appears on every page with a CTA to Settings → Family.' },
       { title: 'Footer', detail: 'Links to Privacy Policy (/privacy) and Docs (/docs). Always visible inside the app shell.' },
@@ -52,7 +52,7 @@ const SECTIONS: DocSection[] = [
     route: '/dashboard',
     steps: [
       { title: 'Stat cards', detail: 'Monthly Income (yellow), Monthly Outflow (white), Investments Worth (cyan), Net Monthly Savings (white) — values are via GET /api/dashboard. Net = Income − Obligations.' },
-      { title: 'Monthly Spend Breakdown (420px card)', detail: 'Bar list per category: bar width = value / maxBurn. Totals at bottom: Actual Spend (Transactions) this month + txn count. Chips: Subscriptions / Recurring / Investments SIP from monthlyBurnBreakdown.' },
+      { title: 'Monthly Spend Breakdown (420px card)', detail: 'Bar list per category: bar width = value / maxBurn. Totals at bottom: Actual Spend (Transactions) this month + txn count. Chips: Subscriptions / Investment SIPs from monthlyBurnBreakdown.' },
       { title: 'Category & Vendor donuts', detail: 'DonutChart (inner 55%, outer 85%, stroke var(--border)). Categories: full distribution — percentages normalized via Hamilton largest-remainder so center Total is always 100% (not 101%). Vendors: top 8 + Other bucket so 98% becomes 100% of total spend. Legend is grid 2-col scrollable, not overlapping outer labels (≥5% threshold).' },
       { title: 'Upcoming Payments (7 days)', detail: 'Horizontal scroll of subscriptions and SIPs due in next 7 days (nextOccurrence). Button: Pay Now (≤5d) vs Schedule, due badge color-coded.' },
       { title: 'Dark mode contrast', detail: 'Axis/grid use var(--chart-axis-text) #d8d8d0 (13:1) and var(--chart-grid) 10% white, not muted gray. Borders use var(--border) #f5f5f0 + yellow shadow var(--shadow).' },
@@ -118,7 +118,7 @@ const SECTIONS: DocSection[] = [
   },
   {
     id: 'subscriptions',
-    label: 'Subscriptions & Recurring',
+    label: 'Subscriptions',
     icon: 'subscriptions',
     summary: 'Auto-pay tracking with transaction linking and suggestions.',
     route: '/subscriptions',
@@ -126,7 +126,6 @@ const SECTIONS: DocSection[] = [
       { title: 'Subscriptions CRUD', detail: 'Fields: name, category, amount, billingDate (1-31), frequency (monthly/yearly), start/end, paymentMethod, autoRenew, status. Filters by frequency. Card shows days until due, amount.' },
       { title: 'Detail (/subscriptions/:id)', detail: 'Header, monthly cost, linked transactions (GET /subscriptions/:id/transactions returns {linked, suggestions, totalPaidPaise}), suggestions via subscriptionLinker fuzzy + amount ±5%/15% + day ±3.' },
       { title: 'Linking', detail: 'Link box: select transaction → PATCH /transactions/:id {subscriptionRef}. Prepayment style: RecordSubscriptionPaymentModal offers manual amount/date/mode vs link existing transaction.' },
-      { title: 'Recurring Payments', detail: 'Similar page /recurring with category Household/Utility/Staff etc., dueDate, amount. Suggestions /recurring/suggestions → apply/dismiss.' },
       { title: 'CategoryEngine boost', detail: 'Family sub match 90 (exact name+amount) / 80 (name) → auto-categorizes as subscription category.' },
     ],
   },
@@ -137,7 +136,8 @@ const SECTIONS: DocSection[] = [
     summary: 'Stocks, MF/SIP, FD, Real Estate — valuation & SIP schedule.',
     route: '/investments',
     steps: [
-      { title: 'Types & fields', detail: 'Investment {investmentType: stock/mf_sip/fd/real_estate, stockName/ticker/buyPrice/quantity/currentPrice, fundName/fundHouse/sipAmount/sipDate/units/nav, bankName/principalAmount/interestRate/tenureMonths, etc.} + totalInvested/currentValue/start/end/status.' },
+      { title: 'Fixed deposit terms', detail: 'Enter the opening date, principal, annual interest rate, and term. Set the bank’s maturity date or let FinStack calculate it. Record the payout or renewal instruction and confirm the deposit status with your bank at maturity.' },
+      { title: 'Linked transactions', detail: 'Open Transactions on a fixed deposit to link funding or a maturity payout. On a stock, link purchases and dividends. FinStack assigns Investment / Fixed Deposit or Investment / Stocks in the ledger.' },
       { title: 'Summary', detail: 'GET /investments/summary → investedValue/currentValueOf aggregation per member; dashboard Investment Portfolio Value card pulls this.' },
       { title: 'Tax link', detail: 'ELSS auto-flags for 80C in tax.module; SIP amount contributes to monthlyObligations in dashboard.' },
     ],

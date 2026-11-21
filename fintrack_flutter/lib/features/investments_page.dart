@@ -3,13 +3,27 @@ import '../core/api_client.dart';
 import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/finance_transactions.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
 
 const _types = ['stock', 'mf_sip', 'fd', 'real_estate', 'other'];
 const _tabs = ['all', ..._types];
+const _typeLabels = {
+  'all': 'All',
+  'stock': 'Stocks',
+  'mf_sip': 'Mutual funds / SIP',
+  'fd': 'Fixed deposits',
+  'real_estate': 'Real estate',
+  'other': 'Other',
+};
 const _fundCategories = ['Equity', 'Debt', 'Hybrid', 'ELSS', 'Index', 'Other'];
 const _statuses = ['Active', 'Matured', 'Closed', 'Broken'];
+const _maturityActions = {
+  'credit_account': 'Credit principal and interest to an account',
+  'renew_principal': 'Renew principal and pay out interest',
+  'renew_full': 'Renew principal and interest',
+};
 
 String _nameOf(Map m) =>
     '${m['stockName'] ?? m['fundName'] ?? m['assetName'] ?? m['title'] ?? ''}';
@@ -84,14 +98,18 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     try {
       await ApiClient.dio.delete("/investments/${item['_id'] ?? item['id']}");
-      await load();
-    } catch (_) {
+      if (mounted) await load();
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete investment.')),
+          SnackBar(
+            content: Text(
+              ApiClient.errorMessage(e, 'Could not delete investment.'),
+            ),
+          ),
         );
       }
     }
@@ -102,11 +120,11 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _InvestmentForm(
+      builder: (sheetContext) => _InvestmentForm(
         initial: initial,
         onSaved: () {
-          Navigator.pop(context);
-          load();
+          Navigator.pop(sheetContext);
+          if (mounted) load();
         },
       ),
     );
@@ -183,7 +201,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
                       for (final value in _tabs)
                         ChoiceChip(
                           label: Text(
-                            value.replaceAll('_', ' ').toUpperCase(),
+                            _typeLabels[value]!.toUpperCase(),
                             style: FinStackType.caption,
                           ),
                           selected: tab == value,
@@ -250,10 +268,30 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
   );
 
   Widget _investmentCard(Map item) {
-    final invested = (item['totalInvested'] as num?) ?? 0;
-    final current = (item['currentValue'] as num?) ?? 0;
+    final kind = '${item['investmentType'] ?? 'other'}';
+    final isFd = kind == 'fd';
+    final invested =
+        ((isFd
+                ? item['principalAmount'] ?? item['totalInvested']
+                : item['totalInvested'])
+            as num?) ??
+        0;
+    final current =
+        ((isFd
+                ? item['maturityAmount'] ??
+                      item['principalAmount'] ??
+                      item['currentValue']
+                : item['currentValue'])
+            as num?) ??
+        0;
     final gain = current - invested;
-    final type = '${item['investmentType'] ?? 'other'}'.replaceAll('_', ' ');
+    final maturity = DateTime.tryParse('${item['maturityDate'] ?? ''}');
+    final status = '${item['status'] ?? 'Active'}';
+    final due =
+        status == 'Active' &&
+        maturity != null &&
+        !maturity.isAfter(DateTime.now());
+    final type = isFd ? 'Fixed deposit' : (_typeLabels[kind] ?? kind);
     return BrutalCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -311,12 +349,44 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
                 Text('Bank: ${item['bankName']}', style: FinStackType.caption),
             ],
           ),
+          if (isFd) ...[
+            if (maturity != null)
+              Text(
+                'Maturity: ${maturity.toIso8601String().split('T').first} · ${due ? 'Due for confirmation' : status}',
+              ),
+            if (item['tenureMonths'] != null || item['tenureDays'] != null)
+              Text(
+                [
+                  if ((item['tenureMonths'] ?? 0) != 0)
+                    "${item['tenureMonths']} mo",
+                  if ((item['tenureDays'] ?? 0) != 0) "${item['tenureDays']} d",
+                ].join(' '),
+                style: FinStackType.caption,
+              ),
+            Text(switch (item['maturityAction']) {
+              'renew_principal' =>
+                'Renew principal for the same term and pay out interest',
+              'renew_full' => 'Renew principal and interest for the same term',
+              final action =>
+                _maturityActions[action] ?? 'Maturity instruction not set',
+            }, style: FinStackType.caption),
+            if (item['payoutAccount'] != null)
+              Text(
+                "Payout account: ${item['payoutAccount']}",
+                style: FinStackType.caption,
+              ),
+          ],
           const Divider(height: 7, thickness: 1),
           Row(
             spacing: 8,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _positionValue('Current', current)),
+              Expanded(
+                child: _positionValue(
+                  isFd ? 'Maturity value' : 'Current',
+                  current,
+                ),
+              ),
               Expanded(child: _positionValue('Invested', invested)),
               Expanded(
                 child: _positionValue(
@@ -329,6 +399,20 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
               ),
             ],
           ),
+          if (isFd || kind == 'stock')
+            Align(
+              alignment: Alignment.centerLeft,
+              child: BrutalButton(
+                label: 'Transactions',
+                color: Colors.white,
+                onPressed: () => showFinanceTransactions(
+                  context,
+                  kind: kind,
+                  id: "${item['_id'] ?? item['id']}",
+                  name: _nameOf(item),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -336,7 +420,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
 
   Widget _positionValue(
     String label,
-    num value, {
+    num? value, {
     Color color = FinStackColors.onSurface,
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -346,7 +430,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerLeft,
         child: Text(
-          inr(value),
+          value == null ? '—' : inr(value),
           style: FinStackType.amount.copyWith(fontSize: 14, color: color),
         ),
       ),
@@ -374,6 +458,8 @@ class _InvestmentFormState extends State<_InvestmentForm> {
       principalCtrl,
       rateCtrl,
       tenureCtrl,
+      tenureDaysCtrl,
+      payoutAccountCtrl,
       maturityDateCtrl,
       maturityAmtCtrl;
   late final TextEditingController assetTypeCtrl,
@@ -385,6 +471,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
   String status = 'Active';
   String fundCategory = '';
   String interestType = '';
+  String? maturityAction;
   bool taxableInterest = false;
   bool busy = false;
   String? error;
@@ -409,7 +496,17 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     bankCtrl = TextEditingController(text: s(i?['bankName']));
     principalCtrl = TextEditingController(text: s(i?['principalAmount']));
     rateCtrl = TextEditingController(text: s(i?['interestRate']));
-    tenureCtrl = TextEditingController(text: s(i?['tenureMonths']));
+    final months = i?['tenureMonths'];
+    tenureCtrl = TextEditingController(
+      text: months is num && months == months.round()
+          ? '${months.round()}'
+          : s(months),
+    );
+    tenureDaysCtrl = TextEditingController(text: s(i?['tenureDays']));
+    payoutAccountCtrl = TextEditingController(text: s(i?['payoutAccount']));
+    if (_maturityActions.containsKey(i?['maturityAction'])) {
+      maturityAction = i?['maturityAction'] as String;
+    }
     maturityDateCtrl = TextEditingController(
       text: (('${i?['maturityDate'] ?? ''}').length >= 10)
           ? ('${i?['maturityDate']}').substring(0, 10)
@@ -440,13 +537,145 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     taxableInterest = (i?['taxableInterest'] ?? false) == true;
   }
 
-  double? _num(String v) => v.trim().isEmpty ? null : double.tryParse(v.trim());
+  @override
+  void dispose() {
+    for (final controller in [
+      titleCtrl,
+      investedCtrl,
+      currentCtrl,
+      tickerCtrl,
+      buyCtrl,
+      qtyCtrl,
+      curPriceCtrl,
+      fundHouseCtrl,
+      sipAmtCtrl,
+      sipDateCtrl,
+      unitsCtrl,
+      navCtrl,
+      bankCtrl,
+      principalCtrl,
+      rateCtrl,
+      tenureCtrl,
+      tenureDaysCtrl,
+      payoutAccountCtrl,
+      maturityDateCtrl,
+      maturityAmtCtrl,
+      assetTypeCtrl,
+      purchaseCtrl,
+      startCtrl,
+      endCtrl,
+      notesCtrl,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  double? _num(String value) {
+    final parsed = double.tryParse(value.trim());
+    return parsed?.isFinite == true ? parsed : null;
+  }
+
+  Future<void> pickDate(TextEditingController controller) async {
+    final first = DateTime(1900);
+    final last = DateTime(2200);
+    final candidate = DateTime.tryParse(controller.text) ?? DateTime.now();
+    final chosen = await showDatePicker(
+      context: context,
+      firstDate: first,
+      lastDate: last,
+      initialDate: candidate.isBefore(first) || candidate.isAfter(last)
+          ? DateTime.now()
+          : candidate,
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      controller.text = chosen.toIso8601String().split('T').first;
+      if (controller == startCtrl) maturityDateCtrl.clear();
+    });
+  }
+
+  Widget dateControl(
+    String label,
+    TextEditingController controller,
+    String hint,
+  ) => InputDecorator(
+    decoration: InputDecoration(
+      labelText: label,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: TextButton.icon(
+            onPressed: () => pickDate(controller),
+            icon: const Icon(Icons.calendar_today_outlined, size: 16),
+            label: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(controller.text.isEmpty ? hint : controller.text),
+            ),
+          ),
+        ),
+        if (controller == maturityDateCtrl && controller.text.isNotEmpty)
+          IconButton(
+            tooltip: 'Calculate maturity date from term',
+            icon: const Icon(Icons.clear),
+            onPressed: () => setState(controller.clear),
+          ),
+      ],
+    ),
+  );
 
   Future<void> save() async {
-    if (titleCtrl.text.trim().isEmpty ||
-        (double.tryParse(investedCtrl.text) ?? 0) <= 0) {
-      setState(() => error = 'Name and total invested are required.');
+    final fd = type == 'fd';
+    final invested = _num((fd ? principalCtrl : investedCtrl).text);
+    if (titleCtrl.text.trim().isEmpty || invested == null || invested <= 0) {
+      setState(
+        () => error = fd
+            ? 'Enter the deposit name and principal.'
+            : 'Name and total invested are required.',
+      );
       return;
+    }
+    final months = int.tryParse(
+      tenureCtrl.text.trim().isEmpty ? '0' : tenureCtrl.text.trim(),
+    );
+    final days = int.tryParse(
+      tenureDaysCtrl.text.trim().isEmpty ? '0' : tenureDaysCtrl.text.trim(),
+    );
+    final rate = _num(rateCtrl.text);
+    final maturityAmount = _num(maturityAmtCtrl.text);
+    if (fd) {
+      if (startCtrl.text.isEmpty || rate == null || rate < 0) {
+        setState(
+          () => error =
+              'Choose the opening date and enter the annual interest rate.',
+        );
+        return;
+      }
+      if (months == null ||
+          days == null ||
+          months < 0 ||
+          months > 1200 ||
+          days < 0 ||
+          days > 36500 ||
+          months + days <= 0) {
+        setState(
+          () => error = 'Enter a positive term in whole months, days, or both.',
+        );
+        return;
+      }
+      if (maturityAction == null) {
+        setState(() => error = 'Choose what the bank should do at maturity.');
+        return;
+      }
+      if (maturityAmtCtrl.text.trim().isNotEmpty &&
+          (maturityAmount == null || maturityAmount <= 0)) {
+        setState(
+          () => error = 'Enter a positive maturity amount or leave it blank.',
+        );
+        return;
+      }
     }
     setState(() {
       busy = true;
@@ -454,8 +683,10 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     });
     final payload = <String, dynamic>{
       'investmentType': type,
-      'totalInvested': double.parse(investedCtrl.text),
-      if (_num(currentCtrl.text) != null)
+      'totalInvested': invested,
+      if (fd)
+        'currentValue': maturityAmount ?? invested
+      else if (_num(currentCtrl.text) != null)
         'currentValue': _num(currentCtrl.text),
       if (startCtrl.text.trim().isNotEmpty) 'startDate': startCtrl.text.trim(),
       if (endCtrl.text.trim().isNotEmpty) 'endDate': endCtrl.text.trim(),
@@ -491,21 +722,18 @@ class _InvestmentFormState extends State<_InvestmentForm> {
       if (bankCtrl.text.trim().isNotEmpty) {
         payload['bankName'] = bankCtrl.text.trim();
       }
-      if (_num(principalCtrl.text) != null) {
-        payload['principalAmount'] = _num(principalCtrl.text);
-      }
-      if (_num(rateCtrl.text) != null) {
-        payload['interestRate'] = _num(rateCtrl.text);
-      }
-      if (_num(tenureCtrl.text) != null) {
-        payload['tenureMonths'] = _num(tenureCtrl.text);
-      }
-      if (maturityDateCtrl.text.trim().isNotEmpty) {
-        payload['maturityDate'] = maturityDateCtrl.text.trim();
-      }
-      if (_num(maturityAmtCtrl.text) != null) {
-        payload['maturityAmount'] = _num(maturityAmtCtrl.text);
-      }
+      payload['principalAmount'] = invested;
+      payload['interestRate'] = rate;
+      payload['tenureMonths'] = months;
+      payload['tenureDays'] = days;
+      payload['maturityDate'] = maturityDateCtrl.text.isEmpty
+          ? null
+          : maturityDateCtrl.text;
+      payload['maturityAmount'] = maturityAmount;
+      payload['maturityAction'] = maturityAction;
+      final payout = payoutAccountCtrl.text.trim();
+      payload['payoutAccount'] =
+          maturityAction == 'renew_full' || payout.isEmpty ? null : payout;
       if (interestType.isNotEmpty) payload['interestType'] = interestType;
       payload['taxableInterest'] = taxableInterest;
     } else {
@@ -526,9 +754,13 @@ class _InvestmentFormState extends State<_InvestmentForm> {
       } else {
         await ApiClient.dio.post('/investments', data: payload);
       }
-      widget.onSaved();
+      if (mounted) widget.onSaved();
     } catch (e) {
-      setState(() => error = 'Could not save investment.');
+      if (mounted) {
+        setState(
+          () => error = ApiClient.errorMessage(e, 'Could not save investment.'),
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -540,6 +772,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     List<String> options,
     ValueChanged<String?> onChanged, {
     bool allowEmpty = false,
+    Map<String, String> labels = const {},
   }) {
     final items = allowEmpty ? [''].followedBy(options).toList() : options;
     final v = items.contains(value) ? value : (allowEmpty ? '' : options.first);
@@ -557,7 +790,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               .map(
                 (c) => DropdownMenuItem(
                   value: c,
-                  child: Text(c.isEmpty ? 'Select' : c),
+                  child: Text(c.isEmpty ? 'Select' : labels[c] ?? c),
                 ),
               )
               .toList(),
@@ -596,27 +829,34 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               hint: 'e.g. Infosys, PPFAS Flexi Cap, SBI FD',
             ),
             const SizedBox(height: 8),
-            _drop('Type', type, _types, (v) => setState(() => type = v!)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: BrutalField(
-                    label: 'Total invested ₹',
-                    controller: investedCtrl,
-                    hint: '0',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: BrutalField(
-                    label: 'Current value ₹',
-                    controller: currentCtrl,
-                    hint: '0',
-                  ),
-                ),
-              ],
+            _drop(
+              'Type',
+              type,
+              _types,
+              (v) => setState(() => type = v!),
+              labels: _typeLabels,
             ),
+            const SizedBox(height: 8),
+            if (type != 'fd')
+              Row(
+                children: [
+                  Expanded(
+                    child: BrutalField(
+                      label: 'Total invested ₹',
+                      controller: investedCtrl,
+                      hint: '0',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: BrutalField(
+                      label: 'Current value ₹',
+                      controller: currentCtrl,
+                      hint: '0',
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: 8),
             if (type == 'stock') ...[
               Row(
@@ -725,64 +965,109 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               const SizedBox(height: 8),
             ],
             if (type == 'fd') ...[
+              BrutalField(
+                label: 'Bank name',
+                controller: bankCtrl,
+                hint: 'SBI',
+              ),
+              const SizedBox(height: 8),
               Row(
+                spacing: 8,
                 children: [
-                  Expanded(
-                    child: BrutalField(
-                      label: 'Bank name',
-                      controller: bankCtrl,
-                      hint: 'SBI',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: BrutalField(
                       label: 'Principal ₹',
                       controller: principalCtrl,
-                      hint: '0',
+                      hint: '100000',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
                   Expanded(
                     child: BrutalField(
-                      label: 'Interest %',
+                      label: 'Annual interest %',
                       controller: rateCtrl,
                       hint: '7',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: BrutalField(
-                      label: 'Tenure (months)',
-                      controller: tenureCtrl,
-                      hint: '12',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              dateControl('Opened on', startCtrl, 'Choose a date'),
+              const SizedBox(height: 12),
               Row(
+                spacing: 8,
                 children: [
                   Expanded(
                     child: BrutalField(
-                      label: 'Maturity date',
-                      controller: maturityDateCtrl,
-                      hint: '2027-01-01',
+                      label: 'Term (months)',
+                      controller: tenureCtrl,
+                      hint: '0',
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(maturityDateCtrl.clear),
                     ),
                   ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: BrutalField(
-                      label: 'Maturity amt',
-                      controller: maturityAmtCtrl,
+                      label: 'Additional days',
+                      controller: tenureDaysCtrl,
                       hint: '0',
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(maturityDateCtrl.clear),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              dateControl(
+                'Maturity date',
+                maturityDateCtrl,
+                'Calculate from term',
+              ),
+              const SizedBox(height: 12),
+              BrutalField(
+                label: 'Bank-quoted maturity amount ₹ (optional)',
+                controller: maturityAmtCtrl,
+                hint: '0',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: maturityAction,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'At maturity'),
+                items: [
+                  for (final action in _maturityActions.entries)
+                    DropdownMenuItem(
+                      value: action.key,
+                      child: Text(
+                        action.value,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+                onChanged: (value) => setState(() => maturityAction = value),
+              ),
+              if (maturityAction != null && maturityAction != 'renew_full') ...[
+                const SizedBox(height: 8),
+                BrutalField(
+                  label: 'Payout account nickname (optional)',
+                  controller: payoutAccountCtrl,
+                  hint: 'Main savings',
+                ),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                maturityAction?.startsWith('renew_') == true
+                    ? 'Renewal is for the same term. Your bank handles the renewal.'
+                    : 'FinStack tracks your instruction. Your bank handles the payout or renewal.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 8),
               Row(
@@ -832,25 +1117,26 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               ),
               const SizedBox(height: 8),
             ],
-            Row(
-              children: [
-                Expanded(
-                  child: BrutalField(
-                    label: 'Start date',
-                    controller: startCtrl,
-                    hint: '2026-01-01',
+            if (type != 'fd')
+              Row(
+                children: [
+                  Expanded(
+                    child: BrutalField(
+                      label: 'Start date',
+                      controller: startCtrl,
+                      hint: '2026-01-01',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: BrutalField(
-                    label: 'End date',
-                    controller: endCtrl,
-                    hint: '—',
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: BrutalField(
+                      label: 'End date',
+                      controller: endCtrl,
+                      hint: '—',
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             const SizedBox(height: 8),
             _drop(
               'Status',

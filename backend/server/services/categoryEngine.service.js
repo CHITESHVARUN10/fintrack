@@ -6,7 +6,7 @@ const { normalizeVendorKey } = require('./recipient.service');
 // Lightweight rule-based categorizer (no AI) – combination of manual + auto-learn
 // Returns { category, subcategory, confidence, trace: [{rule, category, confidence}], subscriptionRef }
 
-async function predictCategory({ familyId, vendorKey, upiId, amountPaise, description = '', vendorDoc = null }) {
+async function predictCategory({ familyId, vendorKey, upiId, amountPaise, description = '', type, vendorDoc = null }) {
   const trace = [];
   let best = { category: 'Other', subcategory: null, confidence: 0, rule: 'none', subscriptionRef: null };
 
@@ -22,6 +22,14 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
         subscriptionRef: refs.subscriptionRef || best.subscriptionRef,
       };
     }
+  }
+
+  // A specific bank narration is stronger than a generic bank/vendor category.
+  const narration = String(description || '');
+  if (/\bfixed[ -]+deposit\b|\b(?:fd|term deposit)[ -]+(?:booking|opening|renewal|maturity|closure)\b/i.test(narration)) {
+    consider('Investment', 95, 'fixed_deposit_narration', 'Fixed Deposit');
+  } else if (type === 'INCOME' && /\bdividends?\b/i.test(narration)) {
+    consider('Investment', 95, 'dividend_credit_narration', 'Stocks');
   }
 
   // 1. Active Family Subscriptions match (High signal)

@@ -118,6 +118,13 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                   children: [
                     Row(
                       children: [
+                        Image.asset(
+                          'assets/branding/finstack-logo.png',
+                          width: 38,
+                          height: 38,
+                          excludeFromSemantics: true,
+                        ),
+                        const SizedBox(width: 8),
                         const Expanded(child: FinStackTitle('FinStack')),
                         const SizedBox(width: 6),
                         BrutalTag(

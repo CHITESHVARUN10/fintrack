@@ -91,14 +91,15 @@ export interface SourceRecord {
   confidence?: number
 }
 
-export type IncomeCategory = 'Salary' | 'Freelance' | 'Rental' | 'Business' | 'Other'
+export type IncomeCategory = 'Salary' | 'Freelance' | 'Pocket Money' | 'Rental' | 'Business' | 'Other'
 
 export interface Income {
   id: string
   memberId: string
   title: string
   amount: number
-  creditDate: number
+  payPattern: 'regular' | 'variable'
+  creditDate: number | null
   category: IncomeCategory
   taxable: boolean
   startDate: string
@@ -135,27 +136,9 @@ export interface Subscription {
   notes?: string
 }
 
-export type RecurringCategory =
-  | 'Household'
-  | 'Utility'
-  | 'Staff'
-  | 'Society'
-  | 'Vehicle'
-  | 'Other'
-
-export interface RecurringPayment {
-  id: string
-  memberId: string
-  title: string
-  category: RecurringCategory
-  amount: number
-  dueDate: number
-  paymentMethod: string
-  startDate: string
-  notes?: string
-}
-
 export type InvestmentType = 'stock' | 'mf_sip' | 'fd' | 'real_estate' | 'other'
+
+export type FdMaturityAction = 'credit_account' | 'renew_principal' | 'renew_full'
 
 export interface Investment {
   taxPayments?: TaxPayment[]
@@ -179,6 +162,9 @@ export interface Investment {
   principalAmount?: number
   interestRate?: number
   tenureMonths?: number
+  tenureDays?: number
+  maturityAction?: FdMaturityAction
+  payoutAccount?: string
   maturityDate?: string
   maturityAmount?: number
   interestType?: 'Simple' | 'Compound'

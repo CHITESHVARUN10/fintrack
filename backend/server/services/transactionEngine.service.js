@@ -138,9 +138,9 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     if (!candidate.category || candidate.category === 'Other') {
       const vk = normalizeVendorKey(candidate.recipient?.name || candidate.recipient?.label || '', candidate.upiId || candidate.recipient?.upiId);
       const upiForLookup = candidate.upiId || candidate.recipient?.upiId;
-      const description = candidate.recipient?.name || candidate.recipient?.label || '';
+      const description = candidate.recipient?.name || candidate.recipient?.label || candidate.sender?.name || '';
       if (vk || upiForLookup || description) {
-        const pred = await predictCategory({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise, description });
+        const pred = await predictCategory({ familyId, vendorKey: vk, upiId: upiForLookup, amountPaise: candidate.amountPaise, description, type: candidate.type });
         if (pred.category && pred.category !== 'Other') {
           candidate.category = pred.category;
           if (pred.subcategory) candidate.subcategory = pred.subcategory;

@@ -1,3 +1,4 @@
+import { FinanceTransactions } from '../components/payments/FinanceTransactions'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../services/apiClient'
@@ -15,6 +16,7 @@ import type { Income, IncomeCategory } from '../types'
 const CATEGORIES: IncomeCategory[] = [
   'Salary',
   'Freelance',
+  'Pocket Money',
   'Rental',
   'Business',
   'Other',
@@ -31,7 +33,8 @@ function normalizeIncome(raw: Record<string, unknown>): Income {
     memberId: String(raw.memberId ?? ''),
     title: (raw.title as string) ?? '',
     amount: Number(raw.amount ?? 0),
-    creditDate: Number(raw.creditDate ?? 1),
+    payPattern: raw.payPattern === 'variable' ? 'variable' : 'regular',
+    creditDate: raw.payPattern === 'variable' ? null : Number(raw.creditDate ?? 1),
     category: ((raw.category as IncomeCategory) ?? 'Other'),
     taxable: Boolean(raw.taxable),
     startDate: raw.startDate ? String(raw.startDate) : '',
@@ -57,9 +60,9 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
   const [category, setCategory] = useState<IncomeCategory>(
     initial?.category ?? 'Salary',
   )
-  const [creditDate, setCreditDate] = useState(
-    initial ? String(initial.creditDate) : '1',
-  )
+  const [payPattern, setPayPattern] = useState<Income['payPattern']>(initial?.payPattern ?? 'regular')
+  const regular = payPattern === 'regular'
+  const [creditDate, setCreditDate] = useState(String(initial?.creditDate ?? 1))
   const [taxable, setTaxable] = useState(initial?.taxable ?? true)
   const [startDate, setStartDate] = useState(toDateInput(initial?.startDate ?? ''))
   const [notes, setNotes] = useState(initial?.notes ?? '')
@@ -73,7 +76,8 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
       title,
       amount: Number(amount),
       category,
-      creditDate: Number(creditDate),
+      payPattern,
+      creditDate: regular ? Number(creditDate) : null,
       taxable,
       startDate: startDate || undefined,
       notes: notes || undefined,
@@ -109,20 +113,28 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
         />
       </div>
 
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="inc-pattern">Payment pattern</label>
+        <select id="inc-pattern" className="pmt-select" value={payPattern}
+          onChange={event => setPayPattern(event.target.value as Income['payPattern'])}>
+          <option value="regular">Regular monthly</option>
+          <option value="variable">Variable or occasional</option>
+        </select>
+      </div>
       <div className="pmt-form-grid">
         <div className="pmt-field">
-          <label className="pmt-label" htmlFor="inc-amount">Amount</label>
+          <label className="pmt-label" htmlFor="inc-amount">{regular ? 'Monthly amount' : 'Monthly estimate (optional)'}</label>
           <div className="pmt-rupee">
             <span className="pmt-rupee-prefix">₹</span>
             <input
               id="inc-amount"
               type="number"
-              min={1}
-              step={1}
+              min={regular ? 0.01 : 0}
+              step={0.01}
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              required
+              required={regular}
             />
           </div>
         </div>
@@ -142,7 +154,7 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
       </div>
 
       <div className="pmt-form-grid">
-        <div className="pmt-field">
+        {regular && <div className="pmt-field">
           <label className="pmt-label" htmlFor="inc-day">Credit date (day of month)</label>
           <input
             id="inc-day"
@@ -154,7 +166,7 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
             onChange={(e) => setCreditDate(e.target.value)}
             required
           />
-        </div>
+        </div>}
         <div className="pmt-field">
           <span className="pmt-label">Taxable income?</span>
           <label className="pmt-check">
@@ -199,6 +211,8 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(initialAddOpen)
   const [editing, setEditing] = useState<Income | null>(null)
+  const [ledgerItem, setLedgerItem] = useState<Income | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const [saving, setSaving] = useState(false)
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
@@ -222,12 +236,13 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
 
   const handleDelete = async (inc: Income) => {
     if (!window.confirm(`Delete "${inc.title}"?`)) return
+    setDeleteError('')
     try {
       await apiClient.delete(`/income/${inc.id}`)
       await load()
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not delete income.'
-      setError(msg)
+      setDeleteError(msg)
     }
   }
 
@@ -282,7 +297,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
     <>
       <PaymentsPage
         title="Income Sources"
-        subtitle="All recurring monthly income streams."
+        subtitle="Regular and variable sources with linked ledger payments."
         action={
           <button type="button" className="pmt-btn" onClick={() => setOpen(true)}>
             <Icon name="add" className="text-lg" />
@@ -332,10 +347,11 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
               </div>
             </>
           ) : (
-            <p className="pmt-tiny">No active income streams.</p>
+            <p className="pmt-tiny">No monthly income estimates yet.</p>
           )}
         </section>
 
+        {deleteError && <PaymentsNotice tone="error">{deleteError}</PaymentsNotice>}
         <div className="pmt-grid-2">
           {items.map((inc) => (
             <article key={inc.id} className="pmt-item-card">
@@ -368,11 +384,15 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
                 </div>
               </div>
 
-              <div className="pmt-amount">{formatCurrency(inc.amount)}</div>
+              <div className="pmt-amount">
+                {inc.payPattern === 'variable' && !inc.amount ? 'Varies' : formatCurrency(inc.amount)}
+              </div>
 
               <div className="pmt-card-meta">
                 <Icon name="calendar_today" className="text-sm" />
-                <span>Credits on {formatDay(inc.creditDate)}</span>
+                <span>{inc.payPattern === 'regular' && inc.creditDate
+                  ? `Credits on ${formatDay(inc.creditDate)}`
+                  : inc.amount ? 'Variable · monthly estimate' : 'Variable · as received'}</span>
               </div>
 
               <div className="pmt-divider" />
@@ -381,6 +401,9 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
                 <span className={`pmt-tax-sq${inc.taxable ? '' : ' is-exempt'}`} />
                 <span>{inc.taxable ? 'Taxable' : 'Tax exempt'}</span>
               </div>
+              <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={() => setLedgerItem(inc)}>
+                Transactions
+              </button>
             </article>
           ))}
 
@@ -392,11 +415,12 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
         </div>
 
         <div className="pmt-summary">
-          <span className="pmt-summary-label">Total monthly income</span>
+          <span className="pmt-summary-label">Planned monthly income</span>
           <span className="pmt-summary-value">{formatCurrency(total)}</span>
         </div>
       </PaymentsPage>
 
+      {ledgerItem && <FinanceTransactions kind="income" id={ledgerItem.id} name={ledgerItem.title} onClose={() => setLedgerItem(null)} />}
       <PaymentsModal
         open={modalOpen}
         onClose={closeModal}

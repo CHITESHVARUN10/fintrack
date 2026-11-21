@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema(
     familyAccountId: { type: mongoose.Schema.Types.ObjectId, ref: 'FamilyAccount' },
     inviteToken: { type: String },
     inviteExpiry: { type: Date },
+    ledgerCategories: { type: [String], default: undefined, select: false },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

@@ -15,8 +15,7 @@ type Tx = LedgerTransaction
 // participate in rendering.
 let ledgerLoadSeq = 0
 
-const DEFAULT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
-let ALL_CATEGORIES: string[] = [...DEFAULT_CATEGORIES]
+const DEFAULT_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Investment','Income','Other']
 const STATUS_CLASSES: Record<string, string> = {
   ACTIVE: 'led-tag',
   RECONCILED: 'led-tag led-tag-green',
@@ -94,18 +93,16 @@ export function Transactions() {
   const vendorSuggestRef = useRef(0)
   const [dynamicCats, setDynamicCats] = useState<string[]>(DEFAULT_CATEGORIES)
 
-  useEffect(()=>{
-    apiClient.get('/recipients/categories').then((r)=>{
-      const cats = r.data?.categories || r.data?.items || []
-      if(Array.isArray(cats) && cats.length){
-        const merged = Array.from(new Set([...cats, ...DEFAULT_CATEGORIES]))
-        ALL_CATEGORIES = merged as string[]
-        setDynamicCats(merged as string[])
+  useEffect(() => {
+    const controller = new AbortController()
+    apiClient.get('/recipients/categories', { signal: controller.signal }).then(({ data }) => {
+      if (Array.isArray(data?.categories)) {
+        const names = data.categories.filter((name: unknown) => typeof name === 'string')
+        setDynamicCats([...new Set<string>([...DEFAULT_CATEGORIES, ...names])])
       }
-    }).catch(()=>{})
-    // also collect categories from existing transactions for free-form support
-    apiClient.get('/transactions', { params:{ limit: 1 } }).catch(()=>{})
-  }, [])
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [user?.id])
 
   // Sequence guard: filter changes can fire overlapping requests, and an older
   // response must never overwrite a newer one.
@@ -285,9 +282,14 @@ export function Transactions() {
   }
 
   async function saveCategory(id: string) {
-    await transactionService.update(id, { category: catEditVal })
-    setCatEditId(null); load()
-    if (detailId === id) { const d = await transactionService.get(id); setDetail(d) }
+    try {
+      await transactionService.update(id, { category: catEditVal })
+      setCatEditId(null)
+      load()
+      if (detailId === id) setDetail(await transactionService.get(id))
+    } catch (err: unknown) {
+      window.alert(toApiError(err).response?.data?.error ?? 'Could not save the category.')
+    }
   }
 
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -446,7 +448,7 @@ export function Transactions() {
         </select>
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="led-select led-w-155" aria-label="Category filter">
           <option value="">All categories</option>
-          {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {dynamicCats.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
@@ -649,7 +651,7 @@ export function Transactions() {
           </label>
           <label className="led-field">Category
             <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="led-select">
-              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {dynamicCats.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
           <label className="led-field">When
@@ -794,19 +796,21 @@ export function Transactions() {
                         {catEditId === t._id ? (
                           <span className="led-row" style={{ gap: 4 }}>
                             <select value={catEditVal} onChange={(e) => setCatEditVal(e.target.value)} onClick={(e) => e.stopPropagation()} className="led-input-xs">
-                              {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                              {[...new Set([...dynamicCats, catEditVal])].map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                             <button onClick={(e) => { e.stopPropagation(); saveCategory(t._id) }} className="led-btn led-btn-xs">Save</button>
                             <button onClick={(e) => { e.stopPropagation(); setCatEditId(null) }} className="led-btn led-btn-white led-btn-xs">Cancel</button>
                           </span>
                         ) : (
                           <button
-                            disabled={!ownsTransaction(t)}
+                            disabled={!ownsTransaction(t) || !!t.financeLink}
                             onClick={(e) => { e.stopPropagation(); setCatEditId(t._id); setCatEditVal(t.category || 'Other') }}
                             className="led-tag led-tag-cased"
                             title="Edit category"
                           >
-                            {t.category || 'Other'}{t.productName? ` · ${t.productName}`:''}
+                            {t.category || 'Other'}
+                            {(t.category === 'Investment' || t.category === 'Income') && t.subcategory ? ` / ${t.subcategory}` : ''}
+                            {t.productName ? ` · ${t.productName}` : ''}
                           </button>
                         )}
                       </td>
@@ -880,7 +884,7 @@ export function Transactions() {
                     {catEditId===detail.transaction._id ? (
                       <>
                         <select value={catEditVal} onChange={e=> setCatEditVal(e.target.value)} className="led-input-xs">
-                          {dynamicCats.map(c=> <option key={c} value={c}>{c}</option>)}
+                          {[...new Set([...dynamicCats, catEditVal])].map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                         <button onClick={()=> saveCategory(detail.transaction._id)} className="led-btn led-btn-xs">Save</button>
                         <button onClick={()=> setCatEditId(null)} className="led-btn led-btn-white led-btn-xs">Cancel</button>
@@ -888,12 +892,15 @@ export function Transactions() {
                     ) : (
                       <>
                         <span>{detail.transaction.category || '—'}</span>
-                        <button disabled={!ownsTransaction(detail.transaction)} onClick={()=> { setCatEditId(detail.transaction._id); setCatEditVal(detail.transaction.category||'Other')}} className="led-btn led-btn-xs">Edit</button>
+                        <button disabled={!ownsTransaction(detail.transaction) || !!detail.transaction.financeLink} onClick={()=> { setCatEditId(detail.transaction._id); setCatEditVal(detail.transaction.category||'Other')}} className="led-btn led-btn-xs">Edit</button>
                       </>
                     )}
                   </span>
                 </div>
                 {detail.transaction.subcategory && <DetailRow label="Subcategory" value={detail.transaction.subcategory} />}
+                {detail.transaction.financeLink && (
+                  <DetailRow label="Managed by" value={detail.transaction.financeLink.resource === 'income' ? 'Linked income source' : 'Linked investment'} />
+                )}
                 {detail.transaction.productName && <DetailRow label="Product" value={detail.transaction.productName} />}
               </div>
 
@@ -931,7 +938,7 @@ export function Transactions() {
                 <p className="led-tiny" style={{ marginTop: 4 }}>Private is invisible to other family members even in dashboard/budgets/reports.</p>
               </div>
 
-              {ownsTransaction(detail.transaction) && <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
+              {ownsTransaction(detail.transaction) && !detail.transaction.financeLink && <TeachVendorBox key={detail.transaction._id} tx={detail.transaction} categories={dynamicCats} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
               {ownsTransaction(detail.transaction) && <SubscriptionLinkBox tx={detail.transaction} onDone={async()=>{ const d = await transactionService.get(detail.transaction._id); setDetail(d); load()}} />}
 
               <div>
@@ -976,7 +983,7 @@ export function Transactions() {
   )
 }
 
-function TeachVendorBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()=>void }){
+function TeachVendorBox({ tx, categories, onDone }: { tx: LedgerTransaction; categories: string[]; onDone: ()=>void }){
   const reqSeqRef = useRef(0)
   const [busy,setBusy]=useState(false)
   const [toast,setToast]=useState<string|null>(null)
@@ -1019,7 +1026,6 @@ function TeachVendorBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()=>voi
     if(!c) return
     const normalized = c[0].toUpperCase()+c.slice(1).toLowerCase()
     if(!offerings.includes(normalized)) setOfferings(p=> [...p, normalized])
-    if(!(ALL_CATEGORIES as readonly string[]).includes(normalized)) (ALL_CATEGORIES as string[]).push(normalized)
     setCustomCat('')
   }
   async function teach(){
@@ -1114,7 +1120,7 @@ function TeachVendorBox({ tx, onDone }: { tx: LedgerTransaction; onDone: ()=>voi
         <strong className="led-label">Who is this? Teach what they offer</strong>
         <span className="led-tiny">e.g. dairy guy offers Food + Groceries — check all that apply. Add product for this amount if you remember.</span>
         <div className="led-chips">
-          {ALL_CATEGORIES.filter((c:string)=> c!=='Other').map((c:string)=> (
+          {[...new Set([...categories, ...offerings])].filter(c => c !== 'Other').map(c => (
             <button
               type="button"
               key={c}

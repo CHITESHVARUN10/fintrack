@@ -69,6 +69,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/audio/payment_success.wav
+    - assets/branding/finstack-logo.png
     - assets/fonts/SpaceGrotesk-OFL.txt
     - assets/fonts/PlusJakartaSans-OFL.txt
     - assets/fonts/JetBrainsMono-OFL.txt

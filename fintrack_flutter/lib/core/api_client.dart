@@ -82,5 +82,11 @@ class ApiClient {
     } catch (_) {}
   }
 
+  static String errorMessage(Object error, String fallback) {
+    final body = error is DioException ? error.response?.data : null;
+    final message = body is Map ? body['error'] : null;
+    return message is String && message.isNotEmpty ? message : fallback;
+  }
+
   static String get baseUrl => dio.options.baseUrl;
 }

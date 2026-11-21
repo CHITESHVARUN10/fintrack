@@ -19,9 +19,7 @@ export function PublicPageHeader({
   return (
     <header className="fdp-header">
       <Link to="/" className="fdp-brand" aria-label="FinStack home">
-        <span className="fdp-brand-sq" aria-hidden="true">
-          F
-        </span>
+        <img className="fdp-brand-sq" src="/finstack-logo.png" alt="" />
         <span className="fdp-brand-word">FINSTACK</span>
       </Link>
 

@@ -4,16 +4,17 @@ A personal & family finance management platform. FinTrack helps you track income
 expenses, investments, loans, insurance, and subscriptions, and uses AI (Google
 Gemini) to extract data from Form 16 PDFs and generate tax-regime recommendations.
 
-> Built with a React + TypeScript frontend and an Express + MongoDB backend.
+> React and TypeScript on the web, Flutter on iOS and Android, and an Express and MongoDB API.
 
 ---
 
 ## ✨ Features
 
 - **Dashboard** — consolidated financial summary with charts.
-- **Income & Expenses** — track earnings and ad-hoc spending.
-- **Subscriptions & Recurring payments** — monitor monthly/yearly commitments.
-- **Investments** — track holdings, invested vs. current value.
+- **Income & expenses** — record regular salary or pocket money and variable income such as freelance payments. Link actual credits to the source.
+- **Subscriptions** — track monthly and yearly commitments and link payments.
+- **Investments** — track holdings, fixed-deposit terms, and linked stock purchases and dividends.
+- **Transaction categories** — use Investment → Fixed Deposit or Stocks, Income → Salary or Freelance, and create custom categories from mobile Activity.
 - **Loans (EMI)** — manage loan schedules and balances.
 - **Insurance** — policy tracking.
 - **Education payments** — tuition and related expenses.
@@ -33,6 +34,7 @@ Gemini) to extract data from Form 16 PDFs and generate tax-regime recommendation
 | Layer    | Stack                                                                 |
 | -------- | --------------------------------------------------------------------- |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, React Router, Recharts     |
+| Mobile   | Flutter and Dart for iOS and Android                                |
 | Backend  | Node.js, Express 5, Mongoose, Passport (local), Express Session       |
 | Database | MongoDB (with `connect-mongo` session store)                          |
 | AI       | Google Gemini (`gemini-2.5-flash`) for Form 16 extraction & advice    |
@@ -170,10 +172,10 @@ noted. Health check: `GET /api/health`.
 | --------------- | ------------------------------- | -------------------------------------- |
 | Auth            | `/api/auth`                     | Register, login, logout, session.      |
 | Dashboard       | `/api/dashboard`                | Summary metrics + charts data.         |
-| Income          | `/api/income`                   | Earnings records.                      |
+| Income          | `/api/income`                   | Regular and variable sources with linked credits. |
 | Subscriptions   | `/api/subscriptions`            | Recurring subscriptions.               |
-| Recurring       | `/api/recurring`                | Recurring payments.                    |
-| Investments     | `/api/investments`              | Holdings + summary.                    |
+| Investments     | `/api/investments`              | Holdings, deposit terms, and linked ledger entries. |
+| Categories      | `/api/recipients/categories`    | Built-in taxonomy and personal categories. |
 | Loans           | `/api/loans`                    | EMI / loan records.                    |
 | Expenses        | `/api/expenses`                 | Ad-hoc expenses.                       |
 | Insurance       | `/api/insurance`                | Insurance policies.                    |
@@ -183,6 +185,15 @@ noted. Health check: `GET /api/health`.
 | Reports         | `/api/reports`                  | Exports (Excel/PDF).                   |
 | Notifications   | `/api/notifications`            | In-app notifications.                  |
 | **Form 16**     | `/api/form16`                   | Upload/manual/duplicate + AI advice.   |
+
+### Track income and investment transactions
+
+- **Fixed deposits.** In Investments, choose Fixed deposit and enter the opening date, principal, annual rate, and term in months and days. Enter the bank’s maturity date or let FinStack calculate it. Record whether the bank will credit an account, renew the principal and pay out interest, or renew the full balance for the same term. Once the date arrives, confirm what happened with your bank and update the deposit status. Use **Transactions** to link the original funding or a maturity payout.
+- **Stocks.** Open **Transactions** on the stock to link a purchase or a dividend credit. The ledger groups both under **Investment → Stocks** and shows their purpose in the holding.
+- **Income.** For regular monthly income, set an amount and a credit day. Variable sources can have an optional monthly estimate. After saving the source, use **Transactions** to link an actual credit. FinStack suggests credits from confirmed payers and uses the expected amount and credit day for regular income. Review suggestions before linking them. Linked credits are actual receipts, while the monthly income total is a planning estimate.
+- **Custom categories.** In mobile Activity, open the add form or an editable transaction, choose **New category**, and save the transaction. A finance link sets the parent category and subcategory. Unlinking restores the classification the transaction had before it was linked.
+
+Both clients share the same ledger. The standalone Recurring Payments screen is retired. Existing records remain available through the legacy API, and subscriptions continue to support automatic-renewal tracking.
 
 ### Form 16 endpoints
 

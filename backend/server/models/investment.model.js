@@ -29,7 +29,10 @@ const investmentSchema = new mongoose.Schema(
     bankName: { type: String },
     principalAmount: { type: Number },
     interestRate: { type: Number },
-    tenureMonths: { type: Number },
+    tenureMonths: { type: Number, min: 0, max: 1200 },
+    tenureDays: { type: Number, min: 0, max: 36500, validate: Number.isInteger },
+    maturityAction: { type: String, enum: ['credit_account', 'renew_principal', 'renew_full'] },
+    payoutAccount: { type: String, trim: true, maxlength: 80 },
     maturityDate: { type: Date },
     maturityAmount: { type: Number },
     interestType: { type: String, enum: ['Simple', 'Compound'] },
@@ -53,6 +56,29 @@ const investmentSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// Existing deposits can keep their original terms until the owner edits them.
+investmentSchema.pre('validate', function validateFixedDeposit() {
+  if (this.investmentType !== 'fd' || !this.maturityAction) return;
+  if (!this.startDate) this.invalidate('startDate', 'Enter the deposit opening date');
+  if (!(this.principalAmount > 0)) this.invalidate('principalAmount', 'Enter a positive deposit amount');
+  if (!(this.interestRate >= 0) || this.interestRate == null) this.invalidate('interestRate', 'Enter the annual interest rate');
+  const months = this.tenureMonths || 0;
+  const days = this.tenureDays || 0;
+  if (!Number.isInteger(months) || months + days <= 0) {
+    this.invalidate('tenureMonths', 'Enter the deposit term in whole months and days');
+  }
+  if (this.startDate && !this.maturityDate && months + days > 0) {
+    const start = this.startDate;
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + months, 1));
+    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+    end.setUTCDate(Math.min(start.getUTCDate(), lastDay) + days);
+    this.maturityDate = end;
+  }
+  if (this.startDate && this.maturityDate && this.maturityDate <= this.startDate) {
+    this.invalidate('maturityDate', 'Maturity must be after the opening date');
+  }
+});
 
 investmentSchema.index({ memberId: 1 });
 investmentSchema.index({ familyAccountId: 1 });

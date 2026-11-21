@@ -125,6 +125,7 @@ router.get('/:id/transactions', async (req, res, next) => {
 
     const baseFilter = {
       subscriptionRef: null,
+      financeLink: null,
       createdBy: req.user._id,
       status: { $ne: 'VOIDED' },
       type: 'EXPENSE',
@@ -187,13 +188,13 @@ router.post('/:id/link-transaction', async (req, res, next) => {
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
 
-    tx.subscriptionRef = item._id;
-    if (!tx.category || tx.category === 'Other') {
-      tx.category = item.category || 'Entertainment';
-    }
-    await tx.save();
-
-    res.json({ success: true, transaction: tx, subscription: item });
+    const linked = await Transaction.findOneAndUpdate(
+      { _id: tx._id, financeLink: null },
+      { $set: { subscriptionRef: item._id, ...(!tx.category || tx.category === 'Other' ? { category: item.category || 'Entertainment' } : {}) } },
+      { returnDocument: 'after' },
+    );
+    if (!linked) return res.status(409).json({ error: 'This transaction is linked to an investment or income source' });
+    res.json({ success: true, transaction: linked, subscription: item });
   } catch (err) {
     next(err);
   }
@@ -232,10 +233,13 @@ router.post('/:id/record-payment', async (req, res, next) => {
       const tx = await Transaction.findById(transactionId);
       if (!tx) return res.status(404).json({ error: 'Transaction not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
-      tx.subscriptionRef = item._id;
-      if (notes) tx.notes = notes;
-      await tx.save();
-      return res.json({ success: true, transaction: tx });
+      const linked = await Transaction.findOneAndUpdate(
+        { _id: tx._id, financeLink: null },
+        { $set: { subscriptionRef: item._id } },
+        { returnDocument: 'after' },
+      );
+      if (!linked) return res.status(409).json({ error: 'This transaction is linked to an investment or income source' });
+      return res.json({ success: true, transaction: linked });
     }
 
     const amountNum = Number(amount || item.amount);

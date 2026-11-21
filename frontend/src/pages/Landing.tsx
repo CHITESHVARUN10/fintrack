@@ -44,7 +44,7 @@ export function Landing() {
     <div className="fse-landing">
       <header className="fse-landing-nav">
         <Link to="/" className="fse-brand" aria-label="FinStack home">
-          <span className="fse-brand-sq" aria-hidden="true">F</span>
+          <img className="fse-brand-sq" src="/finstack-logo.png" alt="" />
           <span className="fse-brand-word">FinStack</span>
         </Link>
         <nav className="fse-landing-links" aria-label="Landing">

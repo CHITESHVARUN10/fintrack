@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fintrack_flutter/core/api_client.dart';
 import 'package:fintrack_flutter/core/upi.dart';
+import 'package:fintrack_flutter/features/income_page.dart';
 import 'package:fintrack_flutter/features/transactions_page.dart';
 import 'package:fintrack_flutter/features/upi_pay_page.dart';
 import 'package:fintrack_flutter/theme/finstack_theme.dart';
@@ -39,7 +40,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final initial = requests.single.queryParameters;
+    final initial = requests
+        .singleWhere((request) => request.path == '/transactions')
+        .queryParameters;
     expect(
       DateTime.parse(initial['from'] as String).toLocal(),
       DateTime(today.year, today.month),
@@ -80,6 +83,116 @@ void main() {
     await tester.pumpAndSettle();
     expect(requests.last.queryParameters, isNot(contains('from')));
     expect(requests.last.queryParameters, isNot(contains('to')));
+  });
+
+  testWidgets('Activity can create and save a custom category', (tester) async {
+    final requests = mockApi(
+      (options) => switch ((options.method, options.path)) {
+        ('GET', '/recipients/categories') => {
+          'categories': ['Other', 'Investment'],
+        },
+        ('POST', '/recipients/categories') => {'category': 'Studio supplies'},
+        _ => {'items': [], 'total': 0},
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: finStackTheme(),
+        home: const Scaffold(body: TransactionsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('ADD'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('New category'));
+    await tester.tap(find.text('New category'));
+    await tester.pumpAndSettle();
+    final entry = find.widgetWithText(TextField, 'Category name');
+    await tester.enterText(entry, 'Studio supplies');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Studio supplies'), findsOneWidget);
+    final amount = find.widgetWithText(TextField, '0');
+    await tester.ensureVisible(amount);
+    await tester.enterText(amount, '250');
+    final submit = find.text('Add transaction');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+
+    final saved = requests.singleWhere(
+      (request) => request.method == 'POST' && request.path == '/transactions',
+    );
+    expect(saved.data['category'], 'Studio supplies');
+    expect(saved.data['amountPaise'], 25000);
+  });
+
+  testWidgets('Income links a suggested credit from the mobile list', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var linked = false;
+    final credit = {
+      '_id': 'credit1',
+      'type': 'INCOME',
+      'amountPaise': 223000,
+      'occurredAt': '2026-11-03T12:00:00Z',
+      'sender': {'name': 'Studio client'},
+      'suggested': true,
+    };
+    final requests = mockApi((options) {
+      if (options.path == '/income') {
+        return [
+          {
+            '_id': 'income1',
+            'title': 'Freelance design',
+            'category': 'Freelance',
+            'payPattern': 'variable',
+            'taxable': true,
+          },
+        ];
+      }
+      if (options.method == 'PUT') {
+        linked = true;
+        return {'linked': true};
+      }
+      final showingLinks = options.queryParameters['view'] == 'linked';
+      return {
+        'items': [
+          if (!showingLinks && !linked) credit,
+          if (showingLinks && linked)
+            {
+              ...credit,
+              'suggested': false,
+              'financeLink': {'role': 'receipt'},
+            },
+        ],
+        'canManage': true,
+        'hasMore': false,
+      };
+    });
+    await tester.pumpWidget(
+      MaterialApp(theme: finStackTheme(), home: const IncomePage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('TRANSACTIONS'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Linked transactions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Link income received').last);
+    await tester.pumpAndSettle();
+    expect(find.text('SUGGESTED MATCH'), findsOneWidget);
+    await tester.tap(find.text('LINK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Transaction linked.'), findsOneWidget);
+    final request = requests.singleWhere((request) => request.method == 'PUT');
+    expect(request.path, '/income/income1/transactions/credit1');
+    expect(request.data, {'role': 'receipt'});
   });
 
   testWidgets('Payment feedback runs once and details update the saved entry', (

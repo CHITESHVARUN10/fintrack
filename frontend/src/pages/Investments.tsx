@@ -1,3 +1,4 @@
+import { FinanceTransactions } from '../components/payments/FinanceTransactions'
 import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -11,7 +12,7 @@ import {
   PaymentsNotice,
   PaymentsPage,
 } from '../components/payments/PaymentsKit'
-import type { Investment, InvestmentType } from '../types'
+import type { FdMaturityAction, Investment, InvestmentType } from '../types'
 
 type Tab = 'all' | 'stock' | 'mf_sip' | 'fd' | 'real_estate'
 
@@ -28,6 +29,11 @@ const TYPES: InvestmentType[] = ['stock', 'mf_sip', 'fd', 'real_estate', 'other'
 const FUND_CATEGORIES = ['Equity', 'Debt', 'Hybrid', 'ELSS', 'Index', 'Other']
 const ASSET_TYPES = ['Real Estate', 'Gold', 'PPF', 'NPS', 'Other']
 const STATUSES = ['Active', 'Matured', 'Closed', 'Broken']
+const MATURITY_ACTIONS: Record<FdMaturityAction, string> = {
+  credit_account: 'Credit principal and interest',
+  renew_principal: 'Renew principal, pay out interest',
+  renew_full: 'Renew principal and interest',
+}
 
 // Portfolio allocation palette — flat fills, matching the prototype's
 // asset-class legend (real estate / MF / stock / FD).
@@ -74,13 +80,16 @@ function normalizeInvestment(raw: Record<string, unknown>): Investment {
     principalAmount: raw.principalAmount as number | undefined,
     interestRate: raw.interestRate as number | undefined,
     tenureMonths: raw.tenureMonths as number | undefined,
+    tenureDays: raw.tenureDays as number | undefined,
+    maturityAction: raw.maturityAction as FdMaturityAction | undefined,
+    payoutAccount: raw.payoutAccount as string | undefined,
     maturityDate: raw.maturityDate ? String(raw.maturityDate) : undefined,
     maturityAmount: raw.maturityAmount as number | undefined,
     interestType: raw.interestType as 'Simple' | 'Compound' | undefined,
     taxableInterest: raw.taxableInterest as boolean | undefined,
     assetType: raw.assetType as string | undefined,
-    totalInvested: Number(raw.totalInvested ?? 0),
-    currentValue: Number(raw.currentValue ?? 0),
+    totalInvested: Number(raw.investmentType === 'fd' ? raw.principalAmount ?? raw.totalInvested ?? 0 : raw.totalInvested ?? 0),
+    currentValue: Number(raw.investmentType === 'fd' ? raw.maturityAmount ?? raw.principalAmount ?? raw.currentValue ?? 0 : raw.currentValue ?? 0),
     startDate: raw.startDate ? String(raw.startDate) : '',
     endDate: raw.endDate ? String(raw.endDate) : null,
     status: ((raw.status as string) ?? 'Active'),
@@ -154,6 +163,9 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
   const [tenureMonths, setTenureMonths] = useState(
     initial?.tenureMonths != null ? String(initial.tenureMonths) : '',
   )
+  const [tenureDays, setTenureDays] = useState(initial?.tenureDays?.toString() ?? '')
+  const [maturityAction, setMaturityAction] = useState<FdMaturityAction | ''>(initial?.maturityAction ?? '')
+  const [payoutAccount, setPayoutAccount] = useState(initial?.payoutAccount ?? '')
   const [maturityDate, setMaturityDate] = useState(toDateInput(initial?.maturityDate))
   const [maturityAmount, setMaturityAmount] = useState(
     initial?.maturityAmount != null ? String(initial.maturityAmount) : '',
@@ -171,6 +183,10 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    if (type === 'fd' && Number(tenureMonths) + Number(tenureDays) <= 0) {
+      setError('Enter the deposit term in months, days, or both.')
+      return
+    }
     onBusyChange(true)
 
     const payload: Record<string, unknown> = {
@@ -201,11 +217,16 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
       payload.fundCategory = fundCategory || undefined
     } else if (type === 'fd') {
       payload.bankName = bankName || undefined
-      payload.principalAmount = numOrUndef(principalAmount)
+      payload.principalAmount = Number(principalAmount)
+      payload.totalInvested = payload.principalAmount
+      payload.currentValue = numOrUndef(maturityAmount) ?? payload.principalAmount
       payload.interestRate = numOrUndef(interestRate)
-      payload.tenureMonths = numOrUndef(tenureMonths)
-      payload.maturityDate = maturityDate || undefined
-      payload.maturityAmount = numOrUndef(maturityAmount)
+      payload.tenureMonths = Number(tenureMonths)
+      payload.tenureDays = Number(tenureDays)
+      payload.maturityAction = maturityAction
+      payload.payoutAccount = maturityAction === 'renew_full' ? null : payoutAccount.trim() || null
+      payload.maturityDate = maturityDate || null
+      payload.maturityAmount = numOrUndef(maturityAmount) ?? null
       payload.interestType = interestType || undefined
       payload.taxableInterest = taxableInterest
     } else {
@@ -254,14 +275,14 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
           >
             {TYPES.map((t) => (
               <option key={t} value={t}>
-                {t.replace('_', ' ')}
+                {t === 'fd' ? 'Fixed deposit' : t === 'mf_sip' ? 'Mutual fund / SIP' : t.replace('_', ' ')}
               </option>
             ))}
           </select>
         </div>
       </div>
 
-      <div className="pmt-form-grid">
+      {type !== 'fd' && <div className="pmt-form-grid">
         <div className="pmt-field">
           <label className="pmt-label" htmlFor="inv-invested">Total invested</label>
           <div className="pmt-rupee">
@@ -291,7 +312,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
             />
           </div>
         </div>
-      </div>
+      </div>}
 
       {type === 'stock' && (
         <>
@@ -444,6 +465,9 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
                 id="inv-prin"
                 className="pmt-input pmt-mono"
                 type="number"
+                min={0.01}
+                step={0.01}
+                required
                 placeholder="100000"
                 value={principalAmount}
                 onChange={(e) => setPrincipalAmount(e.target.value)}
@@ -452,28 +476,49 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
           </div>
           <div className="pmt-form-grid">
             <div className="pmt-field">
-              <label className="pmt-label" htmlFor="inv-rate">Interest rate (%)</label>
+              <label className="pmt-label" htmlFor="inv-rate">Annual interest rate (%)</label>
               <input
                 id="inv-rate"
                 className="pmt-input pmt-mono"
                 type="number"
                 placeholder="0"
+                min={0}
+                step="any"
+                required
                 value={interestRate}
                 onChange={(e) => setInterestRate(e.target.value)}
               />
             </div>
             <div className="pmt-field">
-              <label className="pmt-label" htmlFor="inv-ten">Tenure (months)</label>
-              <input
-                id="inv-ten"
-                className="pmt-input pmt-mono"
-                type="number"
-                placeholder="0"
-                value={tenureMonths}
-                onChange={(e) => setTenureMonths(e.target.value)}
-              />
+              <label className="pmt-label" htmlFor="inv-fd-open">Opened on</label>
+              <input id="inv-fd-open" className="pmt-input pmt-mono" type="date" required
+                value={startDate} onChange={event => {
+                  setStartDate(event.target.value)
+                  setMaturityDate('')
+                }} />
             </div>
           </div>
+          <fieldset className="pmt-tax-fieldset pmt-stack">
+            <legend className="pmt-label">Deposit term</legend>
+            <div className="pmt-form-grid">
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="inv-ten">Months</label>
+                <input id="inv-ten" className="pmt-input pmt-mono" type="number" min={0} max={1200}
+                  placeholder="0" value={tenureMonths} onChange={event => {
+                    setTenureMonths(event.target.value)
+                    setMaturityDate('')
+                  }} />
+              </div>
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="inv-ten-days">Additional days</label>
+                <input id="inv-ten-days" className="pmt-input pmt-mono" type="number" min={0} max={36500}
+                  placeholder="0" value={tenureDays} onChange={event => {
+                    setTenureDays(event.target.value)
+                    setMaturityDate('')
+                  }} />
+              </div>
+            </div>
+          </fieldset>
           <div className="pmt-form-grid">
             <div className="pmt-field">
               <label className="pmt-label" htmlFor="inv-maturity">Maturity date</label>
@@ -481,22 +526,40 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
                 id="inv-maturity"
                 className="pmt-input pmt-mono"
                 type="date"
+                aria-describedby="inv-maturity-help"
                 value={maturityDate}
                 onChange={(e) => setMaturityDate(e.target.value)}
               />
+              <small id="inv-maturity-help" className="pmt-tiny">Leave blank to calculate from the opening date and term.</small>
             </div>
             <div className="pmt-field">
-              <label className="pmt-label" htmlFor="inv-maturity-amt">Maturity amount</label>
+              <label className="pmt-label" htmlFor="inv-maturity-amt">Bank-quoted maturity amount (optional)</label>
               <input
                 id="inv-maturity-amt"
                 className="pmt-input pmt-mono"
                 type="number"
                 placeholder="0.00"
+                min={0.01}
+                step={0.01}
                 value={maturityAmount}
                 onChange={(e) => setMaturityAmount(e.target.value)}
               />
             </div>
           </div>
+          <div className="pmt-field">
+            <label className="pmt-label" htmlFor="inv-maturity-action">At maturity</label>
+            <select id="inv-maturity-action" className="pmt-select" value={maturityAction} required
+              onChange={event => setMaturityAction(event.target.value as FdMaturityAction)}>
+              <option value="">Select the bank’s instruction</option>
+              {Object.entries(MATURITY_ACTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          {maturityAction && maturityAction !== 'renew_full' && <div className="pmt-field">
+            <label className="pmt-label" htmlFor="inv-payout-account">Payout account nickname (optional)</label>
+            <input id="inv-payout-account" className="pmt-input" maxLength={80} placeholder="e.g. Main savings"
+              value={payoutAccount} onChange={event => setPayoutAccount(event.target.value)} />
+          </div>}
+          <p className="pmt-tiny">Your bank handles the payout or renewal. A renewal uses the same term.</p>
           <div className="pmt-form-grid">
             <div className="pmt-field">
               <label className="pmt-label" htmlFor="inv-inttype">Interest type</label>
@@ -557,6 +620,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
       )}
 
       <div className="pmt-form-grid-3">
+        {type !== 'fd' && <>
         <div className="pmt-field">
           <label className="pmt-label" htmlFor="inv-start">Start date</label>
           <input
@@ -577,6 +641,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
             onChange={(e) => setEndDate(e.target.value)}
           />
         </div>
+        </>}
         <div className="pmt-field">
           <label className="pmt-label" htmlFor="inv-status">Status</label>
           <select
@@ -614,10 +679,14 @@ function InvestmentCard({
   inv,
   onEdit,
   onDelete,
+  onTransactions,
+  today,
 }: {
   inv: Investment
   onEdit: () => void
   onDelete: () => void
+  onTransactions?: () => void
+  today: string
 }) {
   const { pct } = gainLoss(inv)
   const positive = pct >= 0
@@ -638,7 +707,7 @@ function InvestmentCard({
     }
     if (inv.investmentType === 'fd') {
       const rate = inv.interestRate != null || inv.tenureMonths != null
-        ? `${inv.interestRate ?? 0}% p.a.${inv.tenureMonths ? ` · ${inv.tenureMonths} mo` : ''}`
+        ? `${inv.interestRate ?? 0}% p.a.${inv.tenureMonths ? ` · ${inv.tenureMonths} mo` : ''}${inv.tenureDays ? ` · ${inv.tenureDays} d` : ''}`
         : ''
       return { label: inv.bankName || 'FIXED DEPOSIT', value: rate }
     }
@@ -685,24 +754,33 @@ function InvestmentCard({
           <span className="pmt-inv-detail-label">{detailLabel}</span>
           {detailValue || '—'}
         </div>
+        {inv.investmentType === 'fd' && (
+          <div className="pmt-inv-detail pmt-fd-details">
+            {inv.maturityDate && <span>Maturity: {toDateInput(inv.maturityDate)} · {inv.status === 'Active' &&
+              toDateInput(inv.maturityDate) <= today ? 'Due for confirmation' : inv.status}</span>}
+            <span>{inv.maturityAction ? MATURITY_ACTIONS[inv.maturityAction] : 'Maturity instruction not set'}</span>
+            {inv.payoutAccount && <span>Payout account: {inv.payoutAccount}</span>}
+          </div>
+        )}
       </div>
 
       <div>
         <div className="pmt-inv-vals">
           <div>
-            <div className="pmt-inv-label">Current value</div>
-            <div className="pmt-inv-val">{formatCompact(inv.currentValue)}</div>
+            <div className="pmt-inv-label">{inv.investmentType === 'fd' ? 'Maturity value' : 'Current value'}</div>
+            <div className="pmt-inv-val">{inv.investmentType === 'fd' && inv.maturityAmount == null ? '—' : formatCompact(inv.currentValue)}</div>
           </div>
           <div className="pmt-inv-right">
             <div className="pmt-inv-label">Invested</div>
             <div className="pmt-inv-val-sm">{formatCompact(inv.totalInvested)}</div>
           </div>
         </div>
-        <div style={{ marginTop: 10 }}>
+        <div className="pmt-row-between" style={{ marginTop: 10 }}>
           <span className={`pmt-tag ${positive ? 'pmt-tag-cyan' : 'pmt-tag-red'}`}>
             {positive ? '+' : ''}
             {pct.toFixed(1)}%
           </span>
+          {onTransactions && <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={onTransactions}>Transactions</button>}
         </div>
       </div>
     </article>
@@ -711,11 +789,14 @@ function InvestmentCard({
 
 export function Investments() {
   const [tab, setTab] = useState<Tab>('all')
+  const [today] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
   const [items, setItems] = useState<Investment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Investment | null>(null)
+  const [ledgerItem, setLedgerItem] = useState<Investment | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const [saving, setSaving] = useState(false)
   const [activeAsset, setActiveAsset] = useState<string | null>(null)
 
@@ -741,12 +822,13 @@ export function Investments() {
 
   const handleDelete = async (inv: Investment) => {
     if (!window.confirm(`Delete "${inv.title}"?`)) return
+    setDeleteError('')
     try {
       await apiClient.delete(`/investments/${inv.id}`)
       await load()
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not delete investment.'
-      setError(msg)
+      setDeleteError(msg)
     }
   }
 
@@ -884,13 +966,17 @@ export function Investments() {
           )}
         </section>
 
+        {deleteError && <PaymentsNotice tone="error">{deleteError}</PaymentsNotice>}
         <div className="pmt-grid-3">
           {filtered.map((inv) => (
             <InvestmentCard
               key={inv.id}
               inv={inv}
+              today={today}
               onEdit={() => setEditing(inv)}
               onDelete={() => handleDelete(inv)}
+              onTransactions={inv.investmentType === 'fd' || inv.investmentType === 'stock'
+                ? () => setLedgerItem(inv) : undefined}
             />
           ))}
 
@@ -918,6 +1004,8 @@ export function Investments() {
         </div>
       </PaymentsPage>
 
+      {ledgerItem && (ledgerItem.investmentType === 'fd' || ledgerItem.investmentType === 'stock') &&
+        <FinanceTransactions kind={ledgerItem.investmentType} id={ledgerItem.id} name={ledgerItem.title} onClose={() => setLedgerItem(null)} />}
       <PaymentsModal
         open={modalOpen}
         onClose={closeModal}

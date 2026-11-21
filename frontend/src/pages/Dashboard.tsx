@@ -149,7 +149,6 @@ export function Dashboard() {
 
   const chips: { label: string; color: 'yellow' | 'surface' | 'white' }[] = [
     { label: `Subscriptions: ${formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo`, color: 'yellow' },
-    { label: `Recurring: ${formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo`, color: 'white' },
     { label: `Investments SIP: ${formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo`, color: 'surface' },
   ]
 
@@ -331,7 +330,7 @@ export function Dashboard() {
               const dueIn = daysUntil(p.dueDate)
               const meta = TYPE_META[p.type] ?? { icon: 'payments', label: p.type || 'Payment' }
               const urgent = dueIn <= 5
-              const target = p.type === 'subscription' ? `/subscriptions/${p.id}` : '/recurring'
+              const target = p.type === 'subscription' ? `/subscriptions/${p.id}` : '/investments'
               return (
                 <article key={p.id} className={cn('fse-upcoming', urgent && 'is-accent')}>
                   <div className="fse-upcoming-top">

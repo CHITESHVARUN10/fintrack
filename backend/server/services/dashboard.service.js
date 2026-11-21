@@ -1,6 +1,5 @@
 const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
-const RecurringPayment = require('../models/recurring.model');
 const Investment = require('../models/investment.model');
 const Transaction = require('../models/transaction.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
@@ -35,17 +34,15 @@ function nextOccurrence(dayOfMonth, lookaheadDays = 7, base = new Date()) {
 // --- Placeholder until Phase 8 wires the real taxService.calculateTax ---
 
 async function buildDashboard(userId) {
-  const [incomes, subs, recs, invs] = await Promise.all([
+  const [incomes, subs, invs] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: 'Active' }),
-    RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
   ]);
 
   const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const monthlyObligations =
     subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
-    recs.reduce((s, x) => s + (x.amount || 0), 0) +
     invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
 
   const netMonthlyFlow = monthlyIncome - monthlyObligations;
@@ -84,7 +81,6 @@ async function buildDashboard(userId) {
 
   const monthlyBurnBreakdown = {
     Subscriptions: subs.reduce((s, x) => s + subMonthlyAmount(x), 0),
-    Recurring: recs.reduce((s, x) => s + (x.amount || 0), 0),
     Investments: invs.filter((x) => x.investmentType === 'mf_sip').reduce((s, x) => s + (x.sipAmount || 0), 0),
   };
 
@@ -189,17 +185,15 @@ async function buildDashboard(userId) {
 }
 
 async function buildMemberSummary(userId) {
-  const [incomes, subs, recs, invs] = await Promise.all([
+  const [incomes, subs, invs] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: 'Active' }),
-    RecurringPayment.find({ memberId: userId }),
     Investment.find({ memberId: userId }),
   ]);
 
   const totalIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const totalObligations =
     subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
-    recs.reduce((s, x) => s + (x.amount || 0), 0) +
     invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
   const totalInvestments = invs.reduce((s, d) => s + investedValue(d), 0);
 

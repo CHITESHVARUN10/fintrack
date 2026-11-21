@@ -11,7 +11,6 @@ import type {
   FamilyMember,
   Income,
   Investment,
-  RecurringPayment,
   Subscription,
   TaxEstimate,
   TaxRegimeResult,
@@ -51,16 +50,6 @@ export const subscriptionService = {
     apiClient.post(`/subscriptions/${id}/apply-suggestion`, payload).then((r) => r.data),
   dismissSuggestion: (id: string) =>
     apiClient.post(`/subscriptions/${id}/dismiss-suggestion`).then((r) => r.data),
-}
-
-export const recurringService = {
-  list: (): Promise<RecurringPayment[]> =>
-    apiClient.get('/recurring').then((r) => r.data),
-  suggestions: (): Promise<{ suggestions: PaymentSuggestion[] }> => apiClient.get('/recurring/suggestions').then((r) => r.data),
-  applySuggestion: (id: string, payload: { acceptAmount?: number; acceptDate?: number; matchedTxIds?: string[] }) =>
-    apiClient.post(`/recurring/${id}/apply-suggestion`, payload).then((r) => r.data),
-  dismissSuggestion: (id: string) =>
-    apiClient.post(`/recurring/${id}/dismiss-suggestion`).then((r) => r.data),
 }
 
 export const investmentService = {

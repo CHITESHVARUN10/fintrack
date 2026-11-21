@@ -1,6 +1,6 @@
 /* =========================================================================
    Income & Payments routes — Income, Add Income, Subscriptions,
-   Subscription Detail, Recurring, Investments.
+   Subscription Detail, Investments.
    Everything is scoped under .pmt-page so no rule leaks into other routes.
    Tokens consumed: --bg-page/card/input/warm/hover, --text-primary/secondary,
    --border & --shadow (colors), --accent, --font-display/body/mono,
@@ -454,51 +454,6 @@
   height: 11px;
   flex: none;
   border: 1.5px solid var(--border);
-}
-
-/* ---------------------------------------------------- 31-day obligation grid */
-.pmt-cal {
-  display: grid;
-  grid-template-columns: repeat(31, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.pmt-day {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 4px 1px;
-  background: var(--bg-page);
-  border: 1.5px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  cursor: default;
-}
-
-.pmt-day.is-due {
-  background: var(--accent);
-  color: var(--ink-fixed, #11110e);
-  border-color: var(--ink-fixed, #11110e);
-  box-shadow: 2px 2px 0 var(--shadow);
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 0.08s ease, background 0.1s ease;
-}
-
-.pmt-day.is-due:hover,
-.pmt-day.is-due:focus-visible {
-  transform: translateY(-2px);
-  background: var(--nb-cyan);
-}
-
-.pmt-day-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--ink-fixed, #11110e);
 }
 
 /* ------------------------------------------------------------------- grids */
@@ -1398,8 +1353,7 @@
   .pmt-btn,
   .pmt-tab,
   .pmt-icon-btn,
-  .pmt-seg,
-  .pmt-day.is-due {
+  .pmt-seg {
     transition: none;
   }
   .pmt-skel {
@@ -1414,9 +1368,6 @@
   }
   .pmt-grid-3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .pmt-cal {
-    grid-template-columns: repeat(16, minmax(0, 1fr));
   }
 }
 
@@ -1463,8 +1414,37 @@
   .pmt-summary {
     padding: 16px 18px;
   }
-  .pmt-day {
-    height: 34px;
-    font-size: 8.5px;
-  }
+}
+
+.pmt-modal .pmt-ledger-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.pmt-modal .pmt-ledger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pmt-modal .pmt-ledger-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+
+.pmt-modal .pmt-ledger-row .pmt-btn {
+  flex-shrink: 0;
+}
+
+.pmt-page .pmt-fd-details {
+  display: grid;
+  gap: 4px;
+  white-space: normal;
 }

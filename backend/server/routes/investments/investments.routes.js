@@ -3,8 +3,11 @@ const Investment = require('../../models/investment.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { buildListFilter, canModify } = require('../../utils/scope');
 
+const { registerFinanceTransactions, requireUnlinked, clearRetiredLinks } = require('../financeTransactions');
+
 const router = express.Router();
 router.use(isAuthenticated);
+registerFinanceTransactions(router, Investment, 'investments');
 
 // Per-type invested / current value estimates for the summary.
 function investedValue(d) {
@@ -96,8 +99,12 @@ router.put('/:id', async (req, res, next) => {
     if (!item) return res.status(404).json({ error: 'Not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
     const { memberId, familyAccountId, _id, ...updates } = req.body;
+    const previousType = item.investmentType;
+    const typeChanged = Object.hasOwn(updates, 'investmentType') && updates.investmentType !== previousType;
+    if (typeChanged && !await requireUnlinked(res, 'investments', item)) return;
     Object.assign(item, updates);
     await item.save();
+    if (typeChanged && previousType) await clearRetiredLinks('investments', item, previousType);
     res.json(item);
   } catch (err) {
     next(err);
@@ -110,7 +117,9 @@ router.delete('/:id', async (req, res, next) => {
     const item = await Investment.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
+    if (!await requireUnlinked(res, 'investments', item)) return;
     await item.deleteOne();
+    await clearRetiredLinks('investments', item);
     res.json({ message: 'deleted' });
   } catch (err) {
     next(err);

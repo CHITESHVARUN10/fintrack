@@ -15,7 +15,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <div className="fin-sidebar-brand">
         <Link to="/" className="fin-brand-link" onClick={onNavigate}>
-          <span className="fin-brand-initial" aria-hidden="true">F</span>
+          <img className="fin-brand-initial" src="/finstack-logo.png" alt="" />
           <span>FinStack</span>
         </Link>
         {onNavigate && (

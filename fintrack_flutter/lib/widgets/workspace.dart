@@ -142,6 +142,7 @@ class WorkspaceScheduledCard extends StatelessWidget {
     required this.detail,
     required this.onEdit,
     required this.onDelete,
+    this.footer,
   });
 
   final String title;
@@ -150,6 +151,7 @@ class WorkspaceScheduledCard extends StatelessWidget {
   final String detail;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) => BrutalCard(
@@ -176,6 +178,7 @@ class WorkspaceScheduledCard extends StatelessWidget {
         Text(amount, style: FinStackType.amount.copyWith(fontSize: 21)),
         const SizedBox(height: 3),
         Text(detail, style: Theme.of(context).textTheme.bodySmall),
+        if (footer != null) ...[const SizedBox(height: 8), footer!],
       ],
     ),
   );

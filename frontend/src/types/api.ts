@@ -7,6 +7,7 @@ export interface LedgerTransaction extends Omit<CanonicalTransaction, 'createdBy
   subcategory?: string; productName?: string; productRef?: string; lineItems?: LineItem[]
   categorySplit?: { category: string; amountPaise: number }[]
   subscriptionRef?: string | Raw<Subscription> | null
+  financeLink?: { resource: 'income' | 'investments'; recordId: string; role: string }
   recipientVendorRef?: string | Vendor
   notes?: string; candidateOf?: string; upiId?: string; utr?: string; UTR?: string; utu?: string
 }

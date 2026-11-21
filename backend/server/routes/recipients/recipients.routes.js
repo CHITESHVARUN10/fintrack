@@ -1,6 +1,8 @@
 const express = require('express');
 const RecipientDirectory = require('../../models/recipientdirectory.model');
 const Transaction = require('../../models/transaction.model');
+const User = require('../../models/user.model');
+const { FLAT_CATEGORIES, CATEGORY_TAXONOMY } = require('../../config/transactionConfig');
 const { buildTransactionVisibilityFilter } = require('../../utils/scope');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { normalizeVendorKey, upsertFromCategory, upsertProduct, resolveProduct, normalizeProductName } = require('../../services/recipient.service');
@@ -55,11 +57,37 @@ router.get('/by-key', async (req,res,next)=>{
   } catch(err){ next(err) }
 });
 
-router.get('/categories', async (req,res,next)=>{
-  try{
-    const { FLAT_CATEGORIES, CATEGORY_TAXONOMY } = require('../../config/transactionConfig');
-    res.json({ categories: FLAT_CATEGORIES, taxonomy: CATEGORY_TAXONOMY });
-  } catch(err){ next(err) }
+router.get('/categories', async (req, res, next) => {
+  try {
+    const [user, used] = await Promise.all([
+      User.findById(req.user._id).select('+ledgerCategories').lean(),
+      req.user.familyAccountId
+        ? Transaction.distinct('category', {
+            familyId: req.user.familyAccountId, createdBy: req.user._id, status: { $ne: 'VOIDED' },
+          })
+        : [],
+    ]);
+    const categories = [...new Set([...FLAT_CATEGORIES, ...(user?.ledgerCategories || []), ...used.filter(Boolean)])];
+    res.json({ categories, taxonomy: CATEGORY_TAXONOMY });
+  } catch (err) { next(err); }
+});
+
+router.post('/categories', async (req, res, next) => {
+  try {
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/ +/g, ' ') : '';
+    if (!name || name.length > 50 || /[\x00-\x1f\x7f]/.test(name) ||
+        ['__proto__', 'constructor', 'prototype'].includes(name.toLowerCase())) {
+      return res.status(400).json({ error: 'Enter a category name of 1 to 50 characters' });
+    }
+    const builtIn = FLAT_CATEGORIES.find(category => category.toLowerCase() === name.toLowerCase());
+    if (builtIn) return res.json({ category: builtIn });
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, ledgerCategories: { $ne: name } },
+      { $addToSet: { ledgerCategories: name } },
+      { collation: { locale: 'en', strength: 2 }, returnDocument: 'after' },
+    ).select('+ledgerCategories').lean() || await User.findById(req.user._id).select('+ledgerCategories').lean();
+    res.json({ category: user.ledgerCategories.find(category => category.toLowerCase() === name.toLowerCase()) || name });
+  } catch (err) { next(err); }
 });
 
 router.post('/', async (req,res,next)=>{
@@ -384,8 +412,8 @@ router.post('/:id/apply', async (req,res,next)=>{
       if(!hit) continue;
       matched++;
       if(!overwrite && t.category && t.category!=='Other') continue;
-      await Transaction.updateOne({ _id: t._id }, { $set: { category: cat } });
-      updated++;
+      const result = await Transaction.updateOne({ _id: t._id, financeLink: null }, { $set: { category: cat } });
+      updated += result.modifiedCount;
     }
     res.json({ matched, updated, category: cat, primaryCategory: cat });
   } catch(err){ next(err) }

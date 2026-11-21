@@ -229,7 +229,7 @@ export function PrivacyPolicy(): React.ReactElement {
             <h3 className="fpol-h3">B. Financial Data You Enter or Import</h3>
             <ul className="fpol-list">
               <li>
-                <strong>Income, Subscriptions, Recurring, Investments, Loans, Insurance, Education, Ad-hoc Expenses:</strong>{' '}
+                <strong>Income, Subscriptions, legacy Recurring Payments, Investments, Loans, Insurance, Education, Ad-hoc Expenses:</strong>{' '}
                 amounts, dates, categories, notes you type or that we parse from your bank CSV/XLSX and UPI screenshots.
               </li>
               <li>

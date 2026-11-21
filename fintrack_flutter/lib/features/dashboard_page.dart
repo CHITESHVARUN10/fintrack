@@ -234,6 +234,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final upcoming = ((d['upcomingPayments'] as List?) ?? [])
         .whereType<Map>()
         .where((payment) {
+          if (payment['type'] == 'recurring') return false;
           final key = _occurrenceKey(payment);
           return payment['type'] != 'subscription' ||
               key == _leavingOccurrence ||
@@ -552,7 +553,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · Recurring ${money(burnMap['Recurring'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
+                  'Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
                   style: FinStackType.caption.copyWith(
                     fontWeight: FontWeight.w500,
                   ),

@@ -5,7 +5,7 @@ import '../../styles/payments.css'
 
 /**
  * Route-scoped shell for Income / Add Income / Subscriptions /
- * Subscription Detail / Recurring / Investments.
+ * Subscription Detail / Investments.
  *
  * The prototype's five screens share one page rhythm (title block → viz strip
  * → card grid → dark total bar). This kit keeps that rhythm identical across

@@ -2,10 +2,18 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../widgets/brutal.dart';
 import '../core/format.dart';
+import '../widgets/finance_transactions.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
 
-const _categories = ['Salary', 'Freelance', 'Rental', 'Business', 'Other'];
+const _categories = [
+  'Salary',
+  'Freelance',
+  'Pocket Money',
+  'Rental',
+  'Business',
+  'Other',
+];
 
 /// Mirrors website Income.tsx: GET/POST/PUT/DELETE /income with the same fields.
 class IncomePage extends StatefulWidget {
@@ -32,9 +40,10 @@ class _IncomePageState extends State<IncomePage> {
     });
     try {
       final res = await ApiClient.dio.get('/income');
+      if (!mounted) return;
       setState(() => items = (res.data as List?) ?? []);
     } catch (e) {
-      setState(() => error = 'Could not load income.');
+      if (mounted) setState(() => error = 'Could not load income.');
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -58,14 +67,18 @@ class _IncomePageState extends State<IncomePage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     try {
       await ApiClient.dio.delete("/income/${item['_id'] ?? item['id']}");
-      await load();
-    } catch (_) {
+      if (mounted) await load();
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not delete income.')),
+          SnackBar(
+            content: Text(
+              ApiClient.errorMessage(e, 'Could not delete income.'),
+            ),
+          ),
         );
       }
     }
@@ -76,11 +89,11 @@ class _IncomePageState extends State<IncomePage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _IncomeForm(
+      builder: (sheetContext) => _IncomeForm(
         initial: initial,
         onSaved: () {
-          Navigator.pop(context);
-          load();
+          Navigator.pop(sheetContext);
+          if (mounted) load();
         },
       ),
     );
@@ -104,7 +117,7 @@ class _IncomePageState extends State<IncomePage> {
               children: [
                 const WorkspaceIntro(
                   'Income sources',
-                  'All recurring monthly streams.',
+                  'Regular and variable sources with linked ledger payments.',
                 ),
                 const SizedBox(height: 12),
 
@@ -120,16 +133,31 @@ class _IncomePageState extends State<IncomePage> {
                       child: WorkspaceScheduledCard(
                         title: '${item['title'] ?? ''}',
                         category: '${item['category'] ?? 'Other'}',
-                        amount: inr((item['amount'] as num?) ?? 0),
-                        detail:
-                            "Credits on day ${item['creditDate'] ?? 1} · ${item['taxable'] == true ? 'Taxable' : 'Non-taxable'}",
+                        amount:
+                            item['payPattern'] == 'variable' &&
+                                (item['amount'] ?? 0) == 0
+                            ? 'Varies'
+                            : inr((item['amount'] as num?) ?? 0),
+                        detail: item['payPattern'] == 'variable'
+                            ? "${(item['amount'] ?? 0) == 0 ? 'Variable · as received' : 'Variable · monthly estimate'} · ${item['taxable'] == true ? 'Taxable' : 'Non-taxable'}"
+                            : "Credits on day ${item['creditDate'] ?? 1} · ${item['taxable'] == true ? 'Taxable' : 'Non-taxable'}",
                         onEdit: () =>
                             openForm(initial: Map<String, dynamic>.from(item)),
                         onDelete: () => remove(item),
+                        footer: BrutalButton(
+                          label: 'Transactions',
+                          color: Colors.white,
+                          onPressed: () => showFinanceTransactions(
+                            context,
+                            kind: 'income',
+                            id: "${item['_id'] ?? item['id']}",
+                            name: "${item['title'] ?? 'Income'}",
+                          ),
+                        ),
                       ),
                     ),
                 const SizedBox(height: 4),
-                WorkspaceTotal(label: 'Total monthly', value: inr(total)),
+                WorkspaceTotal(label: 'Planned monthly', value: inr(total)),
               ],
             ),
     );
@@ -151,6 +179,8 @@ class _IncomeFormState extends State<_IncomeForm> {
       startCtrl,
       notesCtrl;
   String category = 'Salary';
+  String pattern = 'regular';
+  bool get regular => pattern == 'regular';
   bool taxable = true;
   bool busy = false;
   String? error;
@@ -174,12 +204,41 @@ class _IncomeFormState extends State<_IncomeForm> {
       category = i['category'];
     }
     taxable = (i?['taxable'] ?? true) == true;
+    if (i?['payPattern'] == 'variable') pattern = 'variable';
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      titleCtrl,
+      amountCtrl,
+      creditCtrl,
+      startCtrl,
+      notesCtrl,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> save() async {
+    final amount = amountCtrl.text.trim().isEmpty
+        ? 0.0
+        : double.tryParse(amountCtrl.text.trim());
+    final credit = int.tryParse(creditCtrl.text.trim());
     if (titleCtrl.text.trim().isEmpty ||
-        (double.tryParse(amountCtrl.text) ?? 0) <= 0) {
-      setState(() => error = 'Title and amount are required.');
+        amount == null ||
+        !amount.isFinite ||
+        amount < 0 ||
+        (regular && amount == 0)) {
+      setState(
+        () => error =
+            'Enter a title and a valid ${regular ? 'monthly amount' : 'estimate, or leave the estimate blank'}.',
+      );
+      return;
+    }
+    if (regular && (credit == null || credit < 1 || credit > 31)) {
+      setState(() => error = 'Enter a credit day from 1 to 31.');
       return;
     }
     setState(() {
@@ -188,9 +247,10 @@ class _IncomeFormState extends State<_IncomeForm> {
     });
     final payload = {
       'title': titleCtrl.text.trim(),
-      'amount': double.parse(amountCtrl.text),
+      'amount': amount,
+      'payPattern': pattern,
       'category': category,
-      'creditDate': int.tryParse(creditCtrl.text) ?? 1,
+      'creditDate': regular ? credit : null,
       'taxable': taxable,
       if (startCtrl.text.trim().isNotEmpty) 'startDate': startCtrl.text.trim(),
       if (notesCtrl.text.trim().isNotEmpty) 'notes': notesCtrl.text.trim(),
@@ -204,9 +264,13 @@ class _IncomeFormState extends State<_IncomeForm> {
       } else {
         await ApiClient.dio.post('/income', data: payload);
       }
-      widget.onSaved();
+      if (mounted) widget.onSaved();
     } catch (e) {
-      setState(() => error = 'Could not save income.');
+      if (mounted) {
+        setState(
+          () => error = ApiClient.errorMessage(e, 'Could not save income.'),
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -241,11 +305,33 @@ class _IncomeFormState extends State<_IncomeForm> {
               hint: 'e.g. Main Salary',
             ),
             const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: pattern,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Payment pattern'),
+              items: const [
+                DropdownMenuItem(
+                  value: 'regular',
+                  child: Text('Regular monthly'),
+                ),
+                DropdownMenuItem(
+                  value: 'variable',
+                  child: Text('Variable or occasional'),
+                ),
+              ],
+              onChanged: (value) => setState(() => pattern = value!),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: BrutalField(
-                    label: 'Amount ₹',
+                    label: regular
+                        ? 'Monthly amount ₹'
+                        : 'Monthly estimate ₹ (optional)',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     controller: amountCtrl,
                     hint: '0',
                   ),
@@ -280,14 +366,17 @@ class _IncomeFormState extends State<_IncomeForm> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(
-                  child: BrutalField(
-                    label: 'Credit day (1-31)',
-                    controller: creditCtrl,
-                    hint: '1',
+                if (regular) ...[
+                  Expanded(
+                    child: BrutalField(
+                      label: 'Credit day (1-31)',
+                      controller: creditCtrl,
+                      keyboardType: TextInputType.number,
+                      hint: '1',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Row(
                     children: [

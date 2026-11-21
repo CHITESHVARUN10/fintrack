@@ -21,8 +21,98 @@ const _allCategories = [
   'Proxy',
   'Family',
   'Internal Transfer',
+  'Investment',
+  'Income',
   'Other',
 ];
+
+const _financeSubcategories = {
+  'Investment': ['Fixed Deposit', 'Stocks'],
+  'Income': [
+    'Salary',
+    'Freelance',
+    'Pocket Money',
+    'Rental',
+    'Business',
+    'Regular',
+    'Variable',
+  ],
+};
+
+Future<String?> _createCategory(BuildContext context) => showDialog<String>(
+  context: context,
+  builder: (_) => const _CreateCategoryDialog(),
+);
+
+class _CreateCategoryDialog extends StatefulWidget {
+  const _CreateCategoryDialog();
+
+  @override
+  State<_CreateCategoryDialog> createState() => _CreateCategoryDialogState();
+}
+
+class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
+  final name = TextEditingController();
+  String? error;
+  bool saving = false;
+
+  @override
+  void dispose() {
+    name.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (saving) return;
+    final value = name.text.trim();
+    if (value.isEmpty || value.length > 50) {
+      setState(() => error = 'Enter a name of 1 to 50 characters.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      final response = await ApiClient.dio.post<Map>(
+        '/recipients/categories',
+        data: {'name': value},
+      );
+      if (mounted) Navigator.pop(context, response.data!['category'] as String);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        error = ApiClient.errorMessage(e, 'Could not create category.');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('New category'),
+    content: TextField(
+      controller: name,
+      autofocus: true,
+      enabled: !saving,
+      maxLength: 50,
+      textCapitalization: TextCapitalization.words,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => save(),
+      decoration: InputDecoration(labelText: 'Category name', errorText: error),
+    ),
+    actions: [
+      TextButton(
+        onPressed: saving ? null : () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: saving ? null : save,
+        child: Text(saving ? 'Creating…' : 'Create'),
+      ),
+    ],
+  );
+}
 
 const _pageSize = 50;
 
@@ -164,12 +254,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
   String modeFilter = '';
   String statusFilter = '';
   String categoryFilter = '';
+  final categories = <String>{..._allCategories};
 
   @override
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
     load();
+    loadCategories();
   }
 
   @override
@@ -184,6 +276,23 @@ class _TransactionsPageState extends State<TransactionsPage> {
     searchCtrl.dispose();
     vendorCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> loadCategories() async {
+    try {
+      final response = await ApiClient.dio.get('/recipients/categories');
+      final data = response.data;
+      final saved = data is Map ? data['categories'] : null;
+      if (mounted && saved is List) {
+        setState(() => categories.addAll(saved.whereType<String>()));
+      }
+    } catch (_) {
+      // The built-in categories are available offline and on older servers.
+    }
+  }
+
+  void _addCategory(String name) {
+    if (mounted) setState(() => categories.add(name));
   }
 
   void _onScroll() {
@@ -319,6 +428,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
         mode: modeFilter,
         status: statusFilter,
         category: categoryFilter,
+        categories: categories,
         vendor: vendorCtrl.text,
       ),
     );
@@ -360,7 +470,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => const _AddTransactionSheet(),
+      builder: (_) =>
+          _AddTransactionSheet(categories: categories, onCreated: _addCategory),
     );
     if (added == true) {
       await load();
@@ -377,7 +488,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _TxDetailSheet(id: id, onChanged: load),
+      builder: (_) => _TxDetailSheet(
+        id: id,
+        onChanged: load,
+        categories: categories,
+        onCreated: _addCategory,
+      ),
     );
   }
 
@@ -844,10 +960,15 @@ class _TransactionsPageState extends State<TransactionsPage> {
         '${t['recipient']?['name'] ?? t['productName'] ?? t['category'] ?? 'Transaction'}';
     final status = '${t['status'] ?? ''}';
     final category = '${t['category'] ?? ''}';
+    final subcategory = '${t['subcategory'] ?? ''}';
+    final categoryLabel =
+        _financeSubcategories.containsKey(category) && subcategory.isNotEmpty
+        ? '$category / $subcategory'
+        : category;
     final mode = '${t['mode'] ?? ''}';
     final creator = (t['createdBy'] as Map?)?['name'];
     final meta = [
-      if (category.isNotEmpty) category,
+      if (categoryLabel.isNotEmpty) categoryLabel,
       if (mode.isNotEmpty) mode,
       if ('${t['visibility'] ?? ''}' == 'PRIVATE') 'PRIVATE',
       if (familyView && creator != null) 'by $creator',
@@ -1316,8 +1437,10 @@ class _SheetSelect extends StatelessWidget {
     required this.initialValue,
     required this.options,
     required this.onChanged,
+    this.enabled = true,
   });
 
+  final bool enabled;
   final String label;
   final String initialValue;
   final Map<String, String> options;
@@ -1349,9 +1472,82 @@ class _SheetSelect extends StatelessWidget {
                 child: Text(entry.value, overflow: TextOverflow.ellipsis),
               ),
           ],
-          onChanged: (value) {
-            if (value != null) onChanged(value);
+          onChanged: !enabled
+              ? null
+              : (value) {
+                  if (value != null) onChanged(value);
+                },
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryFields extends StatelessWidget {
+  const _CategoryFields({
+    required this.category,
+    required this.subcategory,
+    required this.categories,
+    required this.enabled,
+    required this.onChanged,
+    required this.onCreated,
+  });
+
+  final String category;
+  final String subcategory;
+  final Set<String> categories;
+  final bool enabled;
+  final void Function(String, String) onChanged;
+  final ValueChanged<String> onCreated;
+
+  @override
+  Widget build(BuildContext context) {
+    final subcategories = _financeSubcategories[category] ?? const <String>[];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SheetSelect(
+          key: ValueKey(category),
+          label: 'Category',
+          initialValue: category,
+          options: {
+            for (final name in {...categories, category}) name: name,
           },
+          onChanged: (value) => onChanged(value, ''),
+          enabled: enabled,
+        ),
+        if (subcategories.isNotEmpty || subcategory.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _SheetSelect(
+            key: ValueKey((category, subcategory)),
+            label: 'Subcategory',
+            initialValue: subcategory,
+            options: {
+              '': 'None',
+              for (final item in {
+                ...subcategories,
+                if (subcategory.isNotEmpty) subcategory,
+              })
+                item: item,
+            },
+            onChanged: (value) => onChanged(category, value),
+            enabled: enabled,
+          ),
+        ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New category'),
+            onPressed: !enabled
+                ? null
+                : () async {
+                    final name = await _createCategory(context);
+                    if (name == null || !context.mounted) return;
+                    onCreated(name);
+                    onChanged(name, '');
+                  },
+          ),
         ),
       ],
     );
@@ -1372,6 +1568,7 @@ class _FiltersSheet extends StatefulWidget {
   final String status;
   final String category;
   final String vendor;
+  final Set<String> categories;
   const _FiltersSheet({
     required this.period,
     this.fromDate,
@@ -1379,6 +1576,7 @@ class _FiltersSheet extends StatefulWidget {
     required this.mode,
     required this.status,
     required this.category,
+    required this.categories,
     required this.vendor,
   });
 
@@ -1527,7 +1725,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 initialValue: category,
                 options: {
                   '': 'Any category',
-                  for (final name in _allCategories) name: name,
+                  for (final name in widget.categories) name: name,
                 },
                 onChanged: (value) => setState(() => category = value),
               ),
@@ -1555,7 +1753,13 @@ class _FiltersSheetState extends State<_FiltersSheet> {
 }
 
 class _AddTransactionSheet extends StatefulWidget {
-  const _AddTransactionSheet();
+  const _AddTransactionSheet({
+    required this.categories,
+    required this.onCreated,
+  });
+
+  final Set<String> categories;
+  final ValueChanged<String> onCreated;
   @override
   State<_AddTransactionSheet> createState() => _AddTransactionSheetState();
 }
@@ -1566,6 +1770,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
   String type = 'EXPENSE';
   String mode = 'UPI';
   String category = 'Other';
+  String subcategory = '';
   bool adding = false;
   String? error;
 
@@ -1597,6 +1802,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
           'type': type,
           'mode': mode,
           'category': category,
+          if (subcategory.isNotEmpty) 'subcategory': subcategory,
           'occurredAt': DateTime.now().toUtc().toIso8601String(),
           'recipient': recipientCtrl.text.trim().isNotEmpty
               ? {'name': recipientCtrl.text.trim()}
@@ -1672,11 +1878,16 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                 onChanged: (value) => setState(() => mode = value),
               ),
               const SizedBox(height: 13),
-              _SheetSelect(
-                label: 'Category',
-                initialValue: category,
-                options: {for (final name in _allCategories) name: name},
-                onChanged: (value) => setState(() => category = value),
+              _CategoryFields(
+                category: category,
+                subcategory: subcategory,
+                categories: widget.categories,
+                enabled: !adding,
+                onCreated: widget.onCreated,
+                onChanged: (parent, child) => setState(() {
+                  category = parent;
+                  subcategory = child;
+                }),
               ),
               if (error != null) ...[
                 const SizedBox(height: 12),
@@ -1719,7 +1930,14 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
 class _TxDetailSheet extends StatefulWidget {
   final String id;
   final VoidCallback onChanged;
-  const _TxDetailSheet({required this.id, required this.onChanged});
+  final Set<String> categories;
+  final ValueChanged<String> onCreated;
+  const _TxDetailSheet({
+    required this.id,
+    required this.onChanged,
+    required this.categories,
+    required this.onCreated,
+  });
   @override
   State<_TxDetailSheet> createState() => _TxDetailSheetState();
 }
@@ -1727,7 +1945,8 @@ class _TxDetailSheet extends StatefulWidget {
 class _TxDetailSheetState extends State<_TxDetailSheet> {
   Map? detail;
   bool loading = true;
-  String? editCategory;
+  String editCategory = 'Other';
+  String editSubcategory = '';
   bool busy = false;
 
   @override
@@ -1744,6 +1963,8 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
         detail = res.data;
         editCategory =
             (res.data['transaction']?['category'] ?? 'Other') as String;
+        editSubcategory =
+            (res.data['transaction']?['subcategory'] ?? '') as String;
       });
     } catch (_) {
       if (mounted) setState(() => detail = {});
@@ -1758,11 +1979,16 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
       await ApiClient.dio.patch('/transactions/${widget.id}', data: body);
       await fetch();
       widget.onChanged();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not save the change. Try again.'),
+          SnackBar(
+            content: Text(
+              ApiClient.errorMessage(
+                e,
+                'Could not save the change. Try again.',
+              ),
+            ),
           ),
         );
       }
@@ -1869,9 +2095,8 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
             : tx['subscriptionRef'] != null
             ? 'linked'
             : null;
-        final safeCategory = _allCategories.contains(editCategory)
-            ? editCategory!
-            : 'Other';
+        final financeLink = tx['financeLink'] as Map?;
+        final canEdit = detail?['canModify'] != false;
         final statusLabel = status.replaceAll('_', ' ');
         return SafeArea(
           top: false,
@@ -1893,29 +2118,54 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _SheetSelect(
-                      key: ValueKey('category-${tx['category']}'),
-                      label: 'Category',
-                      initialValue: safeCategory,
-                      options: {for (final c in _allCategories) c: c},
-                      onChanged: (value) =>
-                          setState(() => editCategory = value),
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _SheetButton(
-                        label: busy ? 'Saving…' : 'Save category',
-                        fontSize: 11,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        onPressed: busy
-                            ? null
-                            : () => patch({'category': editCategory}),
+                    if (financeLink != null || !canEdit) ...[
+                      Text('Category', style: _labelStyle()),
+                      Text(
+                        [
+                          if (tx['category'] != null) '${tx['category']}',
+                          if (tx['subcategory'] != null) '${tx['subcategory']}',
+                        ].join(' / '),
                       ),
-                    ),
+                      if (financeLink != null)
+                        Text(
+                          financeLink['resource'] == 'income'
+                              ? 'Managed by the linked income source.'
+                              : 'Managed by the linked investment.',
+                          style: _labelStyle(),
+                        ),
+                    ] else ...[
+                      _CategoryFields(
+                        category: editCategory,
+                        subcategory: editSubcategory,
+                        categories: widget.categories,
+                        enabled: !busy,
+                        onCreated: widget.onCreated,
+                        onChanged: (parent, child) => setState(() {
+                          editCategory = parent;
+                          editSubcategory = child;
+                        }),
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _SheetButton(
+                          label: busy ? 'Saving…' : 'Save category',
+                          fontSize: 11,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
+                          ),
+                          onPressed: busy
+                              ? null
+                              : () => patch({
+                                  'category': editCategory,
+                                  'subcategory': editSubcategory.isEmpty
+                                      ? null
+                                      : editSubcategory,
+                                }),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

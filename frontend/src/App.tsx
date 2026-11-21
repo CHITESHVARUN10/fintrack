@@ -30,7 +30,6 @@ const Income = load('/income', () => import('./pages/Income'), 'Income')
 const AddIncome = load('/income/new', () => import('./pages/AddIncome'), 'AddIncome')
 const Subscriptions = load('/subscriptions', () => import('./pages/Subscriptions'), 'Subscriptions')
 const SubscriptionDetail = load('/subscriptions/:id', () => import('./pages/SubscriptionDetail'), 'SubscriptionDetail')
-const Recurring = load('/recurring', () => import('./pages/Recurring'), 'Recurring')
 const Investments = load('/investments', () => import('./pages/Investments'), 'Investments')
 const Tax = load('/tax', () => import('./pages/Tax'), 'Tax')
 const Reports = load('/reports', () => import('./pages/Reports'), 'Reports')
@@ -108,7 +107,7 @@ function AnimatedRoutes() {
             <Route path="income/new" element={<AddIncome />} />
             <Route path="subscriptions" element={<Subscriptions />} />
             <Route path="subscriptions/:id" element={<SubscriptionDetail />} />
-            <Route path="recurring" element={<Recurring />} />
+            <Route path="recurring" element={<Navigate to="/subscriptions" replace />} />
             <Route path="investments" element={<Investments />} />
             <Route path="tax" element={<Tax />} />
             <Route path="reports" element={<Reports />} />
