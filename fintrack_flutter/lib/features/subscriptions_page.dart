@@ -506,6 +506,45 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
     );
   }
 
+  List<Map> get _priceHistory {
+    final raw = detail?['priceHistory'];
+    if (raw is! List) return [];
+    final rows = raw
+        .whereType<Map>()
+        .map(
+          (entry) => <String, dynamic>{
+            'amount': (entry['amount'] as num?) ?? 0,
+            'effectiveFrom': '${entry['effectiveFrom'] ?? ''}',
+          },
+        )
+        .toList();
+    rows.sort(
+      (a, b) => '${a['effectiveFrom']}'.compareTo('${b['effectiveFrom']}'),
+    );
+    return rows;
+  }
+
+  String _priceDate(Object? value) {
+    final date = DateTime.tryParse('$value')?.toLocal();
+    return date == null ? 'date unavailable' : dateLabel(date);
+  }
+
+  void openPriceChange() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _PriceChangeForm(
+        id: widget.id,
+        defaultAmount: '${detail?['amount'] ?? ''}',
+        onSaved: () {
+          Navigator.pop(context);
+          load();
+        },
+      ),
+    );
+  }
+
   String _txTitle(Map t) {
     final r = t['recipient'];
     if (r is Map && '${r['name'] ?? ''}'.isNotEmpty) return '${r['name']}';
@@ -639,6 +678,11 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                         label: 'Record payment',
                         onPressed: openRecordPayment,
                       ),
+                      BrutalButton(
+                        label: 'Change price',
+                        color: Colors.white,
+                        onPressed: openPriceChange,
+                      ),
                     ],
                   ),
                 ),
@@ -665,6 +709,39 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                 else
                   for (final item in candidates.whereType<Map>())
                     _txTile(item, canLink: true),
+                const SizedBox(height: 12),
+                BrutalCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 8,
+                    children: [
+                      const BrutalSectionTitle(
+                        title: 'Price history',
+                        subtitle: 'Old prices stay on record.',
+                      ),
+                      if (_priceHistory.isEmpty)
+                        const Text('No price changes yet.')
+                      else
+                        for (final entry in _priceHistory)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  inr((entry['amount'] as num?) ?? 0),
+                                  style: FinStackType.amount.copyWith(
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                'from ${_priceDate(entry['effectiveFrom'])}',
+                                style: FinStackType.caption,
+                              ),
+                            ],
+                          ),
+                    ],
+                  ),
+                ),
               ],
             ),
     );
@@ -1008,6 +1085,11 @@ class _SubscriptionFormState extends State<_SubscriptionForm> {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Changing the amount records a new price from today. Past months keep the old price.',
+              style: FinStackType.caption.copyWith(fontSize: 10, height: 1.3),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -1105,6 +1187,130 @@ class _SubscriptionFormState extends State<_SubscriptionForm> {
             const SizedBox(height: 12),
             BrutalButton(
               label: busy ? 'Saving…' : 'Save',
+              onPressed: busy ? null : save,
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PriceChangeForm extends StatefulWidget {
+  final String id;
+  final String defaultAmount;
+  final VoidCallback onSaved;
+  const _PriceChangeForm({
+    required this.id,
+    required this.defaultAmount,
+    required this.onSaved,
+  });
+
+  @override
+  State<_PriceChangeForm> createState() => _PriceChangeFormState();
+}
+
+class _PriceChangeFormState extends State<_PriceChangeForm> {
+  late final TextEditingController amountCtrl, dateCtrl;
+  bool busy = false;
+  String? error;
+
+  static String dateText(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    amountCtrl = TextEditingController(text: widget.defaultAmount);
+    dateCtrl = TextEditingController(text: dateText(DateTime.now()));
+  }
+
+  @override
+  void dispose() {
+    amountCtrl.dispose();
+    dateCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    final amount = double.tryParse(amountCtrl.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() => error = 'Enter the new monthly price.');
+      return;
+    }
+    final effective = dateCtrl.text.trim();
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(effective)) {
+      setState(() => error = 'Use a date like 2026-11-21.');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await ApiClient.dio.post(
+        '/subscriptions/${widget.id}/price-change',
+        data: {'amount': amount, 'effectiveFrom': effective},
+      );
+      widget.onSaved();
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => error = ApiClient.errorMessage(
+            e,
+            'Could not change the price. Try again.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 16,
+        right: 16,
+        top: 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const WorkspaceSheetTitle('CHANGE PRICE'),
+            const SizedBox(height: 6),
+            Text(
+              'Use today for a price that starts now, or a future date to schedule it.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 8),
+            BrutalField(
+              label: 'New price ₹',
+              controller: amountCtrl,
+              hint: '0',
+            ),
+            const SizedBox(height: 8),
+            BrutalField(
+              label: 'Effective from (YYYY-MM-DD)',
+              controller: dateCtrl,
+              hint: '2026-11-21',
+            ),
+            const SizedBox(height: 12),
+            BrutalButton(
+              label: busy ? 'Saving…' : 'Save price',
               onPressed: busy ? null : save,
             ),
             const SizedBox(height: 20),

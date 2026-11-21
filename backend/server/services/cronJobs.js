@@ -6,6 +6,7 @@ const User = require('../models/user.model');
 const Notification = require('../models/notification.model');
 const { createNotification } = require('./notificationService');
 const { sendEmail } = require('../utils/mailer');
+const { effectiveSubscriptionAmount } = require('../utils/subscriptionAmount');
 
 // --- date helpers ---
 function dateOnly(d) {
@@ -66,7 +67,7 @@ async function runDailyJob() {
           s.memberId,
           s.familyAccountId,
           'Subscription due',
-          `Your subscription "${s.name || 'subscription'}" bills on ${in3.toDateString()} (₹${s.amount}).`,
+          `Your subscription "${s.name || 'subscription'}" bills on ${in3.toDateString()} (₹${effectiveSubscriptionAmount(s, in3)}).`,
           'subscription',
           s._id,
           in3,

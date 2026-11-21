@@ -10,6 +10,15 @@ const subscriptionSchema = new mongoose.Schema(
       enum: ['Entertainment', 'Productivity', 'Health', 'News', 'Gaming', 'Cloud Storage', 'Other'],
     },
     amount: { type: Number },
+    // Each entry is a price and the date it took effect. `amount` above always
+    // reflects the price in force today.
+    priceHistory: [
+      {
+        _id: false,
+        amount: { type: Number, required: true },
+        effectiveFrom: { type: Date, required: true },
+      },
+    ],
     billingDate: { type: Number },
     frequency: { type: String, enum: ['monthly', 'yearly'] },
     startDate: { type: Date },

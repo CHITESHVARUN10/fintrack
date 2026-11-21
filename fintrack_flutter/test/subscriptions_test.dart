@@ -65,4 +65,78 @@ void main() {
     expect(find.text('No unlinked matching payments.'), findsOneWidget);
     expect(find.text('Streaming renewal'), findsOneWidget);
   });
+
+  testWidgets('changing a plan price keeps the old amount in history', (
+    tester,
+  ) async {
+    var history = <Map<String, dynamic>>[
+      {'amount': 500, 'effectiveFrom': '2026-03-01T00:00:00.000Z'},
+    ];
+    Map<String, dynamic> doc() => {
+      '_id': 'sub-1',
+      'name': 'Coding Agents',
+      'amount': 500,
+      'frequency': 'monthly',
+      'billingDate': 5,
+      'status': 'Active',
+      'priceHistory': List<Map<String, dynamic>>.from(history),
+    };
+    final interceptor = InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final data = switch (request.path) {
+          '/subscriptions' => [doc()],
+          '/subscriptions/suggestions' => {'suggestions': []},
+          '/subscriptions/sub-1' => doc(),
+          '/subscriptions/sub-1/transactions' => {
+            'linked': [],
+            'suggestions': [],
+            'totalPaidPaise': 0,
+          },
+          '/subscriptions/sub-1/price-change' => () {
+            expect(request.method, 'POST');
+            expect(request.data['amount'], 1100);
+            expect(
+              request.data['effectiveFrom'],
+              matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+            );
+            history = [
+              ...history,
+              {
+                'amount': 1100,
+                'effectiveFrom':
+                    '${request.data['effectiveFrom']}T00:00:00.000Z',
+              },
+            ];
+            return {...doc(), 'amount': 1100};
+          }(),
+          _ => throw StateError('Unexpected request ${request.path}'),
+        };
+        handler.resolve(Response(requestOptions: request, data: data));
+      },
+    );
+    ApiClient.dio.interceptors.add(interceptor);
+    addTearDown(() => ApiClient.dio.interceptors.remove(interceptor));
+
+    await tester.pumpWidget(
+      MaterialApp(theme: finStackTheme(), home: const SubscriptionsPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('HISTORY & DETAIL'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('CHANGE PRICE'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '1100');
+    await tester.tap(find.text('SAVE PRICE'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('PRICE HISTORY'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('₹500'), findsOneWidget);
+    expect(find.text('₹1,100'), findsWidgets);
+  });
 }

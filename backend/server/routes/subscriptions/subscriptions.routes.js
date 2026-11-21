@@ -2,6 +2,11 @@ const express = require('express');
 const Subscription = require('../../models/subscription.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { buildListFilter, canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
+const {
+  effectiveSubscriptionAmount,
+  seedSubscriptionPriceHistory,
+  appendSubscriptionPrice,
+} = require('../../utils/subscriptionAmount');
 
 const router = express.Router();
 router.use(isAuthenticated);
@@ -37,15 +42,15 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const body = { ...req.body, memberId: req.user._id, familyAccountId: req.user.familyAccountId };
+    delete body.priceHistory;
     if (body.frequency && body.billingDate) {
       body.nextRenewalDate = computeNextRenewal(body.frequency, body.billingDate);
     }
     const item = new Subscription(body);
+    seedSubscriptionPriceHistory(item);
     await item.save();
     res.status(201).json(item);
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 // GET /api/subscriptions/suggestions — global linker: detect monthly recurring via ledger
@@ -119,7 +124,8 @@ router.get('/:id/transactions', async (req, res, next) => {
 
     // 2. Unlinked suggestions in family ledger that match name, keyword, or approximate amount
     const subNameLow = (item.name || '').toLowerCase().trim();
-    const subAmtPaise = Math.round(Number(item.amount || 0) * 100);
+    const currentAmount = effectiveSubscriptionAmount(item);
+    const subAmtPaise = Math.round(Number(currentAmount || 0) * 100);
     const tolerance = 0.15; // 15% tolerance
     const minPaise = subAmtPaise * (1 - tolerance);
     const maxPaise = subAmtPaise * (1 + tolerance);
@@ -243,7 +249,7 @@ router.post('/:id/record-payment', async (req, res, next) => {
       return res.json({ success: true, transaction: linked });
     }
 
-    const amountNum = Number(amount || item.amount);
+    const amountNum = Number(amount || effectiveSubscriptionAmount(item, date ? new Date(date) : new Date()));
     if (!amountNum || amountNum <= 0) return res.status(400).json({ error: 'Valid amount is required' });
 
     const occurredAt = date ? new Date(date) : new Date();
@@ -270,6 +276,28 @@ router.post('/:id/record-payment', async (req, res, next) => {
   }
 });
 
+// POST /api/subscriptions/:id/price-change
+// Appends a dated price instead of losing what the subscription used to cost.
+router.post('/:id/price-change', async (req, res, next) => {
+  try {
+    const item = await Subscription.findById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Subscription not found' });
+    if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
+    const amount = Number(req.body?.amount);
+    const effectiveFrom = req.body?.effectiveFrom ?? new Date();
+    try {
+      appendSubscriptionPrice(item, amount, effectiveFrom);
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
+    await item.save();
+    res.json(item);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/subscriptions/:id
 router.get('/:id', async (req, res, next) => {
   try {
@@ -288,8 +316,30 @@ router.put('/:id', async (req, res, next) => {
     const item = await Subscription.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Subscription not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
-    const { memberId, familyAccountId, _id, ...updates } = req.body;
+    const {
+      memberId,
+      familyAccountId,
+      _id,
+      priceHistory,
+      priceEffectiveFrom,
+      ...updates
+    } = req.body;
+    const nextAmount = updates.amount !== undefined ? Number(updates.amount) : null;
+    delete updates.amount;
     Object.assign(item, updates);
+    if (nextAmount !== null) {
+      if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
+        return res.status(400).json({ error: 'Enter a valid subscription price' });
+      }
+      if (nextAmount !== Number(item.amount)) {
+        try {
+          appendSubscriptionPrice(item, nextAmount, priceEffectiveFrom || new Date());
+        } catch (err) {
+          if (err.status) return res.status(err.status).json({ error: err.message });
+          throw err;
+        }
+      }
+    }
     if (item.frequency && item.billingDate) {
       item.nextRenewalDate = computeNextRenewal(item.frequency, item.billingDate);
     }

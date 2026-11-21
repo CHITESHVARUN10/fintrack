@@ -2,6 +2,10 @@ const Transaction = require('../models/transaction.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const { buildTransactionVisibilityFilter } = require('../utils/scope');
+const {
+  effectiveSubscriptionAmount,
+  appendSubscriptionPrice,
+} = require('../utils/subscriptionAmount');
 
 // Helper: fuzzy name match (contains, case-insensitive, normalized)
 function nameMatches(subName, recipientName) {
@@ -69,7 +73,8 @@ async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
     if (sub.status === 'Cancelled' || sub.status === 'Paused') continue;
     if (sub.notes && sub.notes.includes('[[DISMISSED_SUGGESTION]]')) continue;
 
-    const matched = await findMatches({ familyId, name: sub.name, amount: sub.amount, dueDay: sub.billingDate, type: 'subscription' });
+    const currentAmount = effectiveSubscriptionAmount(sub);
+    const matched = await findMatches({ familyId, name: sub.name, amount: currentAmount, dueDay: sub.billingDate, type: 'subscription' });
     if (matched.length >= 2) {
       // suggest median amount and median day
       const amounts = matched.map((m) => m.amountPaise).sort((a, b) => a - b);
@@ -82,7 +87,7 @@ async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
       const variancePct = avg ? variance / avg : 0;
       // drift
       const dateDrift = Math.abs((sub.billingDate || 0) - medianDay);
-      const amountDriftPct = sub.amount ? Math.abs(medianAmount - sub.amount) / sub.amount : 0;
+      const amountDriftPct = currentAmount ? Math.abs(medianAmount - currentAmount) / currentAmount : 0;
 
       // If already identical to current subscription and drift is 0, auto-link matched transactions directly
       if (dateDrift === 0 && amountDriftPct < 0.01) {
@@ -94,7 +99,7 @@ async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
         kind: 'subscription',
         id: sub._id,
         name: sub.name,
-        current: { amount: sub.amount, billingDate: sub.billingDate, nextRenewalDate: sub.nextRenewalDate },
+        current: { amount: currentAmount, billingDate: sub.billingDate, nextRenewalDate: sub.nextRenewalDate },
         suggested: { amount: medianAmount, billingDate: medianDay },
         matchedTxIds: matched.map((m) => m._id),
         matchedCount: matched.length,
@@ -110,12 +115,12 @@ async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
       const tx = matched[0];
       const txAmt = tx.amountPaise / 100;
       const txDay = new Date(tx.occurredAt).getDate();
-      if (Math.abs(txAmt - sub.amount) > 1 || Math.abs(txDay - sub.billingDate) > 2) {
+      if (Math.abs(txAmt - currentAmount) > 1 || Math.abs(txDay - sub.billingDate) > 2) {
         out.push({
           kind: 'subscription',
           id: sub._id,
           name: sub.name,
-          current: { amount: sub.amount, billingDate: sub.billingDate },
+          current: { amount: currentAmount, billingDate: sub.billingDate },
           suggested: { amount: txAmt, billingDate: txDay },
           matchedTxIds: [tx._id],
           matchedCount: 1,
@@ -167,7 +172,12 @@ async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxId
   if (kind === 'subscription') {
     const sub = await Subscription.findOne({ _id: id, familyAccountId: familyId });
     if (!sub) throw Object.assign(new Error('Subscription not found'), { status: 404 });
-    if (acceptAmount != null) sub.amount = Number(acceptAmount);
+    if (acceptAmount != null) {
+      const next = Number(acceptAmount);
+      if (Number.isFinite(next) && next > 0 && next !== Number(effectiveSubscriptionAmount(sub))) {
+        appendSubscriptionPrice(sub, next, new Date());
+      }
+    }
     if (acceptDate != null) {
       sub.billingDate = Number(acceptDate);
       const now = new Date();

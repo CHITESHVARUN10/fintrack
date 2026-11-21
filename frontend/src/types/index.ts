@@ -260,6 +260,12 @@ export interface DashboardSummary {
   monthlyIncome: number
   monthlyObligations: number
   netMonthlyFlow: number
+  receivedIncomeThisMonth?: number
+  plannedIncomeThisMonth?: number
+  plannedIncomeFallbackThisMonth?: number
+  spentThisMonth?: number
+  committedThisMonth?: number
+  savingsRatePct?: number
   investmentPortfolioValue: { totalInvested: number; totalCurrentValue: number }
   adHocSpendThisMonth: number
   transactionSpendThisMonth: number

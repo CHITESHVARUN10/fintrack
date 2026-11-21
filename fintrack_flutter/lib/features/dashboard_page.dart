@@ -254,6 +254,24 @@ class _DashboardPageState extends State<DashboardPage> {
     final now = loadedAt ?? DateTime.now();
     final month = monthYearLabel(now);
 
+    final receivedIncome = _asNum(d['receivedIncomeThisMonth']);
+    final plannedFallback = _asNum(d['plannedIncomeFallbackThisMonth']);
+    final spentThisMonth = _asNum(
+      d['spentThisMonth'] ?? d['transactionSpendThisMonth'],
+    );
+    final committedThisMonth = _asNum(d['committedThisMonth']);
+    final savingsRate = _asNum(d['savingsRatePct']);
+    final netMonthly = _asNum(d['netMonthlyFlow']);
+    final incomeDetail = plannedFallback > 0
+        ? '${money(receivedIncome)} received + ${money(plannedFallback)} planned'
+        : '${money(receivedIncome)} received';
+    final outflowDetail = committedThisMonth > 0
+        ? '${money(spentThisMonth)} spent + ${money(committedThisMonth)} committed'
+        : '${money(spentThisMonth)} spent';
+    final savingsDetail = _asNum(d['monthlyIncome']) > 0
+        ? '${savingsRate.toStringAsFixed(0)}% of income'
+        : 'No income this month';
+
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -295,8 +313,9 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Expanded(
                 child: _Stat(
-                  label: 'Monthly income',
+                  label: 'This month income',
                   value: money(_asNum(d['monthlyIncome'])),
+                  detail: incomeDetail,
                   color: FinStackColors.brandYellow,
                   onTap: widget.onIncome,
                 ),
@@ -304,8 +323,9 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: _Stat(
-                  label: 'Monthly outflow',
+                  label: 'This month outflow',
                   value: money(_asNum(d['monthlyObligations'])),
+                  detail: outflowDetail,
                   onTap: widget.onActivity,
                 ),
               ),
@@ -328,8 +348,12 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: _Stat(
-                  label: 'Net monthly savings',
-                  value: money(_asNum(d['netMonthlyFlow'])),
+                  label: 'This month saved',
+                  value: money(netMonthly),
+                  detail: savingsDetail,
+                  color: netMonthly < 0
+                      ? FinStackColors.errorContainer
+                      : Colors.white,
                 ),
               ),
             ],
@@ -801,12 +825,14 @@ class _Stat extends StatelessWidget {
   const _Stat({
     required this.label,
     required this.value,
+    this.detail,
     this.color = Colors.white,
     this.onTap,
   });
 
   final String label;
   final String value;
+  final String? detail;
   final Color color;
   final VoidCallback? onTap;
 
@@ -834,6 +860,19 @@ class _Stat extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(value, style: FinStackType.amount),
             ),
+            if (detail != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                detail!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: FinStackType.caption.copyWith(
+                  fontSize: 10,
+                  height: 1.25,
+                  color: FinStackColors.onSurface.withValues(alpha: 0.65),
+                ),
+              ),
+            ],
           ],
         ),
       ),

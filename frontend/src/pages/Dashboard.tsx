@@ -171,21 +171,33 @@ export function Dashboard() {
       <section className="fse-kpis" aria-label="Key financial metrics">
         <div className="fse-kpi is-accent">
           <div className="fse-kpi-top">
-            <span className="fse-kpi-label">Monthly Income</span>
+            <span className="fse-kpi-label">This Month Income</span>
             <Icon name="account_balance_wallet" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
             <CountUp value={data.monthlyIncome} format={formatCurrency} />
           </div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {formatCurrency(data.receivedIncomeThisMonth || 0)} received
+            {(data.plannedIncomeFallbackThisMonth || 0) > 0
+              ? ` + ${formatCurrency(data.plannedIncomeFallbackThisMonth || 0)} planned`
+              : ''}
+          </div>
         </div>
 
         <div className="fse-kpi">
           <div className="fse-kpi-top">
-            <span className="fse-kpi-label">Monthly Outflow</span>
+            <span className="fse-kpi-label">This Month Outflow</span>
             <Icon name="shopping_cart" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
             <CountUp value={data.monthlyObligations} format={formatCurrency} />
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {formatCurrency(data.spentThisMonth || 0)} spent
+            {(data.committedThisMonth || 0) > 0
+              ? ` + ${formatCurrency(data.committedThisMonth || 0)} committed`
+              : ''}
           </div>
         </div>
 
@@ -201,11 +213,16 @@ export function Dashboard() {
 
         <div className="fse-kpi">
           <div className="fse-kpi-top">
-            <span className="fse-kpi-label">Net Monthly Savings</span>
+            <span className="fse-kpi-label">Net This Month</span>
             <Icon name="savings" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
             <CountUp value={data.netMonthlyFlow} format={formatCurrency} />
+          </div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {(data.monthlyIncome || 0) > 0
+              ? `${Math.round(data.savingsRatePct || 0)}% of income`
+              : 'No income this month'}
           </div>
         </div>
       </section>

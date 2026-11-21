@@ -3,6 +3,7 @@ import '../core/api_client.dart';
 import '../widgets/confirm_action.dart';
 import '../widgets/brutal.dart';
 import '../core/format.dart';
+import '../theme/finstack_theme.dart';
 import '../widgets/finance_transactions.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
@@ -147,7 +148,7 @@ class _IncomePageState extends State<IncomePage> {
                       ),
                     ),
                 const SizedBox(height: 4),
-                WorkspaceTotal(label: 'Planned monthly', value: inr(total)),
+                WorkspaceTotal(label: 'Planned per month', value: inr(total)),
               ],
             ),
     );
@@ -310,6 +311,11 @@ class _IncomeFormState extends State<_IncomeForm> {
                 ),
               ],
               onChanged: (value) => setState(() => pattern = value!),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Variable or occasional income counts when a receipt is recorded in Activity.',
+              style: FinStackType.caption.copyWith(fontSize: 10, height: 1.3),
             ),
             const SizedBox(height: 8),
             Row(

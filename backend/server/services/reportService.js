@@ -17,14 +17,9 @@ const { getFamilyAnalytics } = require('./familyAnalytics.service');
 
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeRegimeTaxes, aggregateDeductions, generateTips } = require('../services/tax.service');
-
-const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
+const { monthlySubscriptionAmount } = require('../utils/subscriptionAmount');
 
 // --- shared value helpers (kept in sync with dashboard.service.js) ---
-function subMonthlyAmount(s) {
-  if (s.frequency === 'yearly') return (s.amount || 0) / 12;
-  return s.amount || 0;
-}
 function investmentMonthlyAmount(inv) {
   if (inv.investmentType === 'mf_sip') return inv.sipAmount || 0;
   return 0;
@@ -65,7 +60,7 @@ function buildObligations(subs, invs) {
   const sipInvs = invs.filter((i) => i.investmentType === 'mf_sip');
 
   const items = [
-    ...subsActive.map((s) => ({ type: 'Subscription', name: s.name || 'Subscription', amount: subMonthlyAmount(s) })),
+    ...subsActive.map((s) => ({ type: 'Subscription', name: s.name || 'Subscription', amount: monthlySubscriptionAmount(s) })),
     ...sipInvs.map((i) => ({ type: 'SIP', name: i.fundName || i.stockName || 'SIP', amount: i.sipAmount || 0 })),
   ];
   const total = items.reduce((s, o) => s + (o.amount || 0), 0);

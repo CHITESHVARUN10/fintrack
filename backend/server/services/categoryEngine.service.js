@@ -2,6 +2,7 @@ const RecipientDirectory = require('../models/recipientdirectory.model');
 const Subscription = require('../models/subscription.model');
 const { MANUAL_UPI_HANDLE_MAP, KEYWORD_CATEGORY_MAP } = require('../config/bhimUpiMap');
 const { normalizeVendorKey } = require('./recipient.service');
+const { effectiveSubscriptionAmount } = require('../utils/subscriptionAmount');
 
 // Lightweight rule-based categorizer (no AI) – combination of manual + auto-learn
 // Returns { category, subcategory, confidence, trace: [{rule, category, confidence}], subscriptionRef }
@@ -41,7 +42,7 @@ async function predictCategory({ familyId, vendorKey, upiId, amountPaise, descri
       for (const sub of activeSubs) {
         const subNameLow = String(sub.name || '').toLowerCase().trim();
         const isNameMatch = subNameLow && subNameLow.length > 2 && (descLower.includes(subNameLow) || upiLower.includes(subNameLow));
-        const subAmountPaise = Math.round(Number(sub.amount || 0) * 100);
+        const subAmountPaise = Math.round(Number(effectiveSubscriptionAmount(sub) || 0) * 100);
         const isAmountMatch = amountPaise && subAmountPaise && Math.abs(amountPaise - subAmountPaise) <= Math.max(100, subAmountPaise * 0.05);
 
         if (isNameMatch && isAmountMatch) {

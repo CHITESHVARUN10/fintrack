@@ -7,12 +7,11 @@ const { activeOffsets } = require('./transactionOffsets');
 const { vendorDisplayName, paymentId } = require('../utils/vendorDisplayName');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
-
-const FREQ_MONTHS = { Monthly: 1, Quarterly: 3, 'Half-Yearly': 6, Yearly: 12 };
-function subMonthlyAmount(sub) {
-  if (sub.frequency === 'yearly') return (sub.amount || 0) / 12;
-  return sub.amount || 0;
-}
+const { incomeForMonth, outflowForMonth, round2 } = require('../utils/cashflow');
+const {
+  effectiveSubscriptionAmount,
+  monthlySubscriptionAmount,
+} = require('../utils/subscriptionAmount');
 
 function investmentMonthlyAmount(inv) {
   if (inv.investmentType === 'mf_sip') return inv.sipAmount || 0;
@@ -41,12 +40,9 @@ async function buildDashboard(userId) {
     Investment.find({ memberId: userId }),
   ]);
 
-  const monthlyIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
-  const monthlyObligations =
-    subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
-    invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
-
-  const netMonthlyFlow = monthlyIncome - monthlyObligations;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   // Upcoming payments within the next 7 days.
   const upcoming = [];
@@ -58,19 +54,19 @@ async function buildDashboard(userId) {
           type: label,
           id: it._id,
           name: it.name || it.loanName || it.title || it.policyName || 'Item',
-          amount: amountFn(it),
+          amount: amountFn(it, occ),
           dueDate: occ,
         });
       }
     }
   };
-  pushUpcoming(subs.filter(s => s.frequency !== 'yearly'), (s) => s.billingDate, 'subscription', (s) => subMonthlyAmount(s));
+  pushUpcoming(subs.filter(s => s.frequency !== 'yearly'), (s) => s.billingDate, 'subscription', (s, occ) => effectiveSubscriptionAmount(s, occ));
   const nowDue = new Date();
   const dueLimit = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate() + 8);
   const dueStart = new Date(nowDue.getFullYear(), nowDue.getMonth(), nowDue.getDate());
   for (const item of subs.filter(s => s.frequency === 'yearly')) {
     const dueDate = item.nextRenewalDate && new Date(item.nextRenewalDate);
-    if (dueDate && dueDate >= dueStart && dueDate < dueLimit) upcoming.push({ type: 'subscription', id: item._id, name: item.name, amount: item.amount || 0, dueDate });
+    if (dueDate && dueDate >= dueStart && dueDate < dueLimit) upcoming.push({ type: 'subscription', id: item._id, name: item.name, amount: effectiveSubscriptionAmount(item, dueDate), dueDate });
   }
   pushUpcoming(
     invs.filter((x) => x.investmentType === 'mf_sip'),
@@ -79,11 +75,6 @@ async function buildDashboard(userId) {
     (x) => x.sipAmount || 0,
   );
   upcoming.sort((a, b) => a.dueDate - b.dueDate);
-
-  const monthlyBurnBreakdown = {
-    Subscriptions: subs.reduce((s, x) => s + subMonthlyAmount(x), 0),
-    Investments: invs.filter((x) => x.investmentType === 'mf_sip').reduce((s, x) => s + (x.sipAmount || 0), 0),
-  };
 
   let totalInvested = 0;
   let totalCurrentValue = 0;
@@ -94,11 +85,7 @@ async function buildDashboard(userId) {
 
   const deductions = await aggregateDeductions(userId);
 
-  // Transaction-based actual spend this month (replaces AdHocExpense) — individual, not family
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  // Find user's family via User to scope transactions
+  // Transaction-based actual cash flow this month (individual, not family)
   const User = require('../models/user.model');
   const me = await User.findById(userId).select('familyAccountId').lean();
   let transactionSpendThisMonth = 0;
@@ -107,16 +94,29 @@ async function buildDashboard(userId) {
   let transactionVendorBreakdown = {};
   let transactionCategoryEntries = [];
   let transactionVendorEntries = [];
+  let incomeEntries = [];
+  let paidSubscriptionIds = new Set();
   if (me?.familyAccountId) {
-    const [entries, offsets] = await Promise.all([
+    const [entries, receipts, offsets] = await Promise.all([
       Transaction.find({
         familyId: me.familyAccountId, createdBy: userId, status: { $ne: 'VOIDED' },
         type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
         occurredAt: { $gte: monthStart, $lt: monthEnd },
       }).lean(),
+      Transaction.find({
+        familyId: me.familyAccountId, createdBy: userId, status: { $ne: 'VOIDED' },
+        type: 'INCOME',
+        occurredAt: { $gte: monthStart, $lt: monthEnd },
+      }).lean(),
       activeOffsets(me.familyAccountId, userId),
     ]);
+    // Any logged subscription charge counts as paid for this month, even when
+    // it is later offset, so the monthly price is not added a second time.
+    paidSubscriptionIds = new Set(
+      entries.filter(t => t.subscriptionRef).map(t => String(t.subscriptionRef)),
+    );
     const txs = entries.filter(tx => !offsets.has(String(tx._id)));
+    incomeEntries = receipts.filter(tx => !offsets.has(String(tx._id)));
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
     const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];
@@ -165,10 +165,42 @@ async function buildDashboard(userId) {
     transactionVendorEntries = topVendors;
   }
 
+  const sipMonthly = invs
+    .filter((x) => x.investmentType === 'mf_sip')
+    .reduce((s, x) => s + (x.sipAmount || 0), 0);
+  const income = incomeForMonth({
+    incomes,
+    receipts: incomeEntries,
+    monthStart,
+    monthEnd,
+  });
+  const outflow = outflowForMonth({
+    spent: transactionSpendThisMonth,
+    subscriptions: subs,
+    paidSubscriptionIds,
+    sipMonthly,
+    monthStart,
+    monthEnd,
+    now,
+  });
+  const netMonthlyFlow = round2(income.total - outflow.total);
+  const monthlyBurnBreakdown = {
+    Subscriptions: outflow.subscriptionsMonthly,
+    Investments: sipMonthly,
+  };
+
   return {
     netMonthlyFlow,
-    monthlyIncome,
-    monthlyObligations,
+    monthlyIncome: income.total,
+    monthlyObligations: outflow.total,
+    receivedIncomeThisMonth: income.received,
+    plannedIncomeThisMonth: income.plannedTotal,
+    plannedIncomeFallbackThisMonth: income.plannedFallback,
+    spentThisMonth: outflow.spent,
+    committedThisMonth: outflow.committed,
+    savingsRatePct: income.total > 0
+      ? round2((netMonthlyFlow / income.total) * 100)
+      : 0,
     upcomingPayments: upcoming,
     monthlyBurnBreakdown,
     transactionCategoryBreakdown,
@@ -181,7 +213,8 @@ async function buildDashboard(userId) {
     transactionCountThisMonth,
     adHocSpendThisMonth: transactionSpendThisMonth,
     taxEstimate: (() => {
-      const t = computeLiability({ grossSalary: monthlyIncome * 12, regime: 'New', deductions: { section80C: deductions.totalDeductions } });
+      const annualIncome = (income.plannedTotal || income.total) * 12;
+      const t = computeLiability({ grossSalary: annualIncome, regime: 'New', deductions: { section80C: deductions.totalDeductions } });
       return { taxableIncome: t.taxableIncome, taxBeforeCess: t.incomeTaxAfterRebate, cess: t.cess, totalTax: t.finalTax };
     })(),
   };
@@ -196,7 +229,7 @@ async function buildMemberSummary(userId) {
 
   const totalIncome = incomes.reduce((s, i) => s + (i.amount || 0), 0);
   const totalObligations =
-    subs.reduce((s, x) => s + subMonthlyAmount(x), 0) +
+    subs.reduce((s, x) => s + monthlySubscriptionAmount(x), 0) +
     invs.reduce((s, x) => s + investmentMonthlyAmount(x), 0);
   const totalInvestments = invs.reduce((s, d) => s + investedValue(d), 0);
 
