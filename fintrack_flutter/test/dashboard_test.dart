@@ -1,12 +1,62 @@
 import 'package:dio/dio.dart';
 import 'package:fintrack_flutter/core/api_client.dart';
 import 'package:fintrack_flutter/features/dashboard_page.dart';
+import 'package:fintrack_flutter/features/shell.dart';
 import 'package:fintrack_flutter/widgets/spending_breakdown.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('Home shows actuals and reloads when returning from Activity', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    FlutterSecureStorage.setMockInitialValues({});
+    var received = 0.0;
+    var dashboardRequests = 0;
+    final interceptor = InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final dashboard = request.path == '/dashboard';
+        if (dashboard) dashboardRequests++;
+        handler.resolve(
+          Response(
+            requestOptions: request,
+            data: dashboard
+                ? {
+                    'receivedIncomeThisMonth': received,
+                    'spentThisMonth': 42.5,
+                    'monthlyIncome': 10000,
+                    'monthlyObligations': 1200,
+                    'monthlyBurnBreakdown': {'Subscriptions': 1200},
+                  }
+                : {'items': [], 'total': 0},
+          ),
+        );
+      },
+    );
+    ApiClient.dio.interceptors.add(interceptor);
+    addTearDown(() => ApiClient.dio.interceptors.remove(interceptor));
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: Shell())),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No income this month'), findsOneWidget);
+    expect(find.text('-₹42.50'), findsOneWidget);
+    expect(find.text('₹10,000'), findsNothing);
+
+    await tester.tap(find.text('ACTIVITY'));
+    await tester.pumpAndSettle();
+    received = 102.75;
+    await tester.tap(find.text('HOME'));
+    await tester.pumpAndSettle();
+    expect(dashboardRequests, 2);
+    expect(find.text('₹102.75'), findsOneWidget);
+    expect(find.text('₹60.25'), findsOneWidget);
+  });
+
   testWidgets('both spending rings update their centers from the legend', (
     tester,
   ) async {

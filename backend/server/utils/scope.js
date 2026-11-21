@@ -35,6 +35,11 @@ const MonthShare = require('../models/monthshare.model');
 // against IST month boundaries rather than UTC ones.
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
+// Read the IST calendar components of an instant through UTC getters.
+function indiaCalendarDate(date) {
+  return new Date(new Date(date).getTime() + IST_OFFSET_MS);
+}
+
 function monthRange(month) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(month || ''));
   if (!match) return null;
@@ -86,6 +91,7 @@ module.exports = {
   canModify,
   canModifyTransaction,
   sameId,
+  indiaCalendarDate,
   monthRange,
   visibilityClause,
   loadSharedMonths,

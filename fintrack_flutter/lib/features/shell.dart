@@ -26,6 +26,7 @@ class Shell extends ConsumerStatefulWidget {
 
 class _ShellState extends ConsumerState<Shell> {
   _Tab _tab = _Tab.home;
+  int _dashboardRefresh = 0;
   int _activityRefresh = 0;
   DateTimeRange? _importReview;
   int _statisticsRefresh = 0;
@@ -38,6 +39,7 @@ class _ShellState extends ConsumerState<Shell> {
       setState(() {
         _activityRefresh++;
         _statisticsRefresh++;
+        if (_tab == _Tab.home && period == null) _dashboardRefresh++;
         if (period != null) {
           _importReview = DateTimeRange(start: period.from, end: period.to);
           _tab = _Tab.activity;
@@ -75,6 +77,7 @@ class _ShellState extends ConsumerState<Shell> {
     ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
     if (!mounted) return;
     setState(() {
+      if (_tab == _Tab.home) _dashboardRefresh++;
       if (_tab == _Tab.activity) _activityRefresh++;
       if (_tab == _Tab.statistics) _statisticsRefresh++;
     });
@@ -93,6 +96,7 @@ class _ShellState extends ConsumerState<Shell> {
     }
     setState(() {
       if (_tab != next && _visited.contains(next)) {
+        if (next == _Tab.home) _dashboardRefresh++;
         if (next == _Tab.activity) _activityRefresh++;
         if (next == _Tab.statistics) _statisticsRefresh++;
         if (next == _Tab.family) _familyRefresh++;
@@ -110,6 +114,7 @@ class _ShellState extends ConsumerState<Shell> {
     switch (tab) {
       case _Tab.home:
         return DashboardPage(
+          refresh: _dashboardRefresh,
           onIncome: () => _openWorkspace(const IncomePage()),
           onActivity: () => _onTab(_Tab.activity.index),
           onInvestments: () => _openWorkspace(const InvestmentsPage()),

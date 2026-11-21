@@ -1,41 +1,41 @@
+const { indiaCalendarDate } = require('./scope');
+
 // Subscription prices change over time (e.g. a coding plan going from ₹140 to
 // ₹500 to ₹1,100). `priceHistory` keeps each price with the date it started so
 // past months can still be read with the price that was actually in force.
 
 function parseDate(value) {
+  if (value == null || value === '') return null;
   if (value instanceof Date) {
     return Number.isFinite(value.getTime()) ? value : null;
   }
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    return Number.isFinite(date.getTime()) ? date : null;
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+      ? date : null;
   }
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function dayKey(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
+  return indiaCalendarDate(date).toISOString().slice(0, 10);
 }
 
 // The price that was in force on `date`. Falls back to the current amount for
 // records created before price history existed.
 function effectiveSubscriptionAmount(sub, date = new Date()) {
   const at = parseDate(date) || new Date();
+  const day = dayKey(at);
   const history = (sub?.priceHistory || [])
     .map((entry) => ({
       amount: Number(entry.amount),
       from: parseDate(entry.effectiveFrom),
     }))
-    .filter((entry) => Number.isFinite(entry.amount) && entry.from && entry.from <= at)
-    .sort((a, b) => a.from - b.from);
-  if (history.length) return history[history.length - 1].amount;
-  return Number(sub?.amount) || 0;
+    .filter((entry) => Number.isFinite(entry.amount) && entry.from)
+    .sort((a, b) => dayKey(a.from).localeCompare(dayKey(b.from)));
+  const effective = history.findLast(entry => dayKey(entry.from) <= day);
+  return effective?.amount ?? history[0]?.amount ?? (Number(sub?.amount) || 0);
 }
 
 function monthlySubscriptionAmount(sub, date = new Date()) {
@@ -58,7 +58,7 @@ function seedSubscriptionPriceHistory(sub) {
   const amount = Number(sub?.amount) || 0;
   if (amount <= 0) return false;
   const from = parseDate(sub.startDate) || parseDate(sub.createdAt) || new Date();
-  sub.priceHistory = [{ amount, effectiveFrom: from }];
+  sub.priceHistory = [{ amount, effectiveFrom: from, source: 'baseline' }];
   return true;
 }
 
@@ -78,8 +78,9 @@ function appendSubscriptionPrice(sub, amount, effectiveFrom = new Date()) {
   );
   if (existing) {
     existing.amount = next;
+    existing.source = 'manual';
   } else {
-    sub.priceHistory.push({ amount: next, effectiveFrom: at });
+    sub.priceHistory.push({ amount: next, effectiveFrom: at, source: 'manual' });
   }
   sub.priceHistory.sort(
     (a, b) => (parseDate(a.effectiveFrom)?.getTime() || 0) - (parseDate(b.effectiveFrom)?.getTime() || 0),

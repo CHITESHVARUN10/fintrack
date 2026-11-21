@@ -1,7 +1,8 @@
 const Transaction = require('../models/transaction.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
-const { buildTransactionVisibilityFilter } = require('../utils/scope');
+const { buildTransactionVisibilityFilter, sameId } = require('../utils/scope');
+const { withObservedSubscriptionPrices } = require('./subscriptionPrices.service');
 const {
   effectiveSubscriptionAmount,
   appendSubscriptionPrice,
@@ -26,7 +27,7 @@ function daysDiff(a, b) {
 }
 
 // Find transactions that likely correspond to a subscription/recurring/loan
-async function findMatches({ familyId, createdBy, name, amount, dueDay, type = 'subscription', tolerancePct = 0.05 }) {
+async function findMatches({ familyId, createdBy, viewerId, name, amount, dueDay, type = 'subscription', tolerancePct = 0.05 }) {
   const amountPaise = Math.round(Number(amount || 0) * 100);
   if (!amountPaise) return [];
   const isVariable = type === 'recurring' || (type === 'subscription' && String(name).toLowerCase().includes('electric')) || type === 'utility';
@@ -36,17 +37,19 @@ async function findMatches({ familyId, createdBy, name, amount, dueDay, type = '
   // look at last 6 months
   const since = new Date();
   since.setMonth(since.getMonth() - 6);
-  const visibility = createdBy ? null : await buildTransactionVisibilityFilter(null, { familyId, userId: null });
+  const visibility = sameId(createdBy, viewerId) ? {}
+    : await buildTransactionVisibilityFilter(null, { familyId, userId: viewerId });
   const filter = {
     familyId,
-    ...(createdBy ? { createdBy } : visibility),
+    ...(createdBy ? { createdBy } : {}),
+    ...visibility,
     status: { $ne: 'VOIDED' },
     type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
     amountPaise: { $gte: minPaise, $lte: maxPaise },
     occurredAt: { $gte: since },
     visibility: { $ne: 'PRIVATE' },
     // Only search unlinked transactions
-    ...(type === 'subscription' ? { subscriptionRef: null } : {}),
+    ...(type === 'subscription' ? { subscriptionRef: null, financeLink: null } : {}),
   };
   const candidates = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(200).lean();
   const matched = [];
@@ -64,17 +67,20 @@ async function findMatches({ familyId, createdBy, name, amount, dueDay, type = '
   return matched.slice(0, 10);
 }
 
-async function buildSuggestionsForSubscriptions({ familyId, memberId }) {
+async function buildSuggestionsForSubscriptions({ familyId, memberId, viewerId }) {
   const filter = { familyAccountId: familyId };
   if (memberId) filter.memberId = memberId;
-  const subs = await Subscription.find(filter).lean();
+  const subs = await withObservedSubscriptionPrices(await Subscription.find(filter).lean(), viewerId);
   const out = [];
   for (const sub of subs) {
     if (sub.status === 'Cancelled' || sub.status === 'Paused') continue;
     if (sub.notes && sub.notes.includes('[[DISMISSED_SUGGESTION]]')) continue;
 
     const currentAmount = effectiveSubscriptionAmount(sub);
-    const matched = await findMatches({ familyId, name: sub.name, amount: currentAmount, dueDay: sub.billingDate, type: 'subscription' });
+    const matched = await findMatches({
+      familyId, createdBy: sub.memberId, viewerId, name: sub.name, amount: currentAmount,
+      dueDay: sub.billingDate, type: 'subscription',
+    });
     if (matched.length >= 2) {
       // suggest median amount and median day
       const amounts = matched.map((m) => m.amountPaise).sort((a, b) => a - b);

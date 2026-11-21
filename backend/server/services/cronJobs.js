@@ -7,6 +7,7 @@ const Notification = require('../models/notification.model');
 const { createNotification } = require('./notificationService');
 const { sendEmail } = require('../utils/mailer');
 const { effectiveSubscriptionAmount } = require('../utils/subscriptionAmount');
+const { withObservedSubscriptionPrices } = require('./subscriptionPrices.service');
 
 // --- date helpers ---
 function dateOnly(d) {
@@ -61,18 +62,17 @@ async function runDailyJob() {
   try {
     // 1) Subscriptions billing in 3 days.
     const subs = await Subscription.find({ status: 'Active' });
-    for (const s of subs) {
-      if (s.billingDate && dayMatches(s.billingDate, in3)) {
-        await notifyOnce(
-          s.memberId,
-          s.familyAccountId,
-          'Subscription due',
-          `Your subscription "${s.name || 'subscription'}" bills on ${in3.toDateString()} (₹${effectiveSubscriptionAmount(s, in3)}).`,
-          'subscription',
-          s._id,
-          in3,
-        );
-      }
+    const monthlyDue = subs.filter(s => s.frequency !== 'yearly' && dayMatches(s.billingDate, in3));
+    for (const s of await withObservedSubscriptionPrices(monthlyDue)) {
+      await notifyOnce(
+        s.memberId,
+        s.familyAccountId,
+        'Subscription due',
+        `Your subscription "${s.name || 'subscription'}" bills on ${in3.toDateString()} (₹${effectiveSubscriptionAmount(s, in3)}).`,
+        'subscription',
+        s._id,
+        in3,
+      );
     }
 
     // 2) FD maturities in 15 days (Active only).

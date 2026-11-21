@@ -515,6 +515,7 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
           (entry) => <String, dynamic>{
             'amount': (entry['amount'] as num?) ?? 0,
             'effectiveFrom': '${entry['effectiveFrom'] ?? ''}',
+            'source': entry['source'],
           },
         )
         .toList();
@@ -717,7 +718,8 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                     children: [
                       const BrutalSectionTitle(
                         title: 'Price history',
-                        subtitle: 'Old prices stay on record.',
+                        subtitle:
+                            'Includes prices detected from renewal payments.',
                       ),
                       if (_priceHistory.isEmpty)
                         const Text('No price changes yet.')
@@ -734,7 +736,9 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                                 ),
                               ),
                               Text(
-                                'from ${_priceDate(entry['effectiveFrom'])}',
+                                entry['source'] == 'payment'
+                                    ? 'Detected · from ${_priceDate(entry['effectiveFrom'])}'
+                                    : 'from ${_priceDate(entry['effectiveFrom'])}',
                                 style: FinStackType.caption,
                               ),
                             ],

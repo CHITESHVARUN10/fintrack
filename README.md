@@ -4,11 +4,11 @@ FinStack is a personal and family finance tracker for the web, iOS, and Android.
 
 ## Features
 
-- **Activity and statistics.** Review spending by month, category, and vendor. Import CSV or Excel statements, review duplicates, and group offsetting transactions for reimbursements and repayments. The mobile app opens the imported period for review, then returns to the current month on your next Activity visit.
+- **Activity and statistics.** Home shows income received, actual spending, and net for the current month. Review spending by month, category, and vendor. Import CSV or Excel statements, review duplicates, and group offsetting transactions for reimbursements and repayments. The mobile app opens the imported period for review, then returns to the current month on your next Activity visit.
 - **Vendors and categories.** See vendor transactions, monthly spending, and recorded products. Create categories and reuse a saved vendor’s category when recording a scanned UPI payment.
 - **UPI.** Scan a QR code on mobile, open your UPI app, and record the payment after that app shows success. You can also import a UPI payment screenshot to extract details with Gemini.
 - **Income and investments.** Track regular or variable income and link actual receipts. Record fixed deposit terms and maturity instructions, link funding and payouts, and track stock purchases, dividends, holdings, and sale history.
-- **Subscriptions and family.** Track renewals, upcoming charges, budgets, member access, and family spending. The standalone Recurring Payments screen is retired. The legacy API remains available for existing records.
+- **Subscriptions and family.** Track renewals, upcoming charges, budgets, member access, and family spending. Clear renewal matches from bank statements update the subscription’s price timeline. Link a payment yourself when the merchant or billing cycle is ambiguous. The standalone Recurring Payments screen is retired. The legacy API remains available for existing records.
 - **Tax and reports.** Compare tax regimes using recorded income and eligible paid amounts. Export available reports as PDF or Excel.
 
 ## Local development

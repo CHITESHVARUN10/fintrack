@@ -26,6 +26,7 @@ const _burnColors = [
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
+    this.refresh = 0,
     this.onIncome,
     this.onActivity,
     this.onInvestments,
@@ -34,6 +35,7 @@ class DashboardPage extends StatefulWidget {
   final VoidCallback? onIncome;
   final VoidCallback? onActivity;
   final VoidCallback? onInvestments;
+  final int refresh;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -79,6 +81,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool loading = true;
   String? error;
   DateTime? loadedAt;
+  int _requestVersion = 0;
   static const _storage = FlutterSecureStorage();
   static const _paidStorageKey = 'finstack_paid_subscription_reminders';
   static const _paidAnimation = Duration(milliseconds: 670);
@@ -90,6 +93,12 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _loadInitial();
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refresh != widget.refresh) load();
   }
 
   Future<void> _loadInitial() async {
@@ -158,28 +167,34 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> load() async {
+    final version = ++_requestVersion;
     setState(() {
       loading = true;
       error = null;
     });
     try {
       final res = await ApiClient.dio.get('/dashboard');
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
         data = res.data;
         loadedAt = DateTime.now();
       });
     } catch (_) {
-      if (mounted) setState(() => error = 'Could not load dashboard.');
+      if (mounted && version == _requestVersion) {
+        setState(() => error = 'Could not load dashboard.');
+      }
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && version == _requestVersion) {
+        setState(() => loading = false);
+      }
     }
   }
 
-  void _openScanner() {
-    Navigator.of(
+  Future<void> _openScanner() async {
+    await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
+    if (mounted) await load();
   }
 
   @override
@@ -203,7 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 },
               )
               .toList()
-        : ((d['monthlyBurnBreakdown'] as Map?)?.entries ?? [])
+        : ((d['transactionCategoryBreakdown'] as Map?)?.entries ?? [])
               .map(
                 (e) => {'label': e.key, 'value': (e.value as num).toDouble()},
               )
@@ -216,10 +231,7 @@ class _DashboardPageState extends State<DashboardPage> {
       1.0,
       (m, e) => (e['value'] as double) > m ? (e['value'] as double) : m,
     );
-    final categories = _chartEntries(
-      (d['transactionCategoryEntries'] as List?) ?? [],
-      'Other categories',
-    );
+    final categories = _chartEntries(catEntries, 'Other categories');
     final vendorTotals = d['transactionVendorBreakdown'];
     final vendors = _chartEntries(
       vendorTotals is Map && vendorTotals.isNotEmpty
@@ -255,21 +267,15 @@ class _DashboardPageState extends State<DashboardPage> {
     final month = monthYearLabel(now);
 
     final receivedIncome = _asNum(d['receivedIncomeThisMonth']);
-    final plannedFallback = _asNum(d['plannedIncomeFallbackThisMonth']);
     final spentThisMonth = _asNum(
-      d['spentThisMonth'] ?? d['transactionSpendThisMonth'],
+      d['spentThisMonth'] ??
+          d['transactionSpendThisMonth'] ??
+          d['adHocSpendThisMonth'],
     );
-    final committedThisMonth = _asNum(d['committedThisMonth']);
-    final savingsRate = _asNum(d['savingsRatePct']);
-    final netMonthly = _asNum(d['netMonthlyFlow']);
-    final incomeDetail = plannedFallback > 0
-        ? '${money(receivedIncome)} received + ${money(plannedFallback)} planned'
-        : '${money(receivedIncome)} received';
-    final outflowDetail = committedThisMonth > 0
-        ? '${money(spentThisMonth)} spent + ${money(committedThisMonth)} committed'
-        : '${money(spentThisMonth)} spent';
-    final savingsDetail = _asNum(d['monthlyIncome']) > 0
-        ? '${savingsRate.toStringAsFixed(0)}% of income'
+    final netPaise =
+        (receivedIncome * 100).round() - (spentThisMonth * 100).round();
+    final savingsDetail = receivedIncome > 0
+        ? '${(netPaise / receivedIncome).toStringAsFixed(0)}% of income'
         : 'No income this month';
 
     return RefreshIndicator(
@@ -313,9 +319,8 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Expanded(
                 child: _Stat(
-                  label: 'This month income',
-                  value: money(_asNum(d['monthlyIncome'])),
-                  detail: incomeDetail,
+                  label: 'Income received this month',
+                  value: inrPaise(receivedIncome * 100),
                   color: FinStackColors.brandYellow,
                   onTap: widget.onIncome,
                 ),
@@ -323,9 +328,8 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: _Stat(
-                  label: 'This month outflow',
-                  value: money(_asNum(d['monthlyObligations'])),
-                  detail: outflowDetail,
+                  label: 'Spent this month',
+                  value: inrPaise(spentThisMonth * 100),
                   onTap: widget.onActivity,
                 ),
               ),
@@ -348,10 +352,10 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: _Stat(
-                  label: 'This month saved',
-                  value: money(netMonthly),
+                  label: 'Net this month',
+                  value: inrPaise(netPaise),
                   detail: savingsDetail,
-                  color: netMonthly < 0
+                  color: netPaise < 0
                       ? FinStackColors.errorContainer
                       : Colors.white,
                 ),
@@ -577,7 +581,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
+                  'Planned · Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
                   style: FinStackType.caption.copyWith(
                     fontWeight: FontWeight.w500,
                   ),

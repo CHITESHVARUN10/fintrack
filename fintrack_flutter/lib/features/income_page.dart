@@ -314,7 +314,7 @@ class _IncomeFormState extends State<_IncomeForm> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Variable or occasional income counts when a receipt is recorded in Activity.',
+              'Home counts income when a receipt is recorded in Activity.',
               style: FinStackType.caption.copyWith(fontSize: 10, height: 1.3),
             ),
             const SizedBox(height: 8),

@@ -21,7 +21,7 @@ router.get('/member/:memberId', isAuthenticated, isAdmin, async (req, res, next)
     if (!member || String(member.familyAccountId) !== String(req.user.familyAccountId)) {
       return res.status(404).json({ error: 'Not found' });
     }
-    const dashboard = await buildDashboard(member._id);
+    const dashboard = await buildDashboard(member._id, req.user._id);
     res.json(dashboard);
   } catch (err) {
     next(err);

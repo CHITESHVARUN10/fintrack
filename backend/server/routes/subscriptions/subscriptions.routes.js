@@ -1,5 +1,6 @@
 const express = require('express');
 const Subscription = require('../../models/subscription.model');
+const { withObservedSubscriptionPrices } = require('../../services/subscriptionPrices.service');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { buildListFilter, canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
 const {
@@ -32,7 +33,7 @@ router.get('/', async (req, res, next) => {
     const filter = await buildListFilter(req);
     if (req.query.frequency) filter.frequency = req.query.frequency;
     const items = await Subscription.find(filter).sort({ createdAt: -1 });
-    res.json(items);
+    res.json(await withObservedSubscriptionPrices(items, req.user._id));
   } catch (err) {
     next(err);
   }
@@ -58,8 +59,10 @@ router.get('/suggestions', async (req, res, next) => {
   try {
     if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
     const { buildSuggestionsForSubscriptions } = require('../../services/subscriptionLinker.service');
-    const memberId = req.user.role === 'admin' && req.query.memberId ? req.query.memberId : undefined;
-    const suggestions = await buildSuggestionsForSubscriptions({ familyId: req.user.familyAccountId, memberId });
+    const { memberId, familyAccountId } = await buildListFilter(req);
+    const suggestions = await buildSuggestionsForSubscriptions({
+      familyId: familyAccountId, memberId, viewerId: req.user._id,
+    });
     res.json({ suggestions });
   } catch (err) {
     next(err);
@@ -124,7 +127,8 @@ router.get('/:id/transactions', async (req, res, next) => {
 
     // 2. Unlinked suggestions in family ledger that match name, keyword, or approximate amount
     const subNameLow = (item.name || '').toLowerCase().trim();
-    const currentAmount = effectiveSubscriptionAmount(item);
+    const [priced] = await withObservedSubscriptionPrices([item], req.user._id);
+    const currentAmount = priced.amount;
     const subAmtPaise = Math.round(Number(currentAmount || 0) * 100);
     const tolerance = 0.15; // 15% tolerance
     const minPaise = subAmtPaise * (1 - tolerance);
@@ -249,10 +253,14 @@ router.post('/:id/record-payment', async (req, res, next) => {
       return res.json({ success: true, transaction: linked });
     }
 
-    const amountNum = Number(amount || effectiveSubscriptionAmount(item, date ? new Date(date) : new Date()));
-    if (!amountNum || amountNum <= 0) return res.status(400).json({ error: 'Valid amount is required' });
-
     const occurredAt = date ? new Date(date) : new Date();
+    if (!Number.isFinite(occurredAt.getTime())) return res.status(400).json({ error: 'Valid payment date is required' });
+    const [priced] = amount == null ? await withObservedSubscriptionPrices([item], req.user._id) : [item];
+    const amountNum = Number(amount ?? effectiveSubscriptionAmount(priced, occurredAt));
+    if (!Number.isSafeInteger(Math.round(amountNum * 100)) || Math.round(amountNum * 100) <= 0) {
+      return res.status(400).json({ error: 'Valid amount is required' });
+    }
+
     const newTx = new Transaction({
       amountPaise: Math.round(amountNum * 100),
       type: 'EXPENSE',
@@ -304,7 +312,8 @@ router.get('/:id', async (req, res, next) => {
     const item = await Subscription.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Subscription not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
-    res.json(item);
+    const [priced] = await withObservedSubscriptionPrices([item], req.user._id);
+    res.json(priced);
   } catch (err) {
     next(err);
   }
@@ -316,6 +325,8 @@ router.put('/:id', async (req, res, next) => {
     const item = await Subscription.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Subscription not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
+    const [priced] = req.body.amount === undefined
+      ? [item] : await withObservedSubscriptionPrices([item], req.user._id);
     const {
       memberId,
       familyAccountId,
@@ -331,7 +342,7 @@ router.put('/:id', async (req, res, next) => {
       if (!Number.isFinite(nextAmount) || nextAmount <= 0) {
         return res.status(400).json({ error: 'Enter a valid subscription price' });
       }
-      if (nextAmount !== Number(item.amount)) {
+      if (nextAmount !== priced.amount || priceEffectiveFrom) {
         try {
           appendSubscriptionPrice(item, nextAmount, priceEffectiveFrom || new Date());
         } catch (err) {

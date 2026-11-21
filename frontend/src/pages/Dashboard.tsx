@@ -13,6 +13,11 @@ import { cn } from '../lib/cn'
 import { Badge } from '../components/ui/Badge'
 import './entry-overview.css'
 
+const ledgerCurrency = new Intl.NumberFormat('en-IN', {
+  style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2,
+})
+const formatLedgerCurrency = (amount: number) => ledgerCurrency.format(amount)
+
 const CAT_VARS = [
   'var(--fse-cat-1)',
   'var(--fse-cat-2)',
@@ -144,6 +149,9 @@ export function Dashboard() {
   if (!data || !verification) return <div className="fse-empty">No dashboard data available.</div>
 
   const { categories, catTotal, maxCat, catTicks, vendorTicks, vendorTotal, actualSpend, txnCount } = verification
+  const received = data.receivedIncomeThisMonth ?? 0
+  const spent = data.spentThisMonth ?? actualSpend
+  const net = Math.round((received - spent) * 100) / 100
   const visibleBars = categories.slice(0, 6)
   const hiddenBars = categories.length - visibleBars.length
 
@@ -171,33 +179,21 @@ export function Dashboard() {
       <section className="fse-kpis" aria-label="Key financial metrics">
         <div className="fse-kpi is-accent">
           <div className="fse-kpi-top">
-            <span className="fse-kpi-label">This Month Income</span>
+            <span className="fse-kpi-label">Income Received This Month</span>
             <Icon name="account_balance_wallet" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
-            <CountUp value={data.monthlyIncome} format={formatCurrency} />
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
-            {formatCurrency(data.receivedIncomeThisMonth || 0)} received
-            {(data.plannedIncomeFallbackThisMonth || 0) > 0
-              ? ` + ${formatCurrency(data.plannedIncomeFallbackThisMonth || 0)} planned`
-              : ''}
+            <CountUp value={received} format={formatLedgerCurrency} />
           </div>
         </div>
 
         <div className="fse-kpi">
           <div className="fse-kpi-top">
-            <span className="fse-kpi-label">This Month Outflow</span>
+            <span className="fse-kpi-label">Spent This Month</span>
             <Icon name="shopping_cart" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
-            <CountUp value={data.monthlyObligations} format={formatCurrency} />
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
-            {formatCurrency(data.spentThisMonth || 0)} spent
-            {(data.committedThisMonth || 0) > 0
-              ? ` + ${formatCurrency(data.committedThisMonth || 0)} committed`
-              : ''}
+            <CountUp value={spent} format={formatLedgerCurrency} />
           </div>
         </div>
 
@@ -217,11 +213,11 @@ export function Dashboard() {
             <Icon name="savings" className="text-[18px]" aria-hidden="true" />
           </div>
           <div className="fse-kpi-value">
-            <CountUp value={data.netMonthlyFlow} format={formatCurrency} />
+            <CountUp value={net} format={formatLedgerCurrency} />
           </div>
           <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
-            {(data.monthlyIncome || 0) > 0
-              ? `${Math.round(data.savingsRatePct || 0)}% of income`
+            {received > 0
+              ? `${Math.round(net / received * 100)}% of income`
               : 'No income this month'}
           </div>
         </div>

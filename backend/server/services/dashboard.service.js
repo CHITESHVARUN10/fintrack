@@ -4,10 +4,12 @@ const Investment = require('../models/investment.model');
 const Transaction = require('../models/transaction.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
 const { activeOffsets } = require('./transactionOffsets');
+const { buildTransactionVisibilityFilter, indiaCalendarDate, monthRange } = require('../utils/scope');
+const { withObservedSubscriptionPrices } = require('./subscriptionPrices.service');
 const { vendorDisplayName, paymentId } = require('../utils/vendorDisplayName');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
-const { incomeForMonth, outflowForMonth, round2 } = require('../utils/cashflow');
+const { activeInMonth, incomeForMonth, round2 } = require('../utils/cashflow');
 const {
   effectiveSubscriptionAmount,
   monthlySubscriptionAmount,
@@ -33,16 +35,19 @@ function nextOccurrence(dayOfMonth, lookaheadDays = 7, base = new Date()) {
 
 // --- Placeholder until Phase 8 wires the real taxService.calculateTax ---
 
-async function buildDashboard(userId) {
-  const [incomes, subs, invs] = await Promise.all([
+async function buildDashboard(userId, viewerId = userId) {
+  const [incomes, savedSubscriptions, invs] = await Promise.all([
     Income.find({ memberId: userId }),
     Subscription.find({ memberId: userId, status: 'Active' }),
     Investment.find({ memberId: userId }),
   ]);
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const calendarDate = indiaCalendarDate(now);
+  const period = monthRange(calendarDate.toISOString().slice(0, 7));
+  const monthStart = period.$gte;
+  const monthEnd = period.$lt;
+  const subs = await withObservedSubscriptionPrices(savedSubscriptions, viewerId, now);
 
   // Upcoming payments within the next 7 days.
   const upcoming = [];
@@ -95,28 +100,25 @@ async function buildDashboard(userId) {
   let transactionCategoryEntries = [];
   let transactionVendorEntries = [];
   let incomeEntries = [];
-  let paidSubscriptionIds = new Set();
   if (me?.familyAccountId) {
-    const [entries, receipts, offsets] = await Promise.all([
+    const visibility = await buildTransactionVisibilityFilter(null, {
+      familyId: me.familyAccountId,
+      userId: viewerId,
+    });
+    const [entries, offsets] = await Promise.all([
       Transaction.find({
-        familyId: me.familyAccountId, createdBy: userId, status: { $ne: 'VOIDED' },
-        type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
-        occurredAt: { $gte: monthStart, $lt: monthEnd },
-      }).lean(),
-      Transaction.find({
-        familyId: me.familyAccountId, createdBy: userId, status: { $ne: 'VOIDED' },
-        type: 'INCOME',
-        occurredAt: { $gte: monthStart, $lt: monthEnd },
+        familyId: me.familyAccountId,
+        createdBy: userId,
+        status: { $in: ['ACTIVE', 'RECONCILED'] },
+        type: { $in: ['EXPENSE', 'CASH_EXPENSE', 'INCOME'] },
+        occurredAt: { ...period, $lte: now },
+        ...visibility,
       }).lean(),
       activeOffsets(me.familyAccountId, userId),
     ]);
-    // Any logged subscription charge counts as paid for this month, even when
-    // it is later offset, so the monthly price is not added a second time.
-    paidSubscriptionIds = new Set(
-      entries.filter(t => t.subscriptionRef).map(t => String(t.subscriptionRef)),
-    );
-    const txs = entries.filter(tx => !offsets.has(String(tx._id)));
-    incomeEntries = receipts.filter(tx => !offsets.has(String(tx._id)));
+    const settled = entries.filter(tx => !offsets.has(String(tx._id)));
+    const txs = settled.filter(tx => tx.type !== 'INCOME');
+    incomeEntries = settled.filter(tx => tx.type === 'INCOME');
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
     const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];
@@ -174,32 +176,23 @@ async function buildDashboard(userId) {
     monthStart,
     monthEnd,
   });
-  const outflow = outflowForMonth({
-    spent: transactionSpendThisMonth,
-    subscriptions: subs,
-    paidSubscriptionIds,
-    sipMonthly,
-    monthStart,
-    monthEnd,
-    now,
-  });
-  const netMonthlyFlow = round2(income.total - outflow.total);
+  const netMonthlyFlow = round2(income.received - transactionSpendThisMonth);
   const monthlyBurnBreakdown = {
-    Subscriptions: outflow.subscriptionsMonthly,
+    Subscriptions: round2(subs
+      .filter(sub => activeInMonth(sub, monthStart, monthEnd))
+      .reduce((sum, sub) => sum + monthlySubscriptionAmount(sub, now), 0)),
     Investments: sipMonthly,
   };
 
   return {
     netMonthlyFlow,
-    monthlyIncome: income.total,
-    monthlyObligations: outflow.total,
+    monthlyIncome: income.received,
+    monthlyObligations: transactionSpendThisMonth,
     receivedIncomeThisMonth: income.received,
-    plannedIncomeThisMonth: income.plannedTotal,
-    plannedIncomeFallbackThisMonth: income.plannedFallback,
-    spentThisMonth: outflow.spent,
-    committedThisMonth: outflow.committed,
-    savingsRatePct: income.total > 0
-      ? round2((netMonthlyFlow / income.total) * 100)
+    plannedIncomeThisMonth: income.planned,
+    spentThisMonth: transactionSpendThisMonth,
+    savingsRatePct: income.received > 0
+      ? round2((netMonthlyFlow / income.received) * 100)
       : 0,
     upcomingPayments: upcoming,
     monthlyBurnBreakdown,
@@ -213,7 +206,7 @@ async function buildDashboard(userId) {
     transactionCountThisMonth,
     adHocSpendThisMonth: transactionSpendThisMonth,
     taxEstimate: (() => {
-      const annualIncome = (income.plannedTotal || income.total) * 12;
+      const annualIncome = (income.planned || income.received) * 12;
       const t = computeLiability({ grossSalary: annualIncome, regime: 'New', deductions: { section80C: deductions.totalDeductions } });
       return { taxableIncome: t.taxableIncome, taxBeforeCess: t.incomeTaxAfterRebate, cess: t.cess, totalTax: t.finalTax };
     })(),
