@@ -242,7 +242,167 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       appId = await _chooseApp(firstTime: true);
       if (appId == null) return;
     }
+    if (widget.request.isPersonToPerson) {
+      if (mounted) await _payPersonalVpa(appId);
+      return;
+    }
     if (mounted) await _launchPayment(paise, appId);
+  }
+
+  /// Personal VPAs cannot be paid from a prefilled intent: UPI apps reject
+  /// third-party handoffs to non-merchant handles after PIN entry. Copy the
+  /// ID, open the chosen app, and let the user pay there.
+  Future<void> _payPersonalVpa(String appId) async {
+    final app = upiAppById(appId)!;
+    if (_error != null) setState(() => _error = null);
+    await Clipboard.setData(ClipboardData(text: widget.request.payeeVpa));
+    if (!mounted) return;
+
+    final open = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: FinStackColors.onSurface, width: 3),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: BrutalTag(
+                  label: 'Personal UPI ID',
+                  color: FinStackColors.brandYellow,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'PAY THIS ONE INSIDE THE UPI APP',
+                style: TextStyle(
+                  fontFamily: FinStackType.display,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'UPI apps reject prefilled payments to personal IDs from '
+                'another app. The UPI ID is copied — open ${app.label}, paste '
+                'it, and pay. Then come back here to record it.',
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: FinStackColors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: FinStackColors.surfaceContainer,
+                  border: Border.all(
+                    color: FinStackColors.onSurface,
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.request.payeeVpa,
+                        style: const TextStyle(
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.copy, size: 15),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (app.id == 'any')
+                BrutalButton(
+                  block: true,
+                  label: 'Open a UPI app myself',
+                  fontSize: 13,
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                )
+              else
+                BrutalButton(
+                  block: true,
+                  label: 'Open ${app.label}',
+                  icon: Icons.open_in_new,
+                  fontSize: 13,
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                ),
+              if (app.id != 'any')
+                TextButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(false),
+                  child: const Text(
+                    'NOT NOW',
+                    style: TextStyle(
+                      fontFamily: FinStackType.mono,
+                      fontFamilyFallback: _monoFallback,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .4,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (open != true) return;
+
+    _awaitingPayment = true;
+    _sawPause = false;
+    if (app.id == 'any') return;
+    final opened = await _openAppHome(app);
+    if (!opened && mounted) {
+      _awaitingPayment = false;
+      _sawPause = false;
+      setState(
+        () => _error =
+            'Could not open ${app.label}. Open it from your home screen and paste the copied UPI ID.',
+      );
+    }
+  }
+
+  Future<bool> _openAppHome(UpiApp app) async {
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        return await _upiChannel.invokeMethod<bool>('openApp', {
+              'package': app.androidPackage,
+            }) ??
+            false;
+      }
+      final primary = await launchUrlString(
+        '${app.probeScheme}://',
+        mode: LaunchMode.externalApplication,
+      );
+      if (primary || app.id != 'gpay') return primary;
+      return await launchUrlString(
+        'gpay://',
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _launchPayment(int paise, String appId) async {
@@ -1122,13 +1282,11 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 ],
               ),
               const SizedBox(height: 8),
-              if (_preferredAppId == 'bhim' &&
-                  defaultTargetPlatform == TargetPlatform.iOS &&
-                  !widget.request.isMerchant)
+              if (widget.request.isPersonToPerson)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
                   child: Text(
-                    'BHIM on iPhone can reject links to personal UPI IDs.',
+                    'Personal UPI ID · we copy it so you can pay inside your UPI app.',
                     style: TextStyle(fontSize: 11),
                   ),
                 ),
@@ -1140,6 +1298,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                     ? 'Saving payment…'
                     : paise == null
                     ? 'Enter an amount'
+                    : widget.request.isPersonToPerson
+                    ? 'Pay ${inr(paise / 100)} in UPI app'
                     : 'Pay ${inr(paise / 100)} with UPI app',
                 icon: Icons.open_in_new,
                 fontSize: 13,

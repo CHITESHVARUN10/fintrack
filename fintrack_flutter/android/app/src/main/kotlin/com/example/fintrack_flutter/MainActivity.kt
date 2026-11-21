@@ -24,24 +24,45 @@ class MainActivity : FlutterActivity() {
             "finstack/upi"
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
-                val uri = call.argument<String>("uri")?.let(Uri::parse)
-                if (uri?.scheme != "upi" || uri.host != "pay") {
-                    result.error("INVALID_UPI_LINK", "Expected a UPI payment link.", null)
-                    return@setMethodCallHandler
-                }
                 val targetPackage = call.argument<String>("package").orEmpty()
-                val intent = Intent(Intent.ACTION_VIEW, uri)
-                if (targetPackage.isNotEmpty()) intent.setPackage(targetPackage)
-                val supported = intent.resolveActivity(packageManager) != null
                 when (call.method) {
-                    "supports" -> result.success(supported)
-                    "open" -> {
+                    "openApp" -> {
+                        val launch = if (targetPackage.isEmpty()) null
+                        else packageManager.getLaunchIntentForPackage(targetPackage)
+                        if (launch == null) {
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            startActivity(launch)
+                            result.success(true)
+                        } catch (_: ActivityNotFoundException) {
+                            result.success(false)
+                        }
+                    }
+                    "supports", "open" -> {
+                        val uri = call.argument<String>("uri")?.let(Uri::parse)
+                        if (uri?.scheme != "upi" || uri.host != "pay") {
+                            result.error("INVALID_UPI_LINK", "Expected a UPI payment link.", null)
+                            return@setMethodCallHandler
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        if (targetPackage.isNotEmpty()) intent.setPackage(targetPackage)
+                        val supported = intent.resolveActivity(packageManager) != null
+                        if (call.method == "supports") {
+                            result.success(supported)
+                            return@setMethodCallHandler
+                        }
                         if (!supported) {
                             result.success(false)
                             return@setMethodCallHandler
                         }
                         try {
-                            startActivity(if (targetPackage.isEmpty()) Intent.createChooser(intent, null) else intent)
+                            startActivity(
+                                if (targetPackage.isEmpty())
+                                    Intent.createChooser(intent, null)
+                                else intent
+                            )
                             result.success(true)
                         } catch (_: ActivityNotFoundException) {
                             result.success(false)

@@ -19,7 +19,14 @@ class UpiPaymentRequest {
   });
 
   bool get hasAmount => amountPaise != null && amountPaise! > 0;
-  bool get isMerchant => merchantCode != null && merchantCode!.isNotEmpty;
+  bool get isMerchant {
+    final code = merchantCode?.trim();
+    return code != null && code.isNotEmpty && code != '0000';
+  }
+
+  /// Personal VPAs cannot receive a prefilled intent from another app; UPI
+  /// apps treat those handoffs as high-risk and reject them after PIN entry.
+  bool get isPersonToPerson => !isMerchant;
   Uri? get paymentUri => _canonicalPaymentUri(raw);
   bool get isSigned =>
       paymentUri?.queryParameters.keys.any(
@@ -44,6 +51,13 @@ UpiPaymentRequest? parseUpiQr(String raw) {
     }
   }
 
+  // EMVCo / Bharat QR (starts with the payload-format indicator 000201).
+  // Check this before the plain-VPA branch: a short merchant payload also
+  // contains `@`, and treating it as a VPA would reject a valid QR.
+  if (value.startsWith('0002')) {
+    return _parseEmv(value);
+  }
+
   if (value.contains('@') && !value.contains('\n') && value.length < 120) {
     final vpa = value.split('&').first.trim();
     if (!_vpaPattern.hasMatch(vpa)) return null;
@@ -52,11 +66,6 @@ UpiPaymentRequest? parseUpiQr(String raw) {
       payeeVpa: vpa,
       payeeName: _prettyName(vpa),
     );
-  }
-
-  // EMVCo / Bharat QR (starts with the payload-format indicator 000201).
-  if (value.startsWith('0002')) {
-    return _parseEmv(value);
   }
 
   return null;
@@ -73,7 +82,11 @@ Uri? _canonicalPaymentUri(String raw) {
       uri.hasPort) {
     return null;
   }
-  if (!uri.queryParameters.containsKey('pa')) return null;
+  if (!uri.queryParametersAll.keys.any(
+    (key) => key.toLowerCase() == 'pa',
+  )) {
+    return null;
+  }
   return uri;
 }
 
@@ -155,12 +168,17 @@ UpiPaymentRequest? _parseEmv(String raw) {
 
   final name = _clean(merchant['02'] ?? root['59']) ?? _prettyName(vpa);
   final amount = _parseAmount(root['54']);
+  // Tag 62 is a nested template, not a plain string. Sub-tag 08 is the
+  // payment purpose and 05 the reference label; forwarding the raw TLV would
+  // put `0105…` style control bytes into the intent's `tn`.
+  final additional = _parseTlv(root['62'] ?? '');
+  final note = _clean(additional['08']) ?? _clean(additional['05']);
   return UpiPaymentRequest(
     raw: raw,
     payeeVpa: vpa,
     payeeName: name,
     amountPaise: amount,
-    note: _clean(root['62']),
+    note: note,
     merchantCode: _clean(merchant['03'] ?? root['52']),
   );
 }
@@ -268,37 +286,33 @@ UpiApp? upiAppById(String? id) {
   return null;
 }
 
-/// Keeps the encoded query from a scanned payment link in its original order.
+/// Builds the link handed to the chosen UPI app.
+///
+/// Signed QRs are passed through untouched: the signature covers the exact
+/// query the issuer generated, and the UI locks the amount. Unsigned QRs are
+/// rebuilt from the parsed payee instead of replaying QR transport parameters
+/// (`mode`, `orgid`, `qrMedium`, stale signatures) — PSP risk engines treat
+/// those replays over an app intent as a spoofed request.
 String buildScannedUpiLink(
   UpiPaymentRequest request, {
   required int amountPaise,
   String? appId,
 }) {
-  final original = request.paymentUri;
-  if (original == null) {
-    return buildUpiUri(
-      payeeVpa: request.payeeVpa,
-      payeeName: request.payeeName,
-      amountPaise: amountPaise,
-      note: request.note,
-      merchantCode: request.merchantCode,
-      txnRef: request.txnRef,
-      appId: appId,
-    ).toString();
+  if (request.isSigned && request.paymentUri != null) {
+    final queryAt = request.raw.indexOf('?');
+    if (queryAt >= 0) {
+      return '${_upiTarget(appId)}?${request.raw.substring(queryAt + 1)}';
+    }
   }
-
-  var query = request.raw.substring(request.raw.indexOf('?') + 1);
-  if (!request.isSigned && request.amountPaise != amountPaise) {
-    // Keep all other values as encoded by the issuer, including repeated keys.
-    query = [
-      for (final part in query.split('&'))
-        if (Uri.decodeQueryComponent(part.split('=').first).toLowerCase() !=
-            'am')
-          part,
-      'am=${_intentAmount(amountPaise)}',
-    ].join('&');
-  }
-  return '${_upiTarget(appId)}?$query';
+  return buildUpiUri(
+    payeeVpa: request.payeeVpa,
+    payeeName: request.payeeName,
+    amountPaise: amountPaise,
+    note: request.note,
+    merchantCode: request.merchantCode,
+    txnRef: request.txnRef,
+    appId: appId,
+  ).toString();
 }
 
 String _intentAmount(int paise) => (paise / 100).toStringAsFixed(2);
@@ -334,7 +348,12 @@ Uri buildUpiUri({
     if (txnRef != null && txnRef.trim().isNotEmpty) 'tr': txnRef.trim(),
   };
   final query = params.entries
-      .map((entry) => '${entry.key}=${Uri.encodeComponent(entry.value)}')
+      .map((entry) => '${entry.key}=${_encodeUpiValue(entry.value)}')
       .join('&');
   return Uri.parse('${_upiTarget(appId)}?$query');
 }
+
+/// Percent-encodes everything except `@`, which UPI parsers expect literally
+/// in the payee address (`merchant@okhdfcbank`, not `merchant%40okhdfcbank`).
+String _encodeUpiValue(String value) =>
+    Uri.encodeComponent(value).replaceAll('%40', '@');

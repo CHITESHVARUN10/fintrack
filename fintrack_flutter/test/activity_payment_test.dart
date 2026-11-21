@@ -638,4 +638,63 @@ void main() {
     expect(patch.data, {'category': 'Food'});
     expect(find.text('Food'), findsOneWidget);
   });
+
+  testWidgets('personal VPAs copy the ID instead of opening a pay intent', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({'fintrack_upi_app': 'gpay'});
+    mockApi(
+      (options) => switch (options.path) {
+        '/recipients/by-key' => {'vendor': null},
+        '/recipients' => {'items': []},
+        _ => <String, dynamic>{},
+      },
+    );
+    final messenger = tester.binding.defaultBinaryMessenger;
+    String? copied;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        copied = (call.arguments as Map)['text'] as String?;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final upiCalls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(const MethodChannel('finstack/upi'), (
+      call,
+    ) async {
+      upiCalls.add(call);
+      return true;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        const MethodChannel('finstack/upi'),
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: finStackTheme(),
+        home: const UpiPayPage(
+          request: UpiPaymentRequest(
+            raw: 'asha@upi',
+            payeeVpa: 'asha@upi',
+            payeeName: 'Asha',
+            amountPaise: 5000,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PAY ₹50 IN UPI APP'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PAY THIS ONE INSIDE THE UPI APP'), findsOneWidget);
+    expect(find.text('OPEN GOOGLE PAY'), findsOneWidget);
+    expect(copied, 'asha@upi');
+    expect(upiCalls.where((call) => call.method == 'open'), isEmpty);
+  });
 }

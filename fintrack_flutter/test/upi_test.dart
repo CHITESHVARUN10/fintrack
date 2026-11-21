@@ -69,6 +69,22 @@ void main() {
       expect(parsed.merchantCode, '5411');
     });
 
+    test('reads the note from the additional-data sub-template', () {
+      final merchant =
+          tlv('00', 'com.upi') + tlv('01', 'merchant@okhdfcbank');
+      final emv =
+          tlv('00', '01') +
+          tlv('01', '12') +
+          tlv('26', merchant) +
+          tlv('54', '99.00') +
+          tlv('58', 'IN') +
+          tlv('62', tlv('08', 'Coffee')) +
+          tlv('63', 'ABCD');
+      final parsed = parseUpiQr(emv);
+      expect(parsed, isNotNull);
+      expect(parsed!.note, 'Coffee');
+    });
+
     test('rejects unrelated QR content', () {
       expect(parseUpiQr('https://example.com/promo'), isNull);
       expect(parseUpiQr('hello world'), isNull);
@@ -107,13 +123,49 @@ void main() {
       expect(buildScannedUpiLink(request, amountPaise: 1250), raw);
     });
 
-    test('adds an amount without rebuilding an unsigned QR', () {
-      const raw = 'upi://pay?pa=store@upi&pn=Store&am=0&mode=01&orgid=000000';
+    test('rebuilds an unsigned QR as a clean intent', () {
+      const raw =
+          'upi://pay?pa=store@upi&pn=Store&am=0&mode=01&orgid=000000'
+          '&qrMedium=02';
       final link = buildScannedUpiLink(parseUpiQr(raw)!, amountPaise: 1250);
+      expect(link, 'upi://pay?pa=store@upi&pn=Store&am=12.50&cu=INR');
+      expect(link, isNot(contains('mode=')));
+      expect(link, isNot(contains('orgid=')));
+      expect(link, isNot(contains('qrMedium=')));
+      expect(link, isNot(contains('%40')));
+    });
+
+    test('keeps the merchant code and order reference in a clean intent', () {
+      const raw = 'upi://pay?pa=store@upi&pn=Store&mc=5411&tr=T1&am=10';
+      final link = buildScannedUpiLink(parseUpiQr(raw)!, amountPaise: 2000);
       expect(
         link,
-        'upi://pay?pa=store@upi&pn=Store&mode=01&orgid=000000&am=12.50',
+        'upi://pay?pa=store@upi&pn=Store&am=20.00&cu=INR&mc=5411&tr=T1',
       );
+    });
+
+    test('treats missing and zero merchant codes as personal', () {
+      expect(
+        parseUpiQr('upi://pay?pa=asha@upi&am=10')!.isPersonToPerson,
+        isTrue,
+      );
+      expect(
+        parseUpiQr('upi://pay?pa=shop@upi&mc=0000&am=10')!.isPersonToPerson,
+        isTrue,
+      );
+      expect(
+        parseUpiQr('upi://pay?pa=shop@upi&mc=5411&am=10')!.isMerchant,
+        isTrue,
+      );
+    });
+
+    test('accepts uppercase UPI parameter names as canonical', () {
+      final parsed = parseUpiQr('upi://pay?PA=shop@upi&AM=12.50&CU=INR');
+      expect(parsed, isNotNull);
+      expect(parsed!.payeeVpa, 'shop@upi');
+      expect(parsed.amountPaise, 1250);
+      expect(parsed.paymentUri, isNotNull);
+      expect(parsed.isSigned, isFalse);
     });
 
     test(
@@ -144,6 +196,16 @@ void main() {
       expect(uri.queryParameters['cu'], 'INR');
       expect(uri.queryParameters['tn'], 'Groceries');
       expect(uri.queryParameters['mc'], '5411');
+    });
+
+    test('writes the payee address with a literal @', () {
+      final link = buildUpiUri(
+        payeeVpa: 'merchant@okhdfcbank',
+        payeeName: 'Corner Store',
+        amountPaise: 25050,
+      ).toString();
+      expect(link, contains('pa=merchant@okhdfcbank'));
+      expect(link, isNot(contains('%40')));
     });
 
     test('targets a specific app when one is chosen', () {
