@@ -1,31 +1,45 @@
 import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../services/apiClient'
-import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
-import { Badge } from '../components/ui/Badge'
-import { Modal } from '../components/ui/Modal'
-import { Field, Input, Select, Textarea } from '../components/ui/Field'
-import { formatCurrency, formatCompact } from '../lib/format'
+import { formatCompact, formatCurrency } from '../lib/format'
+import {
+  PaymentsEmpty,
+  PaymentsLoading,
+  PaymentsModal,
+  PaymentsNotice,
+  PaymentsPage,
+} from '../components/payments/PaymentsKit'
 import type { Investment, InvestmentType } from '../types'
 
 type Tab = 'all' | 'stock' | 'mf_sip' | 'fd' | 'real_estate'
 
-const tabLabel: Record<Tab, string> = {
-  all: 'All',
-  stock: 'Stocks',
-  mf_sip: 'Mutual Funds / SIP',
-  fd: 'Fixed Deposits',
-  real_estate: 'Real Estate',
-}
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'stock', label: 'Stocks' },
+  { key: 'mf_sip', label: 'Mutual Funds / SIP' },
+  { key: 'fd', label: 'Fixed Deposits' },
+  { key: 'real_estate', label: 'Real Estate' },
+]
 
 const TYPES: InvestmentType[] = ['stock', 'mf_sip', 'fd', 'real_estate', 'other']
 
 const FUND_CATEGORIES = ['Equity', 'Debt', 'Hybrid', 'ELSS', 'Index', 'Other']
 const ASSET_TYPES = ['Real Estate', 'Gold', 'PPF', 'NPS', 'Other']
 const STATUSES = ['Active', 'Matured', 'Closed', 'Broken']
+
+// Portfolio allocation palette — flat fills, matching the prototype's
+// asset-class legend (real estate / MF / stock / FD).
+const ASSET_META: Record<string, { label: string; color: string }> = {
+  real_estate: { label: 'Real estate', color: 'var(--accent)' },
+  mf_sip: { label: 'MF SIP', color: 'var(--nb-cyan)' },
+  stock: { label: 'Stock', color: 'var(--nb-violet)' },
+  fd: { label: 'FD', color: 'var(--nb-teal)' },
+  other: { label: 'Other', color: 'var(--nb-orange)' },
+}
+
+const ALLOC_ORDER = ['real_estate', 'mf_sip', 'stock', 'fd', 'other'] as const
 
 // Backend documents use Mongo `_id` and type-specific name fields
 // (stockName / fundName / assetName) instead of a single `title`.
@@ -82,13 +96,25 @@ function gainLoss(inv: Investment) {
 const numOrUndef = (v: string): number | undefined =>
   v.trim() === '' ? undefined : Number(v)
 
-interface InvestmentFormProps {
-  initial?: Investment | null
-  onSaved: () => void
-  onCancel: () => void
+// Signed compact form with the sign ahead of the symbol (-₹1.05Cr), matching
+// the prototype's gain/loss readout. formatCompact() would put it after.
+function formatSignedCompact(amount: number): string {
+  const sign = amount < 0 ? '-' : '+'
+  return `${sign}${formatCompact(Math.abs(amount))}`
 }
 
-function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
+function toDateInput(value: string | null | undefined): string {
+  return value ? String(value).slice(0, 10) : ''
+}
+
+interface InvestmentFormProps {
+  formId: string
+  initial?: Investment | null
+  onSaved: () => void
+  onBusyChange: (busy: boolean) => void
+}
+
+function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [type, setType] = useState<InvestmentType>(initial?.investmentType ?? 'stock')
   const [totalInvested, setTotalInvested] = useState(
@@ -97,8 +123,8 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
   const [currentValue, setCurrentValue] = useState(
     initial ? String(initial.currentValue) : '',
   )
-  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
-  const [endDate, setEndDate] = useState(initial?.endDate ?? '')
+  const [startDate, setStartDate] = useState(toDateInput(initial?.startDate))
+  const [endDate, setEndDate] = useState(toDateInput(initial?.endDate))
   const [status, setStatus] = useState(initial?.status ?? 'Active')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
@@ -128,7 +154,7 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
   const [tenureMonths, setTenureMonths] = useState(
     initial?.tenureMonths != null ? String(initial.tenureMonths) : '',
   )
-  const [maturityDate, setMaturityDate] = useState(initial?.maturityDate ?? '')
+  const [maturityDate, setMaturityDate] = useState(toDateInput(initial?.maturityDate))
   const [maturityAmount, setMaturityAmount] = useState(
     initial?.maturityAmount != null ? String(initial.maturityAmount) : '',
   )
@@ -140,13 +166,12 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
   const [assetType, setAssetType] = useState(initial?.assetType ?? '')
   const [purchaseValue, setPurchaseValue] = useState('')
 
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
+    onBusyChange(true)
 
     const payload: Record<string, unknown> = {
       investmentType: type,
@@ -199,28 +224,31 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not save investment.'
       setError(msg)
     } finally {
-      setLoading(false)
+      onBusyChange(false)
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-lg min-w-0">
-      {error && (
-        <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
-          {error}
-        </div>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-        <Field label="Name / Title">
-          <Input
-            placeholder="e.g. Infosys, PPFAS Flexi Cap, SBI FD"
+    <form id={formId} onSubmit={onSubmit} className="pmt-stack">
+      {error && <PaymentsNotice tone="error">{error}</PaymentsNotice>}
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-name">Name / title</label>
+          <input
+            id="inv-name"
+            className="pmt-input"
+            placeholder="e.g. Infosys, PPFAS Flexi Cap"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
           />
-        </Field>
-        <Field label="Type">
-          <Select
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-type">Type</label>
+          <select
+            id="inv-type"
+            className="pmt-select pmt-mono"
             value={type}
             onChange={(e) => setType(e.target.value as InvestmentType)}
           >
@@ -229,171 +257,354 @@ function InvestmentForm({ initial, onSaved, onCancel }: InvestmentFormProps) {
                 {t.replace('_', ' ')}
               </option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-        <Field label="Total Invested">
-          <div className="flex">
-            <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-              ₹
-            </span>
-            <Input
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-invested">Total invested</label>
+          <div className="pmt-rupee">
+            <span className="pmt-rupee-prefix">₹</span>
+            <input
+              id="inv-invested"
               type="number"
+              min={0}
               placeholder="0.00"
               value={totalInvested}
               onChange={(e) => setTotalInvested(e.target.value)}
-              className="border-l-0"
               required
             />
           </div>
-        </Field>
-        <Field label="Current Value">
-          <div className="flex">
-            <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-              ₹
-            </span>
-            <Input
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-current">Current value</label>
+          <div className="pmt-rupee">
+            <span className="pmt-rupee-prefix">₹</span>
+            <input
+              id="inv-current"
               type="number"
+              min={0}
               placeholder="0.00"
               value={currentValue}
               onChange={(e) => setCurrentValue(e.target.value)}
-              className="border-l-0"
             />
           </div>
-        </Field>
+        </div>
       </div>
 
       {type === 'stock' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-          <Field label="Ticker">
-            <Input placeholder="e.g. INFY" value={ticker} onChange={(e) => setTicker(e.target.value)} />
-          </Field>
-          <Field label="Buy Price">
-            <Input type="number" placeholder="0.00" value={buyPrice} onChange={(e) => setBuyPrice(e.target.value)} />
-          </Field>
-          <Field label="Quantity">
-            <Input type="number" placeholder="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          </Field>
-          <Field label="Current Price">
-            <Input type="number" placeholder="0.00" value={currentPrice} onChange={(e) => setCurrentPrice(e.target.value)} />
-          </Field>
-        </div>
+        <>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-ticker">Ticker</label>
+              <input
+                id="inv-ticker"
+                className="pmt-input pmt-mono"
+                placeholder="e.g. INFY"
+                value={ticker}
+                onChange={(e) => setTicker(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-buy">Buy price</label>
+              <input
+                id="inv-buy"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0.00"
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-qty">Quantity</label>
+              <input
+                id="inv-qty"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-curp">Current price</label>
+              <input
+                id="inv-curp"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0.00"
+                value={currentPrice}
+                onChange={(e) => setCurrentPrice(e.target.value)}
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {type === 'mf_sip' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-          <Field label="Fund House">
-            <Input placeholder="e.g. PPFAS" value={fundHouse} onChange={(e) => setFundHouse(e.target.value)} />
-          </Field>
-          <Field label="Category">
-            <Select value={fundCategory} onChange={(e) => setFundCategory(e.target.value)}>
-              <option value="">Select Category</option>
-              {FUND_CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="SIP Amount">
-            <Input type="number" placeholder="0.00" value={sipAmount} onChange={(e) => setSipAmount(e.target.value)} />
-          </Field>
-          <Field label="SIP Date (Day)">
-            <Input type="number" min={1} max={28} value={sipDate} onChange={(e) => setSipDate(e.target.value)} />
-          </Field>
-          <Field label="Units">
-            <Input type="number" placeholder="0" value={units} onChange={(e) => setUnits(e.target.value)} />
-          </Field>
-          <Field label="NAV">
-            <Input type="number" placeholder="0.00" value={nav} onChange={(e) => setNav(e.target.value)} />
-          </Field>
-        </div>
+        <>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-house">Fund house</label>
+              <input
+                id="inv-house"
+                className="pmt-input"
+                placeholder="e.g. PPFAS"
+                value={fundHouse}
+                onChange={(e) => setFundHouse(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-fundcat">Category</label>
+              <select
+                id="inv-fundcat"
+                className="pmt-select"
+                value={fundCategory}
+                onChange={(e) => setFundCategory(e.target.value)}
+              >
+                <option value="">Select category</option>
+                {FUND_CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-sip">SIP amount (₹/mo)</label>
+              <input
+                id="inv-sip"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="5000"
+                value={sipAmount}
+                onChange={(e) => setSipAmount(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-sipday">SIP day (1–28)</label>
+              <input
+                id="inv-sipday"
+                className="pmt-input pmt-mono"
+                type="number"
+                min={1}
+                max={28}
+                value={sipDate}
+                onChange={(e) => setSipDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-units">Units</label>
+              <input
+                id="inv-units"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0"
+                value={units}
+                onChange={(e) => setUnits(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-nav">NAV</label>
+              <input
+                id="inv-nav"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0.00"
+                value={nav}
+                onChange={(e) => setNav(e.target.value)}
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {type === 'fd' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-          <Field label="Bank Name">
-            <Input placeholder="e.g. SBI" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-          </Field>
-          <Field label="Principal Amount">
-            <Input type="number" placeholder="0.00" value={principalAmount} onChange={(e) => setPrincipalAmount(e.target.value)} />
-          </Field>
-          <Field label="Interest Rate (%)">
-            <Input type="number" placeholder="0" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} />
-          </Field>
-          <Field label="Tenure (Months)">
-            <Input type="number" placeholder="0" value={tenureMonths} onChange={(e) => setTenureMonths(e.target.value)} />
-          </Field>
-          <Field label="Maturity Date">
-            <Input type="date" value={maturityDate} onChange={(e) => setMaturityDate(e.target.value)} />
-          </Field>
-          <Field label="Maturity Amount">
-            <Input type="number" placeholder="0.00" value={maturityAmount} onChange={(e) => setMaturityAmount(e.target.value)} />
-          </Field>
-          <Field label="Interest Type">
-            <Select value={interestType} onChange={(e) => setInterestType(e.target.value as 'Simple' | 'Compound' | '')}>
-              <option value="">Select</option>
-              <option value="Simple">Simple</option>
-              <option value="Compound">Compound</option>
-            </Select>
-          </Field>
-          <Field label="Taxable Interest?">
-            <label className="flex items-center gap-sm cursor-pointer w-fit">
+        <>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-bank">Bank name</label>
               <input
-                type="checkbox"
-                checked={taxableInterest}
-                onChange={(e) => setTaxableInterest(e.target.checked)}
-                className="w-5 h-5 accent-brand-yellow"
+                id="inv-bank"
+                className="pmt-input"
+                placeholder="e.g. SBI"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
               />
-              <span className="font-bold">{taxableInterest ? 'Yes' : 'No'}</span>
-            </label>
-          </Field>
-        </div>
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-prin">Principal (₹)</label>
+              <input
+                id="inv-prin"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="100000"
+                value={principalAmount}
+                onChange={(e) => setPrincipalAmount(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-rate">Interest rate (%)</label>
+              <input
+                id="inv-rate"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0"
+                value={interestRate}
+                onChange={(e) => setInterestRate(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-ten">Tenure (months)</label>
+              <input
+                id="inv-ten"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0"
+                value={tenureMonths}
+                onChange={(e) => setTenureMonths(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-maturity">Maturity date</label>
+              <input
+                id="inv-maturity"
+                className="pmt-input pmt-mono"
+                type="date"
+                value={maturityDate}
+                onChange={(e) => setMaturityDate(e.target.value)}
+              />
+            </div>
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-maturity-amt">Maturity amount</label>
+              <input
+                id="inv-maturity-amt"
+                className="pmt-input pmt-mono"
+                type="number"
+                placeholder="0.00"
+                value={maturityAmount}
+                onChange={(e) => setMaturityAmount(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="pmt-form-grid">
+            <div className="pmt-field">
+              <label className="pmt-label" htmlFor="inv-inttype">Interest type</label>
+              <select
+                id="inv-inttype"
+                className="pmt-select"
+                value={interestType}
+                onChange={(e) => setInterestType(e.target.value as 'Simple' | 'Compound' | '')}
+              >
+                <option value="">Select</option>
+                <option value="Simple">Simple</option>
+                <option value="Compound">Compound</option>
+              </select>
+            </div>
+            <div className="pmt-field">
+              <span className="pmt-label">Taxable interest?</span>
+              <label className="pmt-check">
+                <input
+                  type="checkbox"
+                  checked={taxableInterest}
+                  onChange={(e) => setTaxableInterest(e.target.checked)}
+                />
+                <span>{taxableInterest ? 'Yes' : 'No'}</span>
+              </label>
+            </div>
+          </div>
+        </>
       )}
 
       {(type === 'real_estate' || type === 'other') && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-          <Field label="Asset Type">
-            <Select value={assetType} onChange={(e) => setAssetType(e.target.value)}>
+        <div className="pmt-form-grid">
+          <div className="pmt-field">
+            <label className="pmt-label" htmlFor="inv-assettype">Asset type</label>
+            <select
+              id="inv-assettype"
+              className="pmt-select"
+              value={assetType}
+              onChange={(e) => setAssetType(e.target.value)}
+            >
               <option value="">Select</option>
               {ASSET_TYPES.map((a) => (
                 <option key={a}>{a}</option>
               ))}
-            </Select>
-          </Field>
-          <Field label="Purchase Value">
-            <Input type="number" placeholder="0.00" value={purchaseValue} onChange={(e) => setPurchaseValue(e.target.value)} />
-          </Field>
+            </select>
+          </div>
+          <div className="pmt-field">
+            <label className="pmt-label" htmlFor="inv-purchase">Purchase value</label>
+            <input
+              id="inv-purchase"
+              className="pmt-input pmt-mono"
+              type="number"
+              placeholder="0.00"
+              value={purchaseValue}
+              onChange={(e) => setPurchaseValue(e.target.value)}
+            />
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-        <Field label="Start Date">
-          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        </Field>
-        <Field label="End Date">
-          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        </Field>
-        <Field label="Status">
-          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+      <div className="pmt-form-grid-3">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-start">Start date</label>
+          <input
+            id="inv-start"
+            className="pmt-input pmt-mono"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-end">End date</label>
+          <input
+            id="inv-end"
+            className="pmt-input pmt-mono"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inv-status">Status</label>
+          <select
+            id="inv-status"
+            className="pmt-select"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
             {STATUSES.map((s) => (
               <option key={s}>{s}</option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
-      <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
-      <Field label="Notes">
-        <Textarea placeholder="Additional details…" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </Field>
 
-      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
-        <Button variant="white" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="yellow" type="submit" disabled={loading}>
-          {loading ? 'Saving…' : initial ? 'Update' : 'Save'}
-        </Button>
+      <div className="pmt-tax-fieldset">
+        <TaxPaymentsEditor value={taxPayments} onChange={setTaxPayments} />
+      </div>
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="inv-notes">Notes</label>
+        <textarea
+          id="inv-notes"
+          className="pmt-textarea"
+          placeholder="Additional details…"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </div>
     </form>
   )
@@ -408,89 +619,93 @@ function InvestmentCard({
   onEdit: () => void
   onDelete: () => void
 }) {
-  const { g, pct } = gainLoss(inv)
-  const positive = g >= 0
+  const { pct } = gainLoss(inv)
+  const positive = pct >= 0
+  const meta = ASSET_META[inv.investmentType] ?? ASSET_META.other
+
+  const detail = ((): { label: string; value: string } => {
+    if (inv.investmentType === 'stock') {
+      return {
+        label: inv.ticker || 'EQUITY',
+        value: inv.quantity != null ? `Qty: ${inv.quantity}` : '',
+      }
+    }
+    if (inv.investmentType === 'mf_sip') {
+      return {
+        label: 'SIP',
+        value: inv.sipAmount != null ? `${formatCurrency(inv.sipAmount)}/mo` : '',
+      }
+    }
+    if (inv.investmentType === 'fd') {
+      const rate = inv.interestRate != null || inv.tenureMonths != null
+        ? `${inv.interestRate ?? 0}% p.a.${inv.tenureMonths ? ` · ${inv.tenureMonths} mo` : ''}`
+        : ''
+      return { label: inv.bankName || 'FIXED DEPOSIT', value: rate }
+    }
+    return {
+      label: inv.assetType || 'PROPERTY ASSET',
+      value: inv.notes || '',
+    }
+  })()
+  const detailLabel = detail.label
+  const detailValue = detail.value
+
   return (
-    <div className="bg-white brutal p-md flex flex-col gap-3 nb-card-enter nb-card-hover min-w-0 max-w-full">
-      <div className="flex flex-wrap justify-between items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lg font-bold break-words min-w-0">{inv.title}</h3>
-          <span className="text-xs text-on-surface-variant uppercase">
-            {inv.investmentType.replace('_', ' ')}
+    <article className="pmt-item-card pmt-inv-card">
+      <div>
+        <div className="pmt-card-top">
+          <div style={{ minWidth: 0 }}>
+            <h2 className="pmt-card-title break-all-safe" style={{ fontSize: 17 }}>
+              {inv.title}
+            </h2>
+            <div className="pmt-inv-type">{meta.label.toUpperCase()}</div>
+          </div>
+          <div className="pmt-row" style={{ gap: 7 }}>
+            <button
+              type="button"
+              className="pmt-icon-btn"
+              onClick={onEdit}
+              title="Edit investment"
+              aria-label={`Edit ${inv.title}`}
+            >
+              <Icon name="edit" className="text-base" />
+            </button>
+            <button
+              type="button"
+              className="pmt-icon-btn pmt-icon-btn-danger"
+              onClick={onDelete}
+              title="Delete investment"
+              aria-label={`Delete ${inv.title}`}
+            >
+              <Icon name="delete" className="text-base" />
+            </button>
+          </div>
+        </div>
+        <div className="pmt-inv-detail">
+          <span className="pmt-inv-detail-label">{detailLabel}</span>
+          {detailValue || '—'}
+        </div>
+      </div>
+
+      <div>
+        <div className="pmt-inv-vals">
+          <div>
+            <div className="pmt-inv-label">Current value</div>
+            <div className="pmt-inv-val">{formatCompact(inv.currentValue)}</div>
+          </div>
+          <div className="pmt-inv-right">
+            <div className="pmt-inv-label">Invested</div>
+            <div className="pmt-inv-val-sm">{formatCompact(inv.totalInvested)}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <span className={`pmt-tag ${positive ? 'pmt-tag-cyan' : 'pmt-tag-red'}`}>
+            {positive ? '+' : ''}
+            {pct.toFixed(1)}%
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
-            title="Edit"
-          >
-            <Icon name="edit" className="text-sm" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
-            title="Delete"
-          >
-            <Icon name="delete" className="text-sm" />
-          </button>
-        </div>
       </div>
-
-      {inv.ticker && (
-        <div className="text-xs font-bold text-on-surface-variant">{inv.ticker}</div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        {inv.quantity != null && (
-          <div>
-            <div className="text-xs text-on-surface-variant">Qty</div>
-            <div className="font-bold">{inv.quantity}</div>
-          </div>
-        )}
-        {inv.units != null && (
-          <div>
-            <div className="text-xs text-on-surface-variant">Units</div>
-            <div className="font-bold">{inv.units}</div>
-          </div>
-        )}
-        {inv.nav != null && (
-          <div>
-            <div className="text-xs text-on-surface-variant">NAV</div>
-            <div className="font-bold">{inv.nav}</div>
-          </div>
-        )}
-        {inv.interestRate != null && (
-          <div>
-            <div className="text-xs text-on-surface-variant">Interest</div>
-            <div className="font-bold">{inv.interestRate}%</div>
-          </div>
-        )}
-        {inv.sipAmount != null && (
-          <div>
-            <div className="text-xs text-on-surface-variant">SIP</div>
-            <div className="font-bold">{formatCurrency(inv.sipAmount)}/mo</div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-auto pt-3 border-t-2 border-on-surface">
-        <div className="flex justify-between items-end">
-          <div>
-            <div className="text-xs text-on-surface-variant">Current Value</div>
-            <div className="text-xl font-bold">{formatCompact(inv.currentValue)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-on-surface-variant">Invested</div>
-            <div className="font-bold">{formatCompact(inv.totalInvested)}</div>
-          </div>
-        </div>
-        <Badge color={positive ? 'cyan' : 'error'} className="mt-2">
-          {positive ? '+' : ''}
-          {pct.toFixed(1)}%
-        </Badge>
-      </div>
-    </div>
+    </article>
   )
 }
 
@@ -501,13 +716,15 @@ export function Investments() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Investment | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [activeAsset, setActiveAsset] = useState<string | null>(null)
 
   const load = useCallback(() => Promise.resolve().then(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/investments', {
-        params: { type: tab === 'all' ? undefined : tab },
-      })
+      // Fetch the whole portfolio so the allocation strip and the summary
+      // KPIs describe every holding, not only the selected tab.
+      const res = await apiClient.get('/investments')
       setError(null)
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeInvestment))
     } catch (err: unknown) {
@@ -516,12 +733,11 @@ export function Investments() {
     } finally {
       setLoading(false)
     }
-  }), [tab])
+  }), [])
 
   useEffect(() => {
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [load])
 
   const handleDelete = async (inv: Investment) => {
     if (!window.confirm(`Delete "${inv.title}"?`)) return
@@ -534,104 +750,201 @@ export function Investments() {
     }
   }
 
-  if (loading) return <LoadingBlock label="Loading investments…" />
-  if (error)
-    return (
-      <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
-        {error}
-      </div>
-    )
-
-  const totalInvested = items.reduce((s, i) => s + i.totalInvested, 0)
-  const currentValue = items.reduce((s, i) => s + i.currentValue, 0)
+  const totalInvested = useMemo(
+    () => items.reduce((s, i) => s + i.totalInvested, 0),
+    [items],
+  )
+  const currentValue = useMemo(
+    () => items.reduce((s, i) => s + i.currentValue, 0),
+    [items],
+  )
   const gain = currentValue - totalInvested
 
+  const totalsByType = useMemo(() => {
+    const acc: Record<string, number> = {}
+    ALLOC_ORDER.forEach((key) => { acc[key] = 0 })
+    items.forEach((inv) => {
+      const key = ASSET_META[inv.investmentType] ? inv.investmentType : 'other'
+      acc[key] += Number(inv.currentValue) || 0
+    })
+    return acc
+  }, [items])
+
+  const allocation = useMemo(
+    () =>
+      ALLOC_ORDER.map((key) => ({
+        key,
+        label: ASSET_META[key].label,
+        color: ASSET_META[key].color,
+        value: totalsByType[key],
+        pct: currentValue > 0 ? (totalsByType[key] / currentValue) * 100 : 0,
+      })),
+    [totalsByType, currentValue],
+  )
+
+  const nonZero = allocation.filter((a) => a.value > 0)
+  const filtered = tab === 'all' ? items : items.filter((x) => x.investmentType === tab)
+
+  const activeAlloc = activeAsset ? allocation.find((a) => a.key === activeAsset) : null
+  const allocReadout = activeAlloc
+    ? `${activeAlloc.label.toUpperCase()} · ${activeAlloc.pct.toFixed(1)}% (${formatCompact(activeAlloc.value)})`
+    : `TOTAL PORTFOLIO · ${formatCompact(currentValue)}`
+
+  const modalOpen = open || !!editing
+  const formId = 'pmt-investment-form'
+  const closeModal = () => {
+    setOpen(false)
+    setEditing(null)
+  }
+
+  if (loading) {
+    return (
+      <div className="pmt-page">
+        <PaymentsLoading />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="pmt-page">
+        <PaymentsNotice tone="error">{error}</PaymentsNotice>
+        <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={load}>
+          Retry
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-w-0">
-      <PageHeader
+    <>
+      <PaymentsPage
         title="Investments"
         subtitle="Stocks, mutual funds, FDs & real estate."
         action={
-          <Button variant="yellow" onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-xl" />
+          <button type="button" className="pmt-btn" onClick={() => setOpen(true)}>
+            <Icon name="add" className="text-lg" />
             Add Investment
-          </Button>
-        }
-      />
-
-      <div className="flex flex-wrap gap-sm mb-lg border-b-[3px] border-on-surface pb-md">
-        {(Object.keys(tabLabel) as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`brutal-sm px-4 py-2 font-bold uppercase ${
-              tab === t
-                ? 'bg-brand-yellow text-on-surface'
-                : 'bg-white text-on-surface hover:bg-surface-container-high'
-            }`}
-          >
-            {tabLabel[t]}
           </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
-        {items.map((inv) => (
-          <InvestmentCard
-            key={inv.id}
-            inv={inv}
-            onEdit={() => setEditing(inv)}
-            onDelete={() => handleDelete(inv)}
-          />
-        ))}
-      </div>
-
-      {items.length === 0 && (
-        <p className="font-bold text-on-surface-variant mb-8">
-          No investments yet. Click “Add Investment” to create one.
-        </p>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
-        <div className="bg-white brutal p-md nb-card-enter nb-card-hover">
-          <span className="font-bold uppercase text-sm text-on-surface-variant">Invested</span>
-          <p className="text-2xl font-bold mt-1">{formatCompact(totalInvested)}</p>
+        }
+      >
+        <div className="pmt-tabs" role="tablist" aria-label="Asset class">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`pmt-tab${tab === t.key ? ' is-active' : ''}`}
+              onClick={() => setTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        <div className="bg-brand-yellow brutal p-md">
-          <span className="font-bold uppercase text-sm text-on-surface-variant">Current Value</span>
-          <p className="text-2xl font-bold mt-1">{formatCompact(currentValue)}</p>
-        </div>
-        <div className={`brutal p-md ${gain >= 0 ? 'bg-tertiary-container' : 'bg-error-container'}`}>
-          <span className="font-bold uppercase text-sm text-on-surface-variant">Total Gain / Loss</span>
-          <p className="text-2xl font-bold mt-1">
-            {gain >= 0 ? '+' : ''}
-            {formatCompact(gain)}
-          </p>
-        </div>
-      </div>
 
-      <Modal
-        open={open || !!editing}
-        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
-        onClose={() => {
-          setOpen(false)
-          setEditing(null)
-        }}
-        title={editing ? 'Edit Investment' : 'Add Investment'}
+        {/* Portfolio allocation by asset class — live values, flat fills. */}
+        <section className="pmt-viz" aria-label="Portfolio allocation by asset class">
+          <div className="pmt-viz-head">
+            <span className="pmt-viz-title">Portfolio allocation by asset class</span>
+            <span className="pmt-readout">{allocReadout}</span>
+          </div>
+
+          {nonZero.length > 0 && currentValue > 0 ? (
+            <>
+              <div className="pmt-track" role="presentation">
+                {nonZero.map((a) => (
+                  <div
+                    key={a.key}
+                    className="pmt-seg"
+                    style={{
+                      width: `${Math.max(2.5, a.pct)}%`,
+                      background: a.color,
+                      opacity: activeAsset === null || activeAsset === a.key ? 1 : 0.3,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="pmt-legend">
+                {allocation.map((a) => (
+                  <span
+                    key={a.key}
+                    className={`pmt-legend-item${activeAsset === a.key ? ' is-active' : ''}`}
+                    onMouseEnter={() => setActiveAsset(a.key)}
+                    onMouseLeave={() => setActiveAsset(null)}
+                  >
+                    <span className="pmt-swatch" style={{ background: a.color }} />
+                    {a.label} {a.pct.toFixed(1)}% ({formatCompact(a.value)})
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="pmt-tiny">No valued holdings yet.</p>
+          )}
+        </section>
+
+        <div className="pmt-grid-3">
+          {filtered.map((inv) => (
+            <InvestmentCard
+              key={inv.id}
+              inv={inv}
+              onEdit={() => setEditing(inv)}
+              onDelete={() => handleDelete(inv)}
+            />
+          ))}
+
+          {filtered.length === 0 && (
+            <PaymentsEmpty title="No holdings in this asset class yet">
+              Add an investment to start tracking invested value and gains.
+            </PaymentsEmpty>
+          )}
+        </div>
+
+        {/* Portfolio summary KPI row */}
+        <div className="pmt-grid-3">
+          <div className="pmt-card pmt-summary-kpi">
+            <span className="pmt-label" style={{ color: 'var(--text-secondary)' }}>Invested</span>
+            <div className="pmt-kpi-val">{formatCompact(totalInvested)}</div>
+          </div>
+          <div className="pmt-card-yellow pmt-summary-kpi">
+            <span className="pmt-label">Current value</span>
+            <div className="pmt-kpi-val">{formatCompact(currentValue)}</div>
+          </div>
+          <div className="pmt-card-cyan pmt-summary-kpi">
+            <span className="pmt-label">Total gain / loss</span>
+            <div className="pmt-kpi-val">{formatSignedCompact(gain)}</div>
+          </div>
+        </div>
+      </PaymentsPage>
+
+      <PaymentsModal
+        open={modalOpen}
+        onClose={closeModal}
+        wide
+        title={editing ? 'Edit investment' : 'Add investment'}
+        footer={
+          <>
+            <button type="button" className="pmt-btn pmt-btn-white" onClick={closeModal}>
+              Cancel
+            </button>
+            <button type="submit" form={formId} className="pmt-btn" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
+            </button>
+          </>
+        }
       >
         <InvestmentForm
+          key={editing?.id ?? 'new'}
+          formId={formId}
           initial={editing}
+          onBusyChange={setSaving}
           onSaved={() => {
-            setOpen(false)
-            setEditing(null)
+            closeModal()
             load()
           }}
-          onCancel={() => {
-            setOpen(false)
-            setEditing(null)
-          }}
         />
-      </Modal>
-    </div>
+      </PaymentsModal>
+    </>
   )
 }

@@ -7,7 +7,7 @@ import type {
 import { cn } from '../../lib/cn'
 
 const baseField =
-  'brutal-thin w-full px-3 py-2 bg-white text-on-surface font-medium outline-none focus:bg-brand-yellow placeholder:text-[color:var(--text-placeholder)]'
+  'fin-input w-full min-w-0 px-3 py-2.5 font-semibold'
 
 export function Field({
   label,
@@ -21,8 +21,8 @@ export function Field({
   className?: string
 }) {
   return (
-    <label className={cn('flex flex-col gap-1', className)}>
-      <span className="font-bold text-sm uppercase tracking-wide text-on-surface">
+    <label className={cn('flex flex-col gap-1.5 min-w-0', className)}>
+      <span className="font-mono font-bold text-[11px] uppercase tracking-[0.06em] text-on-surface">
         {label}
       </span>
       {children}
@@ -51,7 +51,7 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cn(baseField, 'appearance-none cursor-pointer', className)} {...props}>
+    <select className={cn(baseField, 'cursor-pointer', className)} {...props}>
       {children}
     </select>
   )

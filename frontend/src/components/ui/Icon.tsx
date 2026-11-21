@@ -14,6 +14,7 @@ export function Icon({
 }) {
   return (
     <span
+      aria-hidden="true"
       className={cn('material-symbols-outlined', className)}
       style={{ ...(filled ? { fontVariationSettings: '"FILL" 1' } : {}), ...style }}
     >

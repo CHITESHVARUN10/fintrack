@@ -24,6 +24,7 @@ export const navItems: NavItem[] = [
 export const routeTitles: Record<string, string> = {
   '/dashboard': 'FinStack Dashboard',
   '/income': 'Income Tracker',
+  '/income/new': 'Add Income',
   '/subscriptions': 'Subscriptions',
   '/recurring': 'Recurring Payments',
   '/investments': 'Investments',
@@ -36,6 +37,7 @@ export const routeTitles: Record<string, string> = {
   '/import': 'Import',
   '/budgets': 'Budgets',
   '/settings': 'Settings',
+  '/notifications': 'Notifications',
   '/privacy': 'Privacy Policy',
   '/docs': 'Documentation',
   '/terms': 'Privacy Policy',

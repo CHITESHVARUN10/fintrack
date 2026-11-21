@@ -1,13 +1,15 @@
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../services/apiClient'
-import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
-import { Badge } from '../components/ui/Badge'
-import { Modal } from '../components/ui/Modal'
-import { Field, Input, Select, Textarea } from '../components/ui/Field'
 import { formatCurrency, formatDay } from '../lib/format'
+import {
+  PaymentsEmpty,
+  PaymentsLoading,
+  PaymentsModal,
+  PaymentsNotice,
+  PaymentsPage,
+} from '../components/payments/PaymentsKit'
 import type { Income, IncomeCategory } from '../types'
 
 const CATEGORIES: IncomeCategory[] = [
@@ -17,6 +19,9 @@ const CATEGORIES: IncomeCategory[] = [
   'Business',
   'Other',
 ]
+
+// Prototype reference palette — flat fill only, no gradients.
+const INCOME_COLORS = ['var(--accent)', 'var(--nb-cyan)', 'var(--nb-teal)', 'var(--nb-violet)', 'var(--nb-pink)', 'var(--nb-orange)']
 
 // Backend documents use Mongo `_id`; normalize so the frontend `Income`
 // type (and all call sites) stay unchanged.
@@ -35,13 +40,18 @@ function normalizeIncome(raw: Record<string, unknown>): Income {
   }
 }
 
-interface IncomeFormProps {
-  initial?: Income | null
-  onSaved: () => void
-  onCancel: () => void
+function toDateInput(value: string): string {
+  return value ? String(value).slice(0, 10) : ''
 }
 
-function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
+interface IncomeFormProps {
+  formId: string
+  initial?: Income | null
+  onSaved: () => void
+  onBusyChange: (busy: boolean) => void
+}
+
+function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
   const [category, setCategory] = useState<IncomeCategory>(
@@ -51,15 +61,14 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
     initial ? String(initial.creditDate) : '1',
   )
   const [taxable, setTaxable] = useState(initial?.taxable ?? true)
-  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
+  const [startDate, setStartDate] = useState(toDateInput(initial?.startDate ?? ''))
   const [notes, setNotes] = useState(initial?.notes ?? '')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
+    onBusyChange(true)
     const payload = {
       title,
       amount: Number(amount),
@@ -80,97 +89,105 @@ function IncomeForm({ initial, onSaved, onCancel }: IncomeFormProps) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not save income.'
       setError(msg)
     } finally {
-      setLoading(false)
+      onBusyChange(false)
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-lg">
-      {error && (
-        <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
-          {error}
-        </div>
-      )}
-      <Field label="Title">
-        <Input
+    <form id={formId} onSubmit={onSubmit} className="pmt-stack">
+      {error && <PaymentsNotice tone="error">{error}</PaymentsNotice>}
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="inc-title">Title</label>
+        <input
+          id="inc-title"
+          className="pmt-input"
           placeholder="e.g. Main Salary"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
         />
-      </Field>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg">
-        <Field label="Amount">
-          <div className="flex">
-            <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-              ₹
-            </span>
-            <Input
+      </div>
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inc-amount">Amount</label>
+          <div className="pmt-rupee">
+            <span className="pmt-rupee-prefix">₹</span>
+            <input
+              id="inc-amount"
               type="number"
+              min={1}
+              step={1}
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="border-l-0"
               required
             />
           </div>
-        </Field>
-        <Field label="Category">
-          <Select
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inc-cat">Category</label>
+          <select
+            id="inc-cat"
+            className="pmt-select"
             value={category}
             onChange={(e) => setCategory(e.target.value as IncomeCategory)}
           >
             {CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-lg items-end">
-        <Field label="Credit Date (Day of Month)">
-          <Input
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="inc-day">Credit date (day of month)</label>
+          <input
+            id="inc-day"
+            className="pmt-input pmt-mono"
             type="number"
             min={1}
             max={31}
             value={creditDate}
             onChange={(e) => setCreditDate(e.target.value)}
-            className="w-24 text-center"
             required
           />
-        </Field>
-        <Field label="Taxable Income?">
-          <label className="flex items-center gap-sm cursor-pointer w-fit">
+        </div>
+        <div className="pmt-field">
+          <span className="pmt-label">Taxable income?</span>
+          <label className="pmt-check">
             <input
               type="checkbox"
               checked={taxable}
               onChange={(e) => setTaxable(e.target.checked)}
-              className="w-5 h-5 accent-brand-yellow"
             />
-            <span className="font-bold">{taxable ? 'Yes' : 'No'}</span>
+            <span>{taxable ? 'Yes' : 'No'}</span>
           </label>
-        </Field>
+        </div>
       </div>
-      <Field label="Start Date">
-        <Input
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="inc-start">Start date</label>
+        <input
+          id="inc-start"
+          className="pmt-input pmt-mono"
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
         />
-      </Field>
-      <Field label="Notes">
-        <Textarea
+      </div>
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="inc-notes">Notes</label>
+        <textarea
+          id="inc-notes"
+          className="pmt-textarea"
           placeholder="Additional details…"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-      </Field>
-      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-sm pt-sm">
-        <Button variant="white" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="yellow" type="submit" disabled={loading}>
-          {loading ? 'Saving…' : initial ? 'Update' : 'Save'}
-        </Button>
       </div>
     </form>
   )
@@ -182,12 +199,15 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(initialAddOpen)
   const [editing, setEditing] = useState<Income | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
   const load = useCallback(() => Promise.resolve().then(async () => {
     setLoading(true);
     try {
       const res = await apiClient.get('/income')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeIncome))
+      setError(null)
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not load income.'
       setError(msg)
@@ -211,119 +231,198 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
     }
   }
 
-  if (loading) return <LoadingBlock label="Loading income…" />
-  if (error)
+  const total = useMemo(() => items.reduce((s, i) => s + i.amount, 0), [items])
+
+  const segments = useMemo(
+    () =>
+      items.map((inc, idx) => {
+        const pct = total > 0 ? (inc.amount / total) * 100 : 0
+        return {
+          key: inc.id,
+          label: inc.category,
+          value: inc.amount,
+          pct,
+          color: INCOME_COLORS[idx % INCOME_COLORS.length],
+        }
+      }),
+    [items, total],
+  )
+
+  const modalOpen = open || !!editing
+  const formId = 'pmt-income-form'
+  const hovered = hoveredIdx !== null ? items[hoveredIdx] : null
+  const hoveredPct =
+    hovered && total > 0 ? ((hovered.amount / total) * 100).toFixed(1) : '0.0'
+
+  const closeModal = () => {
+    setOpen(false)
+    setEditing(null)
+  }
+
+  if (loading) {
     return (
-      <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
-        {error}
+      <div className="pmt-page">
+        <PaymentsLoading />
       </div>
     )
+  }
 
-  const total = items.reduce((s, i) => s + i.amount, 0)
+  if (error) {
+    return (
+      <div className="pmt-page">
+        <PaymentsNotice tone="error">{error}</PaymentsNotice>
+        <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={load}>
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div className="min-w-0">
-      <PageHeader
+    <>
+      <PaymentsPage
         title="Income Sources"
         subtitle="All recurring monthly income streams."
         action={
-          <Button variant="yellow" onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-xl" />
+          <button type="button" className="pmt-btn" onClick={() => setOpen(true)}>
+            <Icon name="add" className="text-lg" />
             Add Income
-          </Button>
+          </button>
         }
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md lg:gap-8 mb-8 min-w-0">
-        {items.map((inc) => (
-          <div
-            key={inc.id}
-            className="bg-white brutal p-md flex flex-col gap-4 relative group nb-card-enter nb-card-hover min-w-0 max-w-full"
-          >
-            <div className="flex flex-wrap justify-between items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-bold break-words">{inc.title}</h2>
-                <Badge color={inc.taxable ? 'yellow' : 'surface'}>
-                  {inc.category}
-                </Badge>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditing(inc)}
-                  className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
-                  title="Edit"
-                >
-                  <Icon name="edit" className="text-sm" />
-                </button>
-                <button
-                  onClick={() => handleDelete(inc)}
-                  className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
-                  title="Delete"
-                >
-                  <Icon name="delete" className="text-sm" />
-                </button>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <p className="text-3xl font-bold break-words">{formatCurrency(inc.amount)}</p>
-              <div className="flex items-center gap-2 mt-2 font-bold text-sm">
-                <Icon name="calendar_today" className="text-sm" />
-                Credits on {formatDay(inc.creditDate)}
-              </div>
-            </div>
-            <div className="mt-auto pt-3 border-t-2 border-on-surface flex items-center gap-2">
-              <div
-                className={`w-3 h-3 brutal-thin ${
-                  inc.taxable ? 'bg-error' : 'bg-brand-yellow'
-                }`}
-              />
-              <span className="font-bold text-xs uppercase text-on-surface-variant">
-                {inc.taxable ? 'Taxable' : 'Non-Taxable'}
-              </span>
-            </div>
+      >
+        {/* Flat income-mix proportion bar — real data, no dummy control. */}
+        <section className="pmt-viz" aria-label="Income mix proportion">
+          <div className="pmt-viz-head">
+            <span className="pmt-viz-title">Income mix proportion</span>
+            <span className="pmt-readout">
+              {hovered
+                ? `${hovered.title.toUpperCase()} · ${hoveredPct}% (${formatCurrency(hovered.amount)})`
+                : `TOTAL · ${formatCurrency(total)}/MO`}
+            </span>
           </div>
-        ))}
-      </div>
 
-      {items.length === 0 && (
-        <p className="font-bold text-on-surface-variant mb-8">
-          No income sources yet. Click “Add Income” to create one.
-        </p>
-      )}
+          {segments.length > 0 && total > 0 ? (
+            <>
+              <div className="pmt-track" role="presentation">
+                {segments.map((seg, idx) => (
+                  <div
+                    key={seg.key}
+                    className="pmt-seg"
+                    style={{
+                      width: `${seg.pct}%`,
+                      background: seg.color,
+                      opacity: hoveredIdx === null || hoveredIdx === idx ? 1 : 0.3,
+                    }}
+                    title={`${seg.label}: ${seg.pct.toFixed(1)}%`}
+                  />
+                ))}
+              </div>
+              <div className="pmt-legend">
+                {segments.map((seg, idx) => (
+                  <span
+                    key={seg.key}
+                    className={`pmt-legend-item${hoveredIdx === idx ? ' is-active' : ''}`}
+                    onMouseEnter={() => setHoveredIdx(idx)}
+                    onMouseLeave={() => setHoveredIdx(null)}
+                  >
+                    <span className="pmt-swatch" style={{ background: seg.color }} />
+                    {seg.label} {seg.pct.toFixed(1)}% ({formatCurrency(seg.value)})
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="pmt-tiny">No active income streams.</p>
+          )}
+        </section>
 
-      <div className="w-full max-w-full bg-on-surface text-white py-6 px-6 brutal mb-8 min-w-0">
-        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
-          <span className="text-lg font-bold uppercase tracking-wider text-center sm:text-left break-words">
-            Total Monthly Income
-          </span>
-          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
-            {formatCurrency(total)}
-          </span>
+        <div className="pmt-grid-2">
+          {items.map((inc) => (
+            <article key={inc.id} className="pmt-item-card">
+              <div className="pmt-card-top">
+                <div style={{ minWidth: 0 }}>
+                  <h2 className="pmt-card-title break-all-safe">{inc.title}</h2>
+                  <div style={{ marginTop: 8 }}>
+                    <span className="pmt-tag pmt-tag-yellow">{inc.category}</span>
+                  </div>
+                </div>
+                <div className="pmt-row" style={{ gap: 8 }}>
+                  <button
+                    type="button"
+                    className="pmt-icon-btn"
+                    onClick={() => setEditing(inc)}
+                    title="Edit"
+                    aria-label={`Edit ${inc.title}`}
+                  >
+                    <Icon name="edit" className="text-base" />
+                  </button>
+                  <button
+                    type="button"
+                    className="pmt-icon-btn pmt-icon-btn-danger"
+                    onClick={() => handleDelete(inc)}
+                    title="Delete"
+                    aria-label={`Delete ${inc.title}`}
+                  >
+                    <Icon name="delete" className="text-base" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="pmt-amount">{formatCurrency(inc.amount)}</div>
+
+              <div className="pmt-card-meta">
+                <Icon name="calendar_today" className="text-sm" />
+                <span>Credits on {formatDay(inc.creditDate)}</span>
+              </div>
+
+              <div className="pmt-divider" />
+
+              <div className="pmt-tax">
+                <span className={`pmt-tax-sq${inc.taxable ? '' : ' is-exempt'}`} />
+                <span>{inc.taxable ? 'Taxable' : 'Tax exempt'}</span>
+              </div>
+            </article>
+          ))}
+
+          {items.length === 0 && (
+            <PaymentsEmpty title="No income sources yet">
+              Add your first stream to see the monthly mix and totals.
+            </PaymentsEmpty>
+          )}
         </div>
-      </div>
 
-      <Modal
-        open={open || !!editing}
-        width="max-w-[calc(100vw-2rem)] sm:max-w-lg"
-        onClose={() => {
-          setOpen(false)
-          setEditing(null)
-        }}
-        title={editing ? 'Edit Income Source' : 'Add Income Source'}
+        <div className="pmt-summary">
+          <span className="pmt-summary-label">Total monthly income</span>
+          <span className="pmt-summary-value">{formatCurrency(total)}</span>
+        </div>
+      </PaymentsPage>
+
+      <PaymentsModal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editing ? 'Edit income source' : 'Add income source'}
+        footer={
+          <>
+            <button type="button" className="pmt-btn pmt-btn-white" onClick={closeModal}>
+              Cancel
+            </button>
+            <button type="submit" form={formId} className="pmt-btn" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
+            </button>
+          </>
+        }
       >
         <IncomeForm
+          key={editing?.id ?? 'new'}
+          formId={formId}
           initial={editing}
+          onBusyChange={setSaving}
           onSaved={() => {
-            setOpen(false)
-            setEditing(null)
+            closeModal()
             load()
           }}
-          onCancel={() => {
-            setOpen(false)
-            setEditing(null)
-          }}
         />
-      </Modal>
-    </div>
+      </PaymentsModal>
+    </>
   )
 }

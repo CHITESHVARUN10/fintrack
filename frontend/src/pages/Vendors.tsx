@@ -1,9 +1,8 @@
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
-import { OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
+import { LedgerEmpty, LedgerLoading, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
 
 type Vendor = {
   _id: string
@@ -26,6 +25,13 @@ type Vendor = {
 
 const FALLBACK_CATEGORIES = ['Groceries','Food','Electricity','Rent','Transportation','Shopping','Medical','Education','Entertainment','Bills','Household','Proxy','Family','Internal Transfer','Other']
 const MODES = ['UPI','BANK','CASH','CARD','OTHER'] as const
+
+function productLine(v: Vendor) {
+  if (!(v.products || []).length) return 'No products mapped yet'
+  return (v.products || [])
+    .map((p) => `${p.name}${p.typicalAmountPaise ? ` ₹${(p.typicalAmountPaise / 100).toFixed(0)}` : ''} ×${p.hits}`)
+    .join(' · ')
+}
 
 export function Vendors(){
   const nav = useNavigate()
@@ -215,133 +221,286 @@ export function Vendors(){
   }
 
   return (
-    <div>
-      <PageHeader title="Vendors" subtitle="Teach FinStack what each vendor offers — dairy guy, Amazon Pay, fruit stall. Future payments inherit the default category. Add standalone vendors with UPI/mode." />
-      {notice && <div className="brutal-thin bg-brand-yellow p-sm mb-md text-sm font-bold flex items-center gap-xs"><span className="w-6 h-6 flex items-center justify-center bg-white border-2 border-on-surface text-xs">✓</span>{notice}</div>}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-sm mb-md">
-        <input value={q} onChange={e=> setQ(e.target.value)} onKeyDown={e=> e.key==='Enter' && load()} placeholder="Search vendors, UPI, alias…" className="brutal-thin px-sm py-xs text-sm flex-1 min-w-0 max-w-full bg-white" />
-        <select value={catFilter} onChange={e=>{ setCatFilter(e.target.value); load(q, e.target.value)}} className="brutal-thin px-sm py-xs text-sm bg-white">
+    <LedgerPage
+      title="Vendors"
+      subtitle="Teach FinStack what each vendor offers — dairy guy, Amazon Pay, fruit stall. Future payments inherit the default category. Add standalone vendors with UPI/mode."
+    >
+      {notice && (
+        <LedgerNotice tone="yellow">
+          <span className="led-notice-mark">✓</span>
+          <span>{notice}</span>
+        </LedgerNotice>
+      )}
+
+      <div className="led-filter-row">
+        <input
+          value={q}
+          onChange={e=> setQ(e.target.value)}
+          onKeyDown={e=> e.key==='Enter' && load()}
+          placeholder="Search vendors, UPI, alias…"
+          className="led-input led-grow"
+          aria-label="Search vendors"
+        />
+        <select
+          value={catFilter}
+          onChange={e=>{ setCatFilter(e.target.value); load(q, e.target.value)}}
+          className="led-select led-w-185"
+          aria-label="Filter by category"
+        >
           <option value="">All categories</option>
           {cats.map(c=> <option key={c} value={c}>{c}</option>)}
         </select>
-        <button onClick={()=> load()} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm">Search</button>
-        <button onClick={backfill} disabled={backfilling} className="brutal bg-white px-md py-xs font-bold uppercase text-sm disabled:opacity-50">{backfilling? 'Backfilling…':'Backfill'}</button>
-        <button onClick={()=> setShowCreate(true)} className="brutal bg-on-surface text-white px-md py-xs font-bold uppercase text-sm">+ New Vendor</button>
+        <button onClick={()=> load()} className="led-btn led-btn-sm">Search</button>
+        <button onClick={backfill} disabled={backfilling} className="led-btn led-btn-white led-btn-sm">
+          {backfilling? 'Backfilling…':'Backfill'}
+        </button>
+        <button onClick={()=> setShowCreate(true)} className="led-btn led-btn-dark led-btn-sm">+ New Vendor</button>
       </div>
 
-      {showCreate && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-md" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={()=> setShowCreate(false)} aria-hidden="true" />
-          <div className="relative w-full max-w-xl max-w-[calc(100vw-2rem)] brutal bg-white p-md flex flex-col gap-sm max-h-[90vh] overflow-y-auto" style={OPAQUE_PANEL_STYLE}>
-            <h3 className="font-bold uppercase">New Vendor</h3>
-            <label className="flex flex-col text-xs font-bold uppercase gap-1">Label* <input value={cLabel} onChange={e=> setCLabel(e.target.value)} placeholder="e.g. Dairy Guy" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-            <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID (or leave blank if using mode) <input value={cUpi} onChange={e=> setCUpi(e.target.value)} placeholder="dairyguy@upi" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-            <label className="flex flex-col text-xs font-bold uppercase gap-1">Preferred Mode* <select value={cMode} onChange={e=> setCMode(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm"><option value="">Select</option>{MODES.map(m=> <option key={m} value={m}>{m}</option>)}</select></label>
-            <div className="flex flex-col gap-sm">
-              <span className="text-xs font-bold uppercase">Categories* (check all that apply)</span>
-              <div className="flex flex-wrap gap-xs">{cats.filter(c=> c!=='Other').map(c=> <button key={c} onClick={()=> toggleCreate(c)} className={`brutal-thin px-xs py-xs text-xs font-bold uppercase ${cCats.includes(c)? 'bg-brand-yellow':'bg-white'}`}>{c}</button>)}</div>
-              <div className="flex flex-col sm:flex-row gap-xs">
-                <input value={cCustom} onChange={e=> setCCustom(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCreateCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
-                <button onClick={addCreateCustom} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">+ Add</button>
-              </div>
-            </div>
-            <div className="brutal-thin bg-surface-container-low p-sm flex flex-col gap-sm">
-              <span className="text-xs font-bold uppercase">What does this vendor sell? (products — free form, optional)</span>
-              <div className="flex flex-col sm:flex-row gap-xs">
-                <input value={cProdName} onChange={e=> setCProdName(e.target.value)} placeholder="e.g. paneer" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
-                <input value={cProdAmt} onChange={e=> setCProdAmt(e.target.value)} placeholder="₹ typical (e.g. 40)" className="brutal-thin px-sm py-xs text-xs w-28 bg-white" type="number" />
-                <select value={cProducts.length? cProducts[cProducts.length-1]?.category||cCats[0]||'Food' : cCats[0]||'Food'} onChange={()=>{}} className="hidden" />
-                <button onClick={()=>{
-                  if(!cProdName.trim()) return
-                  const amt = cProdAmt ? Math.round(Number(cProdAmt)*100) : undefined
-                  setCProducts(p=> [...p, { name: cProdName.trim(), category: cCats[0]||'Other', typicalAmountPaise: amt }])
-                  setCProdName(''); setCProdAmt('')
-                }} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">+ Product</button>
-              </div>
-              {cProducts.length>0 && <div className="flex flex-wrap gap-xs">{cProducts.map((pr,i)=> <span key={i} className="brutal-thin bg-white px-xs py-0.5 text-xs flex items-center gap-xs">{pr.name} {pr.typicalAmountPaise? `₹${(pr.typicalAmountPaise/100).toFixed(0)}` : ''} <button onClick={()=> setCProducts(p=> p.filter((_,idx)=> idx!==i))} className="ml-xs font-bold">×</button></span> )}</div>}
-              <span className="text-[11px] opacity-60">e.g. 40 → paneer helps future suggestion when amount matches. Leave empty if not needed.</span>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-sm">
-              <button onClick={createVendor} disabled={busy} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-sm">{busy?'Saving…':'Create'}</button>
-              <button onClick={()=> setShowCreate(false)} className="brutal bg-white px-md py-xs font-bold uppercase text-sm">Cancel</button>
-            </div>
-            <span className="text-[11px] opacity-60">* Required. UPI or mode identifies how you pay this vendor (CSV/UPI screenshot).</span>
-          </div>
-        </div>
-      )}
-
       {mergeSource && (
-        <div className="brutal bg-brand-yellow/20 p-sm mb-md flex flex-col gap-sm">
-          <span className="text-xs font-bold uppercase">Merge {items.find(x=> x._id===mergeSource)?.label} into:</span>
-          <div className="flex flex-col sm:flex-row gap-sm">
-            <select value={mergeTarget} onChange={e=> setMergeTarget(e.target.value)} className="brutal-thin px-sm py-xs text-sm flex-1 min-w-0 max-w-full bg-white">
+        <div className="led-merge-bar">
+          <span className="led-label">Merge {items.find(x=> x._id===mergeSource)?.label} into:</span>
+          <div className="led-filter-row">
+            <select
+              value={mergeTarget}
+              onChange={e=> setMergeTarget(e.target.value)}
+              className="led-select led-grow"
+              aria-label="Merge target vendor"
+            >
               <option value="">Select target vendor</option>
               {items.filter(x=> x._id!==mergeSource).map(v=> <option key={v._id} value={v._id}>{v.label} ({v.vendorKey})</option>)}
             </select>
-            <button onClick={doMerge} disabled={busy || !mergeTarget} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Merge</button>
-            <button onClick={()=> { setMergeSource(null); setMergeTarget('')}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Cancel</button>
+            <button onClick={doMerge} disabled={busy || !mergeTarget} className="led-btn led-btn-sm">Merge</button>
+            <button onClick={()=> { setMergeSource(null); setMergeTarget('')}} className="led-btn led-btn-white led-btn-sm">Cancel</button>
           </div>
-          <span className="text-[11px] opacity-60">All products, offerings, and transactions will move to target. Source will be deleted.</span>
+          <span className="led-tiny">All products, offerings, and transactions will move to target. Source will be deleted.</span>
         </div>
       )}
 
-      {loading ? <div className="brutal bg-white p-md text-sm">Loading…</div> : items.length===0 ? <div className="brutal bg-white p-md text-sm">No vendors yet — create one via + New Vendor or save from a transaction's detail drawer.</div> : (
-        <div className="flex flex-col gap-sm">
+      {loading ? <LedgerLoading rows={4} /> : items.length===0 ? (
+        <LedgerEmpty title="No vendors yet">
+          Create one via + New Vendor or save from a transaction’s detail drawer.
+        </LedgerEmpty>
+      ) : (
+        <div className="led-stack">
           {items.map(v=> {
             const isEditing = editId===v._id
+            const offers = (v.offerings && v.offerings.length)
+              ? v.offerings
+              : (v.primaryCategory ? [{ category: v.primaryCategory, hits: v.hits }] : [])
             return (
-              <div key={v._id} onClick={()=> !isEditing && nav(`/vendors/${v._id}`)} className="brutal bg-white p-md flex flex-col gap-sm min-w-0 cursor-pointer hover:bg-brand-yellow/10">
-                <div className="flex flex-wrap gap-sm items-center min-w-0">
-                  <span className="font-bold break-words min-w-0">{v.label}</span>
-                  <span className="text-xs opacity-60 brutal-thin px-xs py-0.5 bg-surface-container-low">{v.vendorKey}</span>
-                  {v.upiId && <span className="text-xs brutal-thin px-xs py-0.5 bg-white">{v.upiId}</span>}
-                  {v.contact?.preferredMode && <span className="text-xs brutal-thin px-xs py-0.5 bg-white">{v.contact.preferredMode}</span>}
-                  <span className="text-xs opacity-60">hits {v.hits}</span>
-                  {v.lastSeen && <span className="text-xs opacity-60">{new Date(v.lastSeen).toLocaleDateString('en-IN')}</span>}
-                  {v.status==='ARCHIVED' && <span className="text-xs brutal-thin px-xs py-0.5 bg-on-surface text-white">ARCHIVED</span>}
-                  {!isEditing && <span className="ml-auto brutal-thin px-sm py-0.5 bg-brand-yellow text-xs font-bold uppercase">{v.primaryCategory || v.category || 'Other'}</span>}
-                  {(v.offerings||[]).length>0 && !isEditing && <span className="text-xs">{v.offerings!.map(o=> `${o.category}×${o.hits}${o.subcategories?.length? ` (${o.subcategories.join(',')})`:''}`).join(' · ')}</span>}
+              <article
+                key={v._id}
+                onClick={()=> !isEditing && nav(`/vendors/${v._id}`)}
+                className={`led-vendor-card${isEditing ? ' led-vendor-editing' : ''}`}
+              >
+                <div className="led-vendor-top">
+                  <div className="led-vendor-meta">
+                    <span className="led-vendor-name">{v.label}</span>
+                    <span className="led-tag led-tag-warm">{v.vendorKey}</span>
+                    {v.contact?.preferredMode && <span className="led-tag">{v.contact.preferredMode}</span>}
+                    {v.upiId && <span className="led-tag led-tag-cased">{v.upiId}</span>}
+                    <span className="led-hits">hits {v.hits}</span>
+                    {v.lastSeen && <span className="led-hits">{new Date(v.lastSeen).toLocaleDateString('en-IN')}</span>}
+                    {v.status==='ARCHIVED' && <span className="led-tag led-tag-inverse">Archived</span>}
+                  </div>
+                  {!isEditing && (
+                    <div className="led-vendor-right">
+                      <span className="led-tag led-tag-yellow">{(v.primaryCategory || v.category || 'Other')}</span>
+                      {offers.length>0 && (
+                        <span className="led-hits">{offers.map(o=> `${o.category}×${o.hits}`).join(' · ')}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {v.description && !isEditing && <div className="text-xs opacity-80">{v.description}</div>}
-                {(v.products||[]).length>0 && !isEditing && <div className="text-xs">Sells: {(v.products||[]).map(p=> `${p.name}${p.typicalAmountPaise? ` ₹${(p.typicalAmountPaise/100).toFixed(0)}`:''} ×${p.hits}`).join(' · ')}</div>}
-                {v.aliases && v.aliases.length>0 && !isEditing && <div className="text-xs opacity-60">aka: {v.aliases.join(', ')}</div>}
-                {v.contact?.phone && !isEditing && <div className="text-xs opacity-60">☎ {v.contact.phone} {v.contact.address? `· ${v.contact.address}`:''}</div>}
+
+                {!isEditing && (
+                  <>
+                    <div className="led-vendor-sells">Sells: <strong>{productLine(v)}</strong></div>
+                    {v.description && <div className="led-tiny">{v.description}</div>}
+                    {v.aliases && v.aliases.length>0 && <div className="led-tiny">aka: {v.aliases.join(', ')}</div>}
+                    {(v.contact?.phone || v.contact?.address) && (
+                      <div className="led-tiny">
+                        ☎ {v.contact?.phone || '—'}{v.contact?.address ? ` · ${v.contact.address}` : ''}
+                      </div>
+                    )}
+                  </>
+                )}
+
                 {!isEditing ? (
-                 <div className="flex flex-wrap gap-sm" onClick={e=> e.stopPropagation()}>
-                   <button onClick={(e)=>{ e.stopPropagation(); startEdit(v)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Edit</button>
-                   <button onClick={(e)=>{ e.stopPropagation(); apply(v._id)}} disabled={busy} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Apply to Other</button>
-                   <button onClick={(e)=>{ e.stopPropagation(); setMergeSource(v._id)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Merge</button>
-                   <button onClick={(e)=>{ e.stopPropagation(); archive(v._id)}} disabled={busy} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Archive</button>
-                    <button onClick={(e)=>{ e.stopPropagation(); nav(`/vendors/${v._id}`)}} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase w-full sm:w-auto sm:ml-auto">View →</button>
-                 </div>
+                  <div className="led-vendor-actions" onClick={e=> e.stopPropagation()}>
+                    <div className="led-vendor-actions-left">
+                      <button onClick={(e)=>{ e.stopPropagation(); startEdit(v)}} className="led-btn led-btn-white led-btn-sm">Edit</button>
+                      <button onClick={(e)=>{ e.stopPropagation(); apply(v._id)}} disabled={busy} className="led-btn led-btn-white led-btn-sm">Apply to Other</button>
+                      <button onClick={(e)=>{ e.stopPropagation(); setMergeSource(v._id)}} className="led-btn led-btn-white led-btn-sm">Merge</button>
+                      <button onClick={(e)=>{ e.stopPropagation(); archive(v._id)}} disabled={busy} className="led-btn led-btn-white led-btn-sm">Archive</button>
+                    </div>
+                    <button onClick={(e)=>{ e.stopPropagation(); nav(`/vendors/${v._id}`)}} className="led-btn led-btn-sm led-ml-auto">
+                      View →
+                    </button>
+                  </div>
                 ) : (
-                  <div className="brutal-thin bg-brand-yellow/20 p-sm flex flex-col gap-sm" onClick={e=> e.stopPropagation()}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
-                      <label className="flex flex-col text-xs font-bold uppercase gap-1">Label <input value={editLabel} onChange={e=> setEditLabel(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-                      <label className="flex flex-col text-xs font-bold uppercase gap-1">UPI ID <input value={editUpi} onChange={e=> setEditUpi(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-                      <label className="flex flex-col text-xs font-bold uppercase gap-1">Phone <input value={editPhone} onChange={e=> setEditPhone(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-                      <label className="flex flex-col text-xs font-bold uppercase gap-1">Preferred Mode <select value={editMode} onChange={e=> setEditMode(e.target.value)} className="brutal-thin px-sm py-xs bg-white text-sm"><option value="">—</option>{MODES.map(m=> <option key={m} value={m}>{m}</option>)}</select></label>
+                  <div className="led-edit-panel" onClick={e=> e.stopPropagation()}>
+                    <div className="led-grid-2" style={{ gap: 12 }}>
+                      <label className="led-field">Label
+                        <input value={editLabel} onChange={e=> setEditLabel(e.target.value)} className="led-input" />
+                      </label>
+                      <label className="led-field">UPI ID
+                        <input value={editUpi} onChange={e=> setEditUpi(e.target.value)} className="led-input" />
+                      </label>
+                      <label className="led-field">Phone
+                        <input value={editPhone} onChange={e=> setEditPhone(e.target.value)} className="led-input" />
+                      </label>
+                      <label className="led-field">Preferred mode
+                        <select value={editMode} onChange={e=> setEditMode(e.target.value)} className="led-select">
+                          <option value="">—</option>
+                          {MODES.map(m=> <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </label>
                     </div>
-                    <label className="flex flex-col text-xs font-bold uppercase gap-1">Description <input value={editDesc} onChange={e=> setEditDesc(e.target.value)} placeholder="e.g. Dairy guy near society" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-                    <label className="flex flex-col text-xs font-bold uppercase gap-1">Notes <input value={editNotes} onChange={e=> setEditNotes(e.target.value)} placeholder="Private notes" className="brutal-thin px-sm py-xs bg-white text-sm" /></label>
-                    <span className="text-xs font-bold uppercase">What does {editLabel||v.label} offer? (check all that apply)</span>
-                    <div className="flex flex-wrap gap-xs">{cats.filter(c=> c!=='Other').map(c=> <button key={c} onClick={()=> toggle(c)} className={`brutal-thin px-xs py-xs text-xs font-bold uppercase ${editCats.includes(c)? 'bg-brand-yellow':'bg-white'}`}>{c}</button>)}</div>
-                    <div className="flex flex-col sm:flex-row gap-xs">
-                      <input value={customCat} onChange={e=> setCustomCat(e.target.value)} onKeyDown={e=> e.key==='Enter' && addCustom()} placeholder="Custom (e.g. Stationery)" className="brutal-thin px-sm py-xs text-xs flex-1 min-w-0 max-w-full bg-white" />
-                      <button onClick={(e)=>{ e.stopPropagation(); addCustom()}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">+ Add</button>
+                    <label className="led-field">Description
+                      <input value={editDesc} onChange={e=> setEditDesc(e.target.value)} placeholder="e.g. Dairy guy near society" className="led-input" />
+                    </label>
+                    <label className="led-field">Notes
+                      <input value={editNotes} onChange={e=> setEditNotes(e.target.value)} placeholder="Private notes" className="led-input" />
+                    </label>
+                    <div className="led-field">
+                      <span className="led-label">What does {editLabel||v.label} offer? (check all that apply)</span>
+                      <div className="led-chips">
+                        {cats.filter(c=> c!=='Other').map(c=> (
+                          <button
+                            type="button"
+                            key={c}
+                            onClick={()=> toggle(c)}
+                            className={`led-chip${editCats.includes(c)? ' is-on':''}`}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-sm">
-                      <button onClick={(e)=>{ e.stopPropagation(); save()}} disabled={busy} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">{busy?'Saving…':'Save'}</button>
-                      <button onClick={(e)=>{ e.stopPropagation(); setEditId(null)}} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Cancel</button>
+                    <div className="led-filter-row">
+                      <input
+                        value={customCat}
+                        onChange={e=> setCustomCat(e.target.value)}
+                        onKeyDown={e=> e.key==='Enter' && addCustom()}
+                        placeholder="Custom (e.g. Stationery)"
+                        className="led-input led-grow"
+                      />
+                      <button type="button" onClick={addCustom} className="led-btn led-btn-white led-btn-sm">+ Add</button>
                     </div>
-                    <span className="text-[11px] opacity-60">Products are edited on Vendor Detail → page for richer control.</span>
+                    <div className="led-row">
+                      <button onClick={save} disabled={busy} className="led-btn led-btn-sm">{busy?'Saving…':'Save'}</button>
+                      <button onClick={()=> setEditId(null)} className="led-btn led-btn-white led-btn-sm">Cancel</button>
+                    </div>
+                    <span className="led-tiny">Products are edited on the Vendor Detail page for richer control.</span>
                   </div>
                 )}
-              </div>
+              </article>
             )
           })}
         </div>
       )}
-    </div>
+
+      {showCreate && (
+        <LedgerOverlay onClose={()=> setShowCreate(false)} label="New vendor">
+          <div className="led-modal">
+            <div className="led-modal-head">
+              <h2 className="led-modal-title">New Vendor</h2>
+              <button type="button" onClick={()=> setShowCreate(false)} className="led-close-btn" aria-label="Close">×</button>
+            </div>
+            <div className="led-modal-body">
+              <label className="led-field">Label*
+                <input value={cLabel} onChange={e=> setCLabel(e.target.value)} placeholder="e.g. Dairy Guy" className="led-input" />
+              </label>
+              <label className="led-field">UPI ID (or leave blank if using mode)
+                <input value={cUpi} onChange={e=> setCUpi(e.target.value)} placeholder="dairyguy@upi" className="led-input led-mono" />
+              </label>
+              <label className="led-field">Preferred mode*
+                <select value={cMode} onChange={e=> setCMode(e.target.value)} className="led-select led-mono">
+                  <option value="">Select</option>
+                  {MODES.map(m=> <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+
+              <div className="led-field">
+                <span className="led-label">Categories* (check all that apply)</span>
+                <div className="led-chips">
+                  {cats.filter(c=> c!=='Other').map(c=> (
+                    <button
+                      type="button"
+                      key={c}
+                      onClick={()=> toggleCreate(c)}
+                      className={`led-chip${cCats.includes(c)? ' is-on':''}`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <div className="led-filter-row" style={{ marginTop: 6 }}>
+                  <input
+                    value={cCustom}
+                    onChange={e=> setCCustom(e.target.value)}
+                    onKeyDown={e=> e.key==='Enter' && addCreateCustom()}
+                    placeholder="Custom (e.g. Stationery)"
+                    className="led-input led-grow"
+                  />
+                  <button type="button" onClick={addCreateCustom} className="led-btn led-btn-white led-btn-sm">+ Add</button>
+                </div>
+              </div>
+
+              <div className="led-card-warm">
+                <span className="led-label">What does this vendor sell? (products — free form, optional)</span>
+                <div className="led-filter-row" style={{ marginTop: 10 }}>
+                  <input
+                    value={cProdName}
+                    onChange={e=> setCProdName(e.target.value)}
+                    placeholder="e.g. paneer"
+                    className="led-input led-grow"
+                  />
+                  <input
+                    value={cProdAmt}
+                    onChange={e=> setCProdAmt(e.target.value)}
+                    placeholder="₹ typical"
+                    type="number"
+                    className="led-input led-mono led-w-120"
+                  />
+                  <button
+                    type="button"
+                    onClick={()=>{
+                      if(!cProdName.trim()) return
+                      const amt = cProdAmt ? Math.round(Number(cProdAmt)*100) : undefined
+                      setCProducts(p=> [...p, { name: cProdName.trim(), category: cCats[0]||'Other', typicalAmountPaise: amt }])
+                      setCProdName(''); setCProdAmt('')
+                    }}
+                    className="led-btn led-btn-sm"
+                  >
+                    + Product
+                  </button>
+                </div>
+                {cProducts.length>0 && (
+                  <div className="led-chips" style={{ marginTop: 10 }}>
+                    {cProducts.map((pr,i)=> (
+                      <span key={i} className="led-pill">
+                        <span>{pr.name}</span>
+                        {pr.typicalAmountPaise ? <span className="led-tag led-tag-yellow">₹{(pr.typicalAmountPaise/100).toFixed(0)}</span> : null}
+                        <button type="button" onClick={()=> setCProducts(p=> p.filter((_,idx)=> idx!==i))} aria-label={`Remove ${pr.name}`}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="led-tiny" style={{ marginTop: 10 }}>
+                  e.g. 40 → paneer helps future suggestion when amount matches. Leave empty if not needed.
+                </p>
+              </div>
+            </div>
+            <div className="led-modal-foot">
+              <button type="button" onClick={()=> setShowCreate(false)} className="led-btn led-btn-white">Cancel</button>
+              <button type="button" onClick={createVendor} disabled={busy} className="led-btn">{busy?'Saving…':'Create'}</button>
+            </div>
+          </div>
+        </LedgerOverlay>
+      )}
+    </LedgerPage>
   )
 }

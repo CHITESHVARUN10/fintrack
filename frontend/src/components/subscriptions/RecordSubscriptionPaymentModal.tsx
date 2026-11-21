@@ -1,14 +1,12 @@
 import type { LedgerTransaction } from '../../types/api'
 import { toApiError } from '../../lib/apiError'
 import { useEffect, useState } from 'react'
-import { Modal } from '../ui/Modal'
-import { Button } from '../ui/Button'
-import { Field, Input, Select } from '../ui/Field'
 import { Icon } from '../ui/Icon'
 import { formatCurrency, formatDate } from '../../lib/format'
 import type { Subscription } from '../../types'
 import { subscriptionService } from '../../services/api'
 import { apiClient } from '../../services/apiClient'
+import { PaymentsModal, PaymentsNotice } from '../payments/PaymentsKit'
 
 interface RecordSubscriptionPaymentModalProps {
   open: boolean
@@ -53,6 +51,7 @@ export function RecordSubscriptionPaymentModal({
           const match = combined.find((t) => Math.abs(t.amountPaise / 100 - subscription.amount) < 1) || combined[0]
           if (match) setSelectedTxId(match._id)
         } else {
+          setSelectedTxId(null)
           setSourceType('manual')
         }
       })
@@ -98,172 +97,175 @@ export function RecordSubscriptionPaymentModal({
     }
   }
 
+  const rateLabel = `${formatCurrency(subscription.amount)} / ${subscription.frequency}`
+
   return (
-    <Modal open={open} onClose={onClose} title={`Record / Link Payment — ${subscription.name}`} width="max-w-2xl">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-md">
-        <div className="brutal bg-brand-yellow p-sm text-xs font-bold flex justify-between items-center">
-          <span>
-            Link a transaction from your bank statement or record a manual renewal payment for {subscription.name}.
+    <PaymentsModal
+      open={open}
+      onClose={onClose}
+      wide
+      title={`Record / Link Payment — ${subscription.name}`}
+      footer={
+        <>
+          <button type="button" className="pmt-btn pmt-btn-white" onClick={onClose} disabled={loading}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="pmt-record-payment-form"
+            className="pmt-btn"
+            disabled={loading}
+          >
+            {loading ? 'Saving…' : sourceType === 'link' ? 'Link Transaction' : 'Record Payment'}
+          </button>
+        </>
+      }
+    >
+      <form id="pmt-record-payment-form" onSubmit={handleSubmit} className="pmt-stack">
+        <div className="pmt-banner">
+          <span className="pmt-banner-text">
+            Link a transaction from your bank statement or record a manual renewal payment for{' '}
+            {subscription.name}.
           </span>
-          <span className="brutal-thin bg-white px-xs py-0.5 text-xs font-bold whitespace-nowrap">
-            {formatCurrency(subscription.amount)} / {subscription.frequency}
-          </span>
+          <span className="pmt-banner-tag">{rateLabel}</span>
         </div>
 
-        {error && (
-          <div className="brutal bg-red-100 p-sm text-xs font-bold text-error border-2 border-on-surface">
-            {error}
-          </div>
-        )}
+        {error && <PaymentsNotice tone="error">{error}</PaymentsNotice>}
 
-        {/* Source Selector */}
-        <div className="flex flex-col gap-xs">
-          <label className="text-xs uppercase font-bold tracking-wider opacity-70">
-            Payment Source
-          </label>
-          <div className="grid grid-cols-2 gap-sm">
+        <div className="pmt-field">
+          <span className="pmt-label">Payment source</span>
+          <div className="pmt-source-tabs">
             <button
               type="button"
               onClick={() => setSourceType('link')}
-              className={`brutal p-sm text-left flex items-center justify-between transition-all ${
-                sourceType === 'link' ? 'bg-brand-yellow ring-2 ring-on-surface' : 'bg-white hover:bg-surface-container-low'
-              }`}
+              className={`pmt-source-tab${sourceType === 'link' ? ' is-active' : ''}`}
+              aria-pressed={sourceType === 'link'}
             >
-              <div className="flex items-center gap-2">
-                <Icon name="account_balance_wallet" className="text-lg" />
-                <span className="font-bold text-xs">Link Bank / Ledger Transaction</span>
-              </div>
+              <Icon name="credit_card" className="text-base" />
+              <span className="pmt-source-label">Link bank / ledger transaction</span>
             </button>
-
             <button
               type="button"
               onClick={() => setSourceType('manual')}
-              className={`brutal p-sm text-left flex items-center justify-between transition-all ${
-                sourceType === 'manual' ? 'bg-brand-yellow ring-2 ring-on-surface' : 'bg-white hover:bg-surface-container-low'
-              }`}
+              className={`pmt-source-tab${sourceType === 'manual' ? ' is-active' : ''}`}
+              aria-pressed={sourceType === 'manual'}
             >
-              <div className="flex items-center gap-2">
-                <Icon name="edit" className="text-lg" />
-                <span className="font-bold text-xs">Manual Entry</span>
-              </div>
+              <Icon name="edit" className="text-base" />
+              <span className="pmt-source-label">Manual entry</span>
             </button>
           </div>
         </div>
 
         {sourceType === 'link' ? (
-          <div className="flex flex-col gap-sm">
-            <label className="text-xs uppercase font-bold tracking-wider">
-              Select Transaction to Link
-            </label>
+          <div className="pmt-field">
+            <span className="pmt-label">Select transaction to link</span>
             {loadingTxs ? (
-              <div className="text-xs p-md bg-white brutal-thin">Loading candidate transactions…</div>
+              <div className="pmt-notice">Loading candidate transactions…</div>
             ) : transactions.length === 0 ? (
-              <div className="brutal-thin bg-surface-container-low p-md text-xs flex flex-col gap-xs">
-                <span>No matching unlinked transactions found.</span>
-                <button
-                  type="button"
-                  onClick={() => setSourceType('manual')}
-                  className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase self-start"
-                >
-                  Switch to Manual Entry
-                </button>
+              <div className="pmt-notice">
+                <span>
+                  Every recent ledger transaction is already linked. Use Manual Entry to record
+                  this renewal instead.
+                </span>
               </div>
             ) : (
-              <div className="brutal bg-white overflow-auto max-h-60 flex flex-col divide-y divide-on-surface/10">
+              <div className="pmt-candidates">
                 {transactions.map((tx) => {
                   const isSelected = selectedTxId === tx._id
                   const txAmt = tx.amountPaise ? tx.amountPaise / 100 : 0
+                  const merchant =
+                    tx.recipient?.name || tx.sender?.name || tx.productName || tx.mode || 'Payment'
                   return (
-                    <div
+                    <label
                       key={tx._id}
-                      onClick={() => setSelectedTxId(tx._id)}
-                      className={`p-sm flex items-center justify-between cursor-pointer transition-all ${
-                        isSelected ? 'bg-brand-yellow font-bold ring-2 ring-inset ring-on-surface' : 'hover:bg-surface-container-low'
-                      }`}
+                      className={`pmt-candidate${isSelected ? ' is-selected' : ''}`}
                     >
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-bold">
-                          {tx.recipient?.name || tx.sender?.name || tx.productName || tx.mode || 'Payment'} — {formatCurrency(txAmt)}
+                      <span style={{ minWidth: 0 }}>
+                        <span className="pmt-candidate-name">
+                          {merchant} — {formatCurrency(txAmt)}
                         </span>
-                        <span className="text-[11px] opacity-70">
-                          {formatDate(tx.occurredAt)} · {tx.mode} · {tx.category || 'Entertainment'}
+                        <span className="pmt-candidate-meta">
+                          {formatDate(tx.occurredAt)} · {tx.mode}
+                          {tx.category ? ` · ${tx.category}` : ''}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold">{formatCurrency(txAmt)}</span>
+                      </span>
+                      <span className="pmt-candidate-right">
+                        <span className="pmt-candidate-amount">{formatCurrency(txAmt)}</span>
                         <input
                           type="radio"
+                          className="pmt-candidate-radio"
                           name="subPaymentTx"
                           checked={isSelected}
                           onChange={() => setSelectedTxId(tx._id)}
                         />
-                      </div>
-                    </div>
+                      </span>
+                    </label>
                   )
                 })}
               </div>
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-md">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-              <Field label="Amount Paid (₹)">
-                <div className="flex">
-                  <span className="bg-surface-container-high border-[3px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-                    ₹
-                  </span>
-                  <Input
+          <>
+            <div className="pmt-form-grid">
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="rp-amount">Amount paid</label>
+                <div className="pmt-rupee">
+                  <span className="pmt-rupee-prefix">₹</span>
+                  <input
+                    id="rp-amount"
                     type="number"
+                    min={1}
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="border-l-0"
                     required
                   />
                 </div>
-              </Field>
-
-              <Field label="Payment Date">
-                <Input
+              </div>
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="rp-date">Payment date</label>
+                <input
+                  id="rp-date"
+                  className="pmt-input pmt-mono"
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
                 />
-              </Field>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-              <Field label="Payment Mode">
-                <Select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <div className="pmt-form-grid">
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="rp-mode">Payment mode</label>
+                <select
+                  id="rp-mode"
+                  className="pmt-select"
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
+                >
                   <option value="UPI">UPI</option>
                   <option value="CARD">Credit / Debit Card</option>
                   <option value="BANK">Net Banking / Auto Debit</option>
                   <option value="WALLET">Wallet</option>
                   <option value="OTHER">Other</option>
-                </Select>
-              </Field>
-
-              <Field label="Notes / Reference">
-                <Input
+                </select>
+              </div>
+              <div className="pmt-field">
+                <label className="pmt-label" htmlFor="rp-notes">Notes / reference</label>
+                <input
+                  id="rp-notes"
+                  className="pmt-input"
                   placeholder="e.g. Monthly auto-debit renewal"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
-              </Field>
+              </div>
             </div>
-          </div>
+          </>
         )}
-
-        <div className="flex justify-end gap-sm pt-sm border-t-2 border-on-surface">
-          <Button variant="white" type="button" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button variant="yellow" type="submit" disabled={loading}>
-            {loading ? 'Saving…' : sourceType === 'link' ? 'Link Transaction' : 'Record Payment'}
-          </Button>
-        </div>
       </form>
-    </Modal>
+    </PaymentsModal>
   )
 }

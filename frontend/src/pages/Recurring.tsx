@@ -1,23 +1,16 @@
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../services/apiClient'
-import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
-import { Badge } from '../components/ui/Badge'
-import { Modal } from '../components/ui/Modal'
-import { Field, Input, Select, Textarea } from '../components/ui/Field'
 import { formatCurrency, formatDay } from '../lib/format'
+import {
+  PaymentsEmpty,
+  PaymentsLoading,
+  PaymentsModal,
+  PaymentsNotice,
+  PaymentsPage,
+} from '../components/payments/PaymentsKit'
 import type { RecurringPayment, RecurringCategory } from '../types'
-
-const categoryIcon: Record<string, string> = {
-  Household: 'home',
-  Utility: 'electric_bolt',
-  Staff: 'groups',
-  Society: 'apartment',
-  Vehicle: 'directions_car',
-  Other: 'receipt_long',
-}
 
 const CATEGORIES: RecurringCategory[] = [
   'Household',
@@ -38,6 +31,23 @@ const PAYMENT_METHODS = [
   'Other',
 ]
 
+function categoryIcon(category: string): string {
+  switch (category) {
+    case 'Utility':
+      return 'electric_bolt'
+    case 'Society':
+      return 'apartment'
+    case 'Staff':
+      return 'groups'
+    case 'Vehicle':
+      return 'directions_car'
+    case 'Household':
+      return 'home'
+    default:
+      return 'receipt_long'
+  }
+}
+
 // Backend documents use Mongo `_id`; normalize so the frontend
 // `RecurringPayment` type (and all call sites) stay unchanged.
 function normalizeRecurring(raw: Record<string, unknown>): RecurringPayment {
@@ -54,13 +64,18 @@ function normalizeRecurring(raw: Record<string, unknown>): RecurringPayment {
   }
 }
 
-interface RecurringFormProps {
-  initial?: RecurringPayment | null
-  onSaved: () => void
-  onCancel: () => void
+function toDateInput(value: string): string {
+  return value ? String(value).slice(0, 10) : ''
 }
 
-function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
+interface RecurringFormProps {
+  formId: string
+  initial?: RecurringPayment | null
+  onSaved: () => void
+  onBusyChange: (busy: boolean) => void
+}
+
+function RecurringForm({ formId, initial, onSaved, onBusyChange }: RecurringFormProps) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [category, setCategory] = useState<RecurringCategory>(
     initial?.category ?? 'Household',
@@ -70,15 +85,14 @@ function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
   const [paymentMethod, setPaymentMethod] = useState(
     initial?.paymentMethod ?? 'Bank Transfer',
   )
-  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
+  const [startDate, setStartDate] = useState(toDateInput(initial?.startDate ?? ''))
   const [notes, setNotes] = useState(initial?.notes ?? '')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
+    onBusyChange(true)
     const payload = {
       title,
       category,
@@ -99,96 +113,106 @@ function RecurringForm({ initial, onSaved, onCancel }: RecurringFormProps) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not save payment.'
       setError(msg)
     } finally {
-      setLoading(false)
+      onBusyChange(false)
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-lg">
-      {error && (
-        <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
-          {error}
-        </div>
-      )}
-      <Field label="Title">
-        <Input
+    <form id={formId} onSubmit={onSubmit} className="pmt-stack">
+      {error && <PaymentsNotice tone="error">{error}</PaymentsNotice>}
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="rec-title">Title</label>
+        <input
+          id="rec-title"
+          className="pmt-input"
           placeholder="e.g. City Rentals"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
         />
-      </Field>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-        <Field label="Category">
-          <Select
+      </div>
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="rec-cat">Category</label>
+          <select
+            id="rec-cat"
+            className="pmt-select"
             value={category}
             onChange={(e) => setCategory(e.target.value as RecurringCategory)}
           >
             {CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
             ))}
-          </Select>
-        </Field>
-        <Field label="Payment Method">
-          <Select
+          </select>
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="rec-method">Payment method</label>
+          <select
+            id="rec-method"
+            className="pmt-select"
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value)}
           >
             {PAYMENT_METHODS.map((p) => (
               <option key={p}>{p}</option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-        <Field label="Amount">
-          <div className="flex min-w-0">
-            <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-              ₹
-            </span>
-            <Input
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="rec-amount">Amount</label>
+          <div className="pmt-rupee">
+            <span className="pmt-rupee-prefix">₹</span>
+            <input
+              id="rec-amount"
               type="number"
+              min={1}
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="border-l-0"
               required
             />
           </div>
-        </Field>
-        <Field label="Due Date (Day of Month)">
-          <Input
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="rec-day">Due date (day of month)</label>
+          <input
+            id="rec-day"
+            className="pmt-input pmt-mono"
             type="number"
             min={1}
             max={31}
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-24 text-center"
             required
           />
-        </Field>
+        </div>
       </div>
-      <Field label="Start Date">
-        <Input
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="rec-start">Start date</label>
+        <input
+          id="rec-start"
+          className="pmt-input pmt-mono"
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
         />
-      </Field>
-      <Field label="Notes">
-        <Textarea
+      </div>
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="rec-notes">Notes</label>
+        <textarea
+          id="rec-notes"
+          className="pmt-textarea"
           placeholder="Additional details…"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-      </Field>
-      <div className="flex flex-wrap justify-end gap-sm pt-sm">
-        <Button variant="white" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="yellow" type="submit" disabled={loading}>
-          {loading ? 'Saving…' : initial ? 'Update' : 'Save'}
-        </Button>
       </div>
     </form>
   )
@@ -200,12 +224,15 @@ export function Recurring() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<RecurringPayment | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [activeDay, setActiveDay] = useState<number | null>(null)
 
   const load = useCallback(() => Promise.resolve().then(async () => {
     setLoading(true);
     try {
       const res = await apiClient.get('/recurring')
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeRecurring))
+      setError(null)
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not load payments.'
       setError(msg)
@@ -229,104 +256,186 @@ export function Recurring() {
     }
   }
 
-  if (loading) return <LoadingBlock label="Loading payments…" />
-  if (error)
+  const total = useMemo(() => items.reduce((s, x) => s + x.amount, 0), [items])
+
+  // Due-day buckets power the 31-day obligation strip.
+  const byDay = useMemo(() => {
+    const map = new Map<number, RecurringPayment[]>()
+    items.forEach((item) => {
+      const day = Math.min(31, Math.max(1, Math.round(item.dueDate) || 1))
+      const bucket = map.get(day)
+      if (bucket) bucket.push(item)
+      else map.set(day, [item])
+    })
+    return map
+  }, [items])
+
+  const activeDayItems = activeDay !== null ? byDay.get(activeDay) ?? [] : []
+  const readout =
+    activeDay !== null && activeDayItems.length > 0
+      ? `DAY ${formatDay(activeDay).toUpperCase()} · ${activeDayItems
+          .map((i) => `${i.title} (${formatCurrency(i.amount)})`)
+          .join(' + ')}`
+      : `${items.length} obligation${items.length === 1 ? '' : 's'} · ${formatCurrency(total)}/mo`
+
+  const modalOpen = open || !!editing
+  const formId = 'pmt-recurring-form'
+  const closeModal = () => {
+    setOpen(false)
+    setEditing(null)
+  }
+
+  if (loading) {
     return (
-      <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
-        {error}
+      <div className="pmt-page">
+        <PaymentsLoading />
       </div>
     )
+  }
 
-  const total = items.reduce((s, x) => s + x.amount, 0)
+  if (error) {
+    return (
+      <div className="pmt-page">
+        <PaymentsNotice tone="error">{error}</PaymentsNotice>
+        <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={load}>
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <PageHeader
+    <>
+      <PaymentsPage
         title="Recurring Payments"
         subtitle="Fixed household & utility obligations."
         action={
-          <Button variant="yellow" onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-xl" />
+          <button type="button" className="pmt-btn" onClick={() => setOpen(true)}>
+            <Icon name="add" className="text-lg" />
             Add Payment
-          </Button>
+          </button>
         }
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
-        {items.map((p) => (
-          <div key={p.id} className="bg-white brutal p-md flex flex-col gap-3 min-w-0 nb-card-enter nb-card-hover">
-            <div className="flex gap-sm justify-between items-start min-w-0">
-              <div className="flex items-center gap-xs min-w-0 flex-1">
-                <div className="w-10 h-10 shrink-0 bg-surface-variant brutal-thin flex items-center justify-center">
-                  <Icon name={categoryIcon[p.category] ?? 'receipt_long'} />
-                </div>
-                <span className="font-bold break-words min-w-0">{p.title}</span>
-              </div>
-              <Badge color="yellow">{p.category}</Badge>
-            </div>
-            <div className="font-bold text-2xl">{formatCurrency(p.amount)}</div>
-            <div className="flex flex-wrap items-center gap-2 font-bold text-xs text-on-surface-variant break-words min-w-0">
-              <Icon name="event" className="text-sm" />
-              Due on {formatDay(p.dueDate)} · {p.paymentMethod}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button
-                onClick={() => setEditing(p)}
-                className="bg-white p-2 brutal-thin hover:bg-surface-container-high active:translate-x-[2px] active:translate-y-[2px]"
-                title="Edit"
-              >
-                <Icon name="edit" className="text-sm" />
-              </button>
-              <button
-                onClick={() => handleDelete(p)}
-                className="bg-error-container text-on-error-container p-2 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[2px] active:translate-y-[2px]"
-                title="Delete"
-              >
-                <Icon name="delete" className="text-sm" />
-              </button>
-            </div>
+      >
+        {/* 31-day obligation strip — live due dates, no invented data. */}
+        <section className="pmt-viz" aria-label="Monthly obligation calendar">
+          <div className="pmt-viz-head">
+            <span className="pmt-viz-title">Monthly obligation calendar (days 1–31)</span>
+            <span className="pmt-readout">{readout}</span>
           </div>
-        ))}
-      </div>
+          <div className="pmt-cal">
+            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
+              const due = byDay.get(day)
+              const isDue = !!due && due.length > 0
+              return isDue ? (
+                <button
+                  key={day}
+                  type="button"
+                  className="pmt-day is-due"
+                  onMouseEnter={() => setActiveDay(day)}
+                  onFocus={() => setActiveDay(day)}
+                  onMouseLeave={() => setActiveDay(null)}
+                  onBlur={() => setActiveDay(null)}
+                  aria-label={`Day ${day}: ${due.map((i) => `${i.title} ${formatCurrency(i.amount)}`).join(', ')}`}
+                >
+                  <span>{day}</span>
+                  <span className="pmt-day-dot" />
+                </button>
+              ) : (
+                <div key={day} className="pmt-day" aria-hidden="true">
+                  <span>{day}</span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
 
-      {items.length === 0 && (
-        <p className="font-bold text-on-surface-variant mb-8">
-          No recurring payments yet. Click “Add Payment” to create one.
-        </p>
-      )}
+        <div className="pmt-grid-3">
+          {items.map((p) => (
+            <article key={p.id} className="pmt-item-card">
+              <div className="pmt-card-top">
+                <div className="pmt-row" style={{ gap: 10, minWidth: 0 }}>
+                  <span className="pmt-entity-icon">
+                    <Icon name={categoryIcon(p.category)} className="text-base" />
+                  </span>
+                  <h2 className="pmt-card-title pmt-card-title-sm break-all-safe">{p.title}</h2>
+                </div>
+                <span className="pmt-tag pmt-tag-yellow">{p.category}</span>
+              </div>
 
-      <div className="w-full bg-on-surface text-white py-6 px-6 brutal">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <span className="text-lg font-bold uppercase tracking-wider">
-            Total Monthly Outflow
-          </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
-            {formatCurrency(total)}
-          </span>
+              <div className="pmt-amount" style={{ fontSize: 26 }}>
+                {formatCurrency(p.amount)}
+              </div>
+
+              <div className="pmt-card-meta">
+                <Icon name="event" className="text-sm" />
+                <span>
+                  Due on {formatDay(p.dueDate)}
+                  {p.paymentMethod ? ` · ${p.paymentMethod}` : ''}
+                </span>
+              </div>
+
+              <div className="pmt-card-actions">
+                <button
+                  type="button"
+                  className="pmt-icon-btn"
+                  onClick={() => setEditing(p)}
+                  title="Edit payment"
+                  aria-label={`Edit ${p.title}`}
+                >
+                  <Icon name="edit" className="text-base" />
+                </button>
+                <button
+                  type="button"
+                  className="pmt-icon-btn pmt-icon-btn-danger"
+                  onClick={() => handleDelete(p)}
+                  title="Delete payment"
+                  aria-label={`Delete ${p.title}`}
+                >
+                  <Icon name="delete" className="text-base" />
+                </button>
+              </div>
+            </article>
+          ))}
+
+          {items.length === 0 && (
+            <PaymentsEmpty title="No recurring payments yet">
+              Add your first fixed obligation to map it onto the monthly calendar.
+            </PaymentsEmpty>
+          )}
         </div>
-      </div>
 
-      <Modal
-        open={open || !!editing}
-        onClose={() => {
-          setOpen(false)
-          setEditing(null)
-        }}
-        title={editing ? 'Edit Payment' : 'Add Payment'}
+        <div className="pmt-summary">
+          <span className="pmt-summary-label">Total monthly outflow</span>
+          <span className="pmt-summary-value">{formatCurrency(total)}</span>
+        </div>
+      </PaymentsPage>
+
+      <PaymentsModal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editing ? 'Edit payment' : 'Add payment'}
+        footer={
+          <>
+            <button type="button" className="pmt-btn pmt-btn-white" onClick={closeModal}>
+              Cancel
+            </button>
+            <button type="submit" form={formId} className="pmt-btn" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
+            </button>
+          </>
+        }
       >
         <RecurringForm
+          key={editing?.id ?? 'new'}
+          formId={formId}
           initial={editing}
+          onBusyChange={setSaving}
           onSaved={() => {
-            setOpen(false)
-            setEditing(null)
+            closeModal()
             load()
           }}
-          onCancel={() => {
-            setOpen(false)
-            setEditing(null)
-          }}
         />
-      </Modal>
-    </div>
+      </PaymentsModal>
+    </>
   )
 }

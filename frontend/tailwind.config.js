@@ -58,9 +58,10 @@ export default {
         'token-accent-hover': 'var(--accent-hover)',
       },
       fontFamily: {
-        sans: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-        body: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-body)'],
+        display: ['var(--font-display)'],
+        body: ['var(--font-body)'],
+        mono: ['var(--font-mono)'],
       },
       borderRadius: {
         none: '0px',
@@ -74,8 +75,8 @@ export default {
         full: '9999px',
       },
       boxShadow: {
-        brutal: '4px 4px 0px 0px var(--shadow)',
-        'brutal-sm': '2px 2px 0px 0px var(--shadow)',
+        brutal: '5px 5px 0px 0px var(--shadow)',
+        'brutal-sm': '3px 3px 0px 0px var(--shadow)',
         'brutal-hover': '2px 2px 0px 0px var(--shadow)',
         layout: '4px 0px 0px 0px var(--shadow)',
       },

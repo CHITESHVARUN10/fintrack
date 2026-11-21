@@ -10,8 +10,8 @@ interface CardProps {
 
 const colorClasses = {
   white: 'bg-white',
-  yellow: 'bg-brand-yellow',
-  cyan: 'bg-tertiary-container',
+  yellow: 'fin-color-yellow',
+  cyan: 'fin-color-cyan',
   surface: 'bg-surface-container-high',
 }
 
@@ -24,7 +24,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'brutal p-md flex flex-col gap-sm',
+        'brutal p-5 flex flex-col gap-sm min-w-0',
         colorClasses[color],
         hover && 'brutal-hover cursor-pointer',
         className,

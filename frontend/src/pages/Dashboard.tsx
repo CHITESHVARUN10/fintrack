@@ -1,59 +1,71 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { dashboardService } from '../services/api'
-import { motion } from 'framer-motion'
 import { useAsync } from '../hooks/useAsync'
-import { StatCard } from '../components/ui/StatCard'
-import { StaggerList } from '../components/motion'
-import { Card, SectionTitle } from '../components/ui/Card'
 import { Icon } from '../components/ui/Icon'
-import { Button } from '../components/ui/Button'
-import { DonutChart, type DonutDatum } from '../components/ui/DonutChart'
-import { ChartPanel } from '../components/charts/ChartKit'
+import { CountUp } from '../components/ui/CountUp'
 import { LoadingBlock } from '../components/ui/PageHeader'
+import { ChartPanel } from '../components/charts/ChartKit'
+import { EntryTicks, type TickDatum } from '../components/entry-overview/EntryTicks'
 import { formatCurrency, formatDate } from '../lib/format'
+import { cn } from '../lib/cn'
+import { Badge } from '../components/ui/Badge'
+import './entry-overview.css'
 
-const BURN_COLORS = ['#FFE500', '#2EC4B6', '#E8487F', '#7B61FF', '#FF7A45', '#FFB347', '#6BCB77', '#4D96FF']
+const CAT_VARS = [
+  'var(--fse-cat-1)',
+  'var(--fse-cat-2)',
+  'var(--fse-cat-3)',
+  'var(--fse-cat-4)',
+  'var(--fse-cat-5)',
+  'var(--fse-cat-6)',
+  'var(--fse-cat-7)',
+  'var(--fse-cat-8)',
+]
+const VENDOR_VARS = [
+  'var(--fse-ven-1)',
+  'var(--fse-ven-2)',
+  'var(--fse-ven-3)',
+  'var(--fse-ven-4)',
+  'var(--fse-ven-5)',
+  'var(--fse-ven-6)',
+  'var(--fse-ven-7)',
+  'var(--fse-ven-8)',
+]
 
 /**
- * Largest-remainder (Hamilton) normalization so rounded percentages sum to exactly 100.
- * Keeps underlying unrounded values for calculations; rounding only for presentation.
- * Preserves original order for display.
+ * Largest-remainder (Hamilton) normalization so rounded percentages sum to
+ * exactly 100. Keeps the unrounded raw share for tooltips; rounding only
+ * happens for presentation, and original order is preserved.
  */
-function normalizeTo100(entries: { label: string; value: number }[], total: number): { label: string; value: number; percent: number; raw: number }[] {
-  if (!entries.length || total <= 0) return entries.map(e => ({ ...e, percent: 0, raw: 0 }))
-  const raws = entries.map(e => ({ label: e.label, value: e.value, raw: (e.value / total) * 100 }))
-  const floors = raws.map(r => Math.floor(r.raw))
+function normalizeTo100(
+  entries: { label: string; value: number }[],
+  total: number,
+): { label: string; value: number; percent: number; raw: number }[] {
+  if (!entries.length || total <= 0) return entries.map((e) => ({ ...e, percent: 0, raw: 0 }))
+  const raws = entries.map((e) => ({ label: e.label, value: e.value, raw: (e.value / total) * 100 }))
+  const floors = raws.map((r) => Math.floor(r.raw))
   const remainders = raws.map((r, i) => ({ idx: i, frac: r.raw - floors[i] }))
-  const sumFloors = floors.reduce((a, b) => a + b, 0)
-  const remaining = 100 - sumFloors
-  // Sort by fractional part descending to distribute remaining points
+  const remaining = 100 - floors.reduce((a, b) => a + b, 0)
+  const result = [...floors]
   remainders.sort((a, b) => b.frac - a.frac)
-  const resultPercents = [...floors]
-  // Distribute one point at a time to largest remainders; if remaining negative (should not happen with floor) borrow from smallest remainders
   if (remaining > 0) {
-    for (let i = 0; i < remaining && i < remainders.length; i++) {
-      resultPercents[remainders[i].idx] += 1
-    }
+    for (let i = 0; i < remaining && i < remainders.length; i++) result[remainders[i].idx] += 1
   } else if (remaining < 0) {
-    // In case of floating weirdness, remove from smallest remainders
     remainders.sort((a, b) => a.frac - b.frac)
     for (let i = 0; i < Math.abs(remaining) && i < remainders.length; i++) {
-      if (resultPercents[remainders[i].idx] > 0) resultPercents[remainders[i].idx] -= 1
+      if (result[remainders[i].idx] > 0) result[remainders[i].idx] -= 1
     }
   }
-  // Edge: if we have many entries and some floors are 0 but we still want to avoid 0% for non-zero values when possible,
-  // largest remainder already handles it — the smallest non-zero will get 0 only if there are >100 categories or very tiny share.
-  // For display, keep 0% but legend will still show the row with its amount; tooltip shows raw.
-  return raws.map((r, i) => ({ label: r.label, value: r.value, raw: r.raw, percent: resultPercents[i] }))
+  return raws.map((r, i) => ({ label: r.label, value: r.value, raw: r.raw, percent: result[i] }))
 }
 
-const TYPE_META: Record<string, { icon: string; bg: string }> = {
-  subscription: { icon: 'subscriptions', bg: 'bg-brand-yellow' },
-  loan: { icon: 'account_balance_wallet', bg: 'bg-white' },
-  insurance: { icon: 'security', bg: 'bg-tertiary-container' },
-  sip: { icon: 'show_chart', bg: 'bg-white' },
+const TYPE_META: Record<string, { icon: string; label: string }> = {
+  subscription: { icon: 'subscriptions', label: 'Subscription' },
+  loan: { icon: 'account_balance_wallet', label: 'Loan' },
+  insurance: { icon: 'security', label: 'Insurance' },
+  sip: { icon: 'show_chart', label: 'SIP' },
 }
 
 function daysUntil(iso: string): number {
@@ -61,303 +73,299 @@ function daysUntil(iso: string): number {
 }
 
 export function Dashboard() {
-  const { activeMemberId, user, isAdmin } = useAuth()
+  const { activeMemberId, user, isAdmin, members } = useAuth()
   const selectedMember = isAdmin && activeMemberId !== user?.id ? activeMemberId : undefined
   const { data, loading, error } = useAsync(() => dashboardService.getSummary(selectedMember), [selectedMember])
+
   // Honest freshness: stamp the moment this payload arrived instead of a
-  // permanent "Just now" label.
+  // permanent "just now" label. Keyed on the payload so each fetch re-stamps.
   const loadedAt = useMemo(() => (data ? new Date() : null), [data])
+
+  const [activeCat, setActiveCat] = useState<number | null>(null)
+  const [activeVendor, setActiveVendor] = useState<number | null>(null)
+  const [activeBar, setActiveBar] = useState<string | null>(null)
+
+  const memberName = useMemo(() => {
+    const found = members?.find((m) => m.id === activeMemberId)
+    return found?.name ?? user?.name ?? 'You'
+  }, [members, activeMemberId, user?.name])
+
+  const verification = useMemo(() => {
+    if (!data) return null
+    const txCategories: { label: string; value: number }[] =
+      data.transactionCategoryEntries?.length > 0
+        ? data.transactionCategoryEntries
+        : Object.entries(data.transactionCategoryBreakdown || {}).map(([label, value]) => ({ label, value: Number(value) }))
+
+    const categories = txCategories
+      .filter((e) => e.value > 0)
+      .slice()
+      .sort((a, b) => b.value - a.value)
+    const catTotal = categories.reduce((s, e) => s + e.value, 0)
+    const maxCat = Math.max(...categories.map((e) => e.value), 1)
+    const normalizedCats = normalizeTo100(categories, catTotal)
+
+    const vendors = (data.transactionVendorEntries || []).filter((e) => e.value > 0)
+    const vendorTotal = vendors.reduce((s, e) => s + e.value, 0)
+    const normalizedVendors = normalizeTo100(vendors, vendorTotal)
+
+    const catTicks: TickDatum[] = normalizedCats.map((e, i) => ({
+      label: e.label,
+      amount: e.value,
+      percent: e.percent,
+      color: CAT_VARS[i % CAT_VARS.length],
+    }))
+    const vendorTicks: TickDatum[] = normalizedVendors.map((e, i) => ({
+      label: e.label,
+      amount: e.value,
+      percent: e.percent,
+      color: VENDOR_VARS[i % VENDOR_VARS.length],
+    }))
+
+    return {
+      categories,
+      catTotal,
+      maxCat,
+      catTicks,
+      vendorTicks,
+      vendorTotal,
+      actualSpend: data.transactionSpendThisMonth ?? data.adHocSpendThisMonth ?? 0,
+      txnCount: data.transactionCountThisMonth ?? 0,
+    }
+  }, [data])
 
   if (loading) return <LoadingBlock label="Loading dashboard…" />
   if (error)
     return (
-      <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
+      <div className="fse-error" role="alert">
         Could not load dashboard.
       </div>
     )
+  if (!data || !verification) return <div className="fse-empty">No dashboard data available.</div>
 
-  if (!data) return <div>No dashboard data available.</div>
+  const { categories, catTotal, maxCat, catTicks, vendorTicks, vendorTotal, actualSpend, txnCount } = verification
+  const visibleBars = categories.slice(0, 6)
+  const hiddenBars = categories.length - visibleBars.length
 
-  // Use transaction data for individual (current month) — fallback to old burn breakdown
-  const txCategoryEntries: { label: string; value: number }[] =
-    (data.transactionCategoryEntries && data.transactionCategoryEntries.length > 0
-      ? data.transactionCategoryEntries
-      : Object.entries(data.monthlyBurnBreakdown).map(([label, value]) => ({ label, value: value as number })))
-  const burnEntries = txCategoryEntries
-    .map((e) => [e.label, e.value] as [string, number])
-    .filter(([, v]) => v > 0)
-  const burnTotal = burnEntries.reduce((s, [, v]) => s + v, 0)
-  const maxBurn = Math.max(...burnEntries.map(([, v]) => v), 1)
-
-  // Normalized percentages — ensures sum is exactly 100, center never shows 101%
-  const normalizedCategories = normalizeTo100(burnEntries.map(([label, value]) => ({ label, value })), burnTotal)
-  const donut: DonutDatum[] = normalizedCategories.map((e, i) => ({
-    label: e.label,
-    value: e.percent,
-    color: BURN_COLORS[i % BURN_COLORS.length],
-    // keep raw for tooltip if needed
-  }))
-
-  const vendorEntries: { label: string; value: number }[] = data.transactionVendorEntries || []
-  const vendorTotal = vendorEntries.reduce((s, e) => s + e.value, 0)
-  const normalizedVendors = normalizeTo100(vendorEntries.map(e => ({ label: e.label, value: e.value })), vendorTotal)
-  const vendorDonut: DonutDatum[] = normalizedVendors.map((e, i) => ({
-    label: e.label,
-    value: e.percent,
-    color: BURN_COLORS[i % BURN_COLORS.length],
-  }))
+  const chips: { label: string; color: 'yellow' | 'surface' | 'white' }[] = [
+    { label: `Subscriptions: ${formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo`, color: 'yellow' },
+    { label: `Recurring: ${formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo`, color: 'white' },
+    { label: `Investments SIP: ${formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo`, color: 'surface' },
+  ]
 
   return (
-    <div className="flex flex-col gap-xl min-w-0">
-      <div className="flex flex-col sm:flex-row gap-sm sm:justify-between sm:items-end">
-        <h2 className="text-4xl md:text-5xl font-bold uppercase tracking-tight text-on-surface">
-          Overview
-        </h2>
-        <div className="flex items-center gap-2 font-bold text-[11px] uppercase tracking-[0.08em] text-on-surface-variant" title={loadedAt?.toLocaleString('en-IN')}>
-          <span className="nb-live-dot" aria-hidden="true" />
-          Updated {loadedAt ? loadedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+    <div className="fse-dash">
+      <div className="fse-dash-head">
+        <h1 className="fse-page-h1">Overview</h1>
+        <div className="fse-live" title={loadedAt?.toLocaleString('en-IN')}>
+          <span className="fse-live-dot" aria-hidden="true" />
+          <span>
+            Updated{' '}
+            {loadedAt
+              ? loadedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+              : '—'}{' '}
+            · {memberName}
+          </span>
         </div>
       </div>
 
-      {/* Stat cards */}
-      <StaggerList className="grid grid-cols-2 xl:grid-cols-4 gap-sm sm:gap-md min-w-0">
-        <StatCard
-          label="Monthly Income"
-          value={formatCurrency(data.monthlyIncome)}
-          valueNumber={data.monthlyIncome}
-          icon="account_balance_wallet"
-          color="yellow"
-        />
-        <StatCard
-          label="Monthly Outflow"
-          value={formatCurrency(data.monthlyObligations)}
-          valueNumber={data.monthlyObligations}
-          icon="shopping_cart"
-          color="white"
-        />
-        <StatCard
-          label="Investments Worth"
-          value={formatCurrency(data.investmentPortfolioValue.totalCurrentValue)}
-          valueNumber={data.investmentPortfolioValue.totalCurrentValue}
-          icon="show_chart"
-          color="cyan"
-        />
-        <StatCard
-          label="Net Monthly Savings"
-          value={formatCurrency(data.netMonthlyFlow)}
-          valueNumber={data.netMonthlyFlow}
-          icon="savings"
-          color="white"
-        />
-      </StaggerList>
+      <section className="fse-kpis" aria-label="Key financial metrics">
+        <div className="fse-kpi is-accent">
+          <div className="fse-kpi-top">
+            <span className="fse-kpi-label">Monthly Income</span>
+            <Icon name="account_balance_wallet" className="text-[18px]" aria-hidden="true" />
+          </div>
+          <div className="fse-kpi-value">
+            <CountUp value={data.monthlyIncome} format={formatCurrency} />
+          </div>
+        </div>
 
-      {/* Charts — transaction based, individual */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md lg:gap-xl min-w-0">
+        <div className="fse-kpi">
+          <div className="fse-kpi-top">
+            <span className="fse-kpi-label">Monthly Outflow</span>
+            <Icon name="shopping_cart" className="text-[18px]" aria-hidden="true" />
+          </div>
+          <div className="fse-kpi-value">
+            <CountUp value={data.monthlyObligations} format={formatCurrency} />
+          </div>
+        </div>
+
+        <div className="fse-kpi is-cyan">
+          <div className="fse-kpi-top">
+            <span className="fse-kpi-label">Investments Worth</span>
+            <Icon name="show_chart" className="text-[18px]" aria-hidden="true" />
+          </div>
+          <div className="fse-kpi-value">
+            <CountUp value={data.investmentPortfolioValue.totalCurrentValue} format={formatCurrency} />
+          </div>
+        </div>
+
+        <div className="fse-kpi">
+          <div className="fse-kpi-top">
+            <span className="fse-kpi-label">Net Monthly Savings</span>
+            <Icon name="savings" className="text-[18px]" aria-hidden="true" />
+          </div>
+          <div className="fse-kpi-value">
+            <CountUp value={data.netMonthlyFlow} format={formatCurrency} />
+          </div>
+        </div>
+      </section>
+
+      <section className="fse-analytics" aria-label="Spend analytics">
         <ChartPanel className="min-w-0">
-        <Card color="white" className="h-auto lg:h-[660px] overflow-y-auto min-w-0">
-          <h3 className="font-bold text-base uppercase">Monthly Spend Breakdown</h3>
-          <p className="text-xs font-bold text-on-surface-variant">From your transactions this month (individual)</p>
-          {burnEntries.length === 0 ? (
-            <p className="font-bold text-on-surface-variant mt-md">
-              No transactions this month — import or add one.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2 mt-sm min-w-0">
-              {burnEntries.slice(0, 5).map(([label, value]) => (
-                <div key={label} className="flex flex-col gap-2 min-w-0">
-                  <div className="flex justify-between items-center gap-sm min-w-0">
-                    <span className="font-bold text-xs uppercase min-w-0 truncate">{label}</span>
-                    <span className="font-bold text-xs whitespace-nowrap shrink-0">
-                      {formatCurrency(value)}
-                    </span>
-                  </div>
-                  <div className="h-3 bg-surface-variant brutal-thin">
-                    <motion.div
-                      className="h-full bg-on-surface origin-left"
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      style={{ width: `${(value / maxBurn) * 100}%` }}
-                      transition={{ type: 'spring', stiffness: 120, damping: 20, delay: 0.15 }}
-                    />
-                  </div>
-                </div>
-              ))}
-              {burnEntries.length > 5 && (
-                <div className="text-[11px] font-bold uppercase tracking-wider mt-1" style={{ color: 'var(--text-muted)' }}>
-                  +{burnEntries.length - 5} more categories
-                </div>
-              )}
+          <div className="fse-panel">
+            <div className="fse-panel-head">
+              <h2>Monthly Spend Breakdown</h2>
+              <p className="fse-panel-sub">From your transactions this month (individual)</p>
             </div>
-          )}
-          <div className="mt-sm pt-sm border-t-[3px] border-on-surface flex flex-wrap justify-between items-center gap-sm">
-            <span className="font-bold text-xs uppercase text-on-surface-variant">
-              Actual Spend (Transactions) this month
-            </span>
-            <span className="font-bold">
-              {formatCurrency(data.transactionSpendThisMonth ?? data.adHocSpendThisMonth)}
-              <span className="text-xs font-normal"> · {data.transactionCountThisMonth ?? 0} txns</span>
-            </span>
+
+            {categories.length === 0 ? (
+              <p className="fse-empty">
+                No transactions this month — import a statement or add one to see the breakdown.
+              </p>
+            ) : (
+              <div className="fse-bars">
+                {visibleBars.map((c, i) => {
+                  const pct = Math.max(4, Math.round((c.value / maxCat) * 100))
+                  const isActive = activeBar === c.label
+                  const color = CAT_VARS[i % CAT_VARS.length]
+                  return (
+                    <button
+                      key={c.label}
+                      type="button"
+                      className={cn('fse-bar-row', isActive && 'is-active')}
+                      onMouseEnter={() => setActiveBar(c.label)}
+                      onMouseLeave={() => setActiveBar(null)}
+                      onFocus={() => setActiveBar(c.label)}
+                      onBlur={() => setActiveBar(null)}
+                      aria-pressed={isActive}
+                      title={`${c.label}: ${formatCurrency(c.value)}`}
+                    >
+                      <span className="fse-bar-top">
+                        <span className="fse-bar-cat">
+                          <span className="fse-swatch" style={{ background: color }} />
+                          <span>{c.label}</span>
+                        </span>
+                        <span className="fse-bar-amt">{formatCurrency(c.value)}</span>
+                      </span>
+                      <span className="fse-bar-track" aria-hidden="true">
+                        <span
+                          className="fse-bar-fill"
+                          style={{ display: 'block', width: `${pct}%`, background: color }}
+                        />
+                      </span>
+                    </button>
+                  )
+                })}
+                {hiddenBars > 0 && (
+                  <span className="fse-more">+{hiddenBars} more categories — open Transactions for all</span>
+                )}
+              </div>
+            )}
+
+            <div className="fse-panel-foot">
+              <span className="fse-kicker">Actual spend (transactions) this month</span>
+              <div className="fse-spend-line">
+                <span className="fse-spend-val">{formatCurrency(actualSpend)}</span>
+                <span className="fse-spend-count">{txnCount} txns</span>
+              </div>
+              <div className="fse-chips">
+                {chips.map((c) => (
+                  <Badge key={c.label} color={c.color}>{c.label}</Badge>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="mt-sm flex flex-wrap gap-1 text-[10px] font-bold">
-            <span className="brutal-thin bg-brand-yellow px-1.5 py-0.5">Subscriptions: {formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo</span>
-            <span className="brutal-thin bg-white px-1.5 py-0.5">Recurring: {formatCurrency(data.monthlyBurnBreakdown?.Recurring || 0)}/mo</span>
-            <span className="brutal-thin bg-surface-variant px-1.5 py-0.5">Investments SIP: {formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo</span>
-          </div>
-        </Card>
         </ChartPanel>
 
         <ChartPanel className="min-w-0" delay={0.06}>
-        <Card color="white" className="h-auto lg:h-[660px] flex flex-col overflow-hidden min-w-0">
-          <h3 className="font-bold text-lg uppercase leading-none">Category Breakdown</h3>
-          <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your spend by category (transactions)</p>
-          {donut.length === 0 ? (
-            <p className="font-bold mt-md" style={{ color: 'var(--text-secondary)' }}>No data.</p>
-          ) : (
-            <>
-              {/* Donut — fixed vertical region */}
-              <div className="shrink-0 mt-2">
-                <DonutChart data={donut} centerLabel="Total" height={200} />
-              </div>
-              {/* Legend — independent rows, scrolls internally, never overlaps */}
-              <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col" style={{ borderColor: 'var(--border)' }}>
-                <div className="grid grid-cols-1 gap-2 content-start overflow-y-auto custom-scrollbar pr-1 max-h-[240px] flex-1 min-h-0">
-                  {normalizedCategories.map((d, i) => (
-                    <div
-                      key={`${d.label}-${i}`}
-                      className="flex items-center gap-2 min-h-[38px] px-2 py-1.5 brutal-thin overflow-hidden"
-                      style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}
-                      title={`${d.label}: ${d.percent}% (₹${d.value.toLocaleString('en-IN')})`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 shrink-0 border rounded-[2px]"
-                        style={{ background: BURN_COLORS[i % BURN_COLORS.length], borderColor: 'var(--border)' }}
-                      />
-                      <span className="flex-1 min-w-0 truncate font-bold text-xs" style={{ color: 'var(--text-primary)' }}>
-                        {d.label}
-                      </span>
-                      <span className="shrink-0 font-bold text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {d.percent}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </Card>
+          <div className="fse-panel">
+            <div className="fse-panel-head">
+              <h2>Category Breakdown</h2>
+              <p className="fse-panel-sub">Your spend by category (transactions)</p>
+            </div>
+            <EntryTicks
+              items={catTicks}
+              total={catTotal}
+              totalLabel="Total spend"
+              activeIndex={activeCat}
+              onActiveChange={setActiveCat}
+            />
+          </div>
         </ChartPanel>
 
         <ChartPanel className="min-w-0" delay={0.12}>
-        <Card color="white" className="h-auto lg:h-[660px] flex flex-col overflow-hidden min-w-0">
-          <h3 className="font-bold text-lg uppercase leading-none">Vendor Breakdown</h3>
-          <p className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>Your top vendors this month</p>
-          {vendorDonut.length === 0 ? (
-            <p className="font-bold mt-md" style={{ color: 'var(--text-secondary)' }}>No vendor spend yet.</p>
-          ) : (
-            <>
-              <div className="shrink-0 mt-2">
-                <DonutChart data={vendorDonut} centerLabel="Total" height={200} />
-              </div>
-              <div className="flex-1 min-h-0 mt-3 pt-3 border-t flex flex-col overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 flex flex-col gap-2 max-h-[260px]">
-                  {normalizedVendors.map((e, i) => {
-                    const isUpi = /upi|@|UPI/.test(e.label)
-                    const display = e.label.length > 28 ? `${e.label.slice(0, 20)}…${e.label.slice(-6)}` : e.label
-                    return (
-                      <div
-                        key={`${e.label}-${i}`}
-                        className="flex items-center gap-2 min-h-[44px] px-2 py-2 brutal-thin overflow-hidden"
-                        style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}
-                        title={`${e.label} — ${formatCurrency(e.value)} (${e.percent}%)`}
-                      >
-                        <span
-                          className="w-3 h-3 shrink-0 rounded-[2px] border"
-                          style={{ background: BURN_COLORS[i % BURN_COLORS.length], borderColor: 'var(--border)' }}
-                        />
-                        <span className="flex-1 min-w-0 font-bold text-xs leading-tight overflow-hidden">
-                          <span className="block truncate" style={{ color: 'var(--text-primary)' }} title={e.label}>
-                            {isUpi ? display : e.label}
-                          </span>
-                          <span className="block text-[10px] font-medium truncate" style={{ color: 'var(--text-muted)' }}>
-                            {e.percent}% · {formatCurrency(e.value)}
-                          </span>
-                        </span>
-                        <span className="shrink-0 font-bold text-xs whitespace-nowrap text-right min-w-[70px]" style={{ color: 'var(--text-primary)' }}>
-                          {formatCurrency(e.value)}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </Card>
+          <div className="fse-panel">
+            <div className="fse-panel-head">
+              <h2>Vendor Breakdown</h2>
+              <p className="fse-panel-sub">Your top vendors this month</p>
+            </div>
+            <EntryTicks
+              items={vendorTicks}
+              total={vendorTotal}
+              totalLabel="Top vendors"
+              showAmountInLegend
+              activeIndex={activeVendor}
+              onActiveChange={setActiveVendor}
+            />
+          </div>
         </ChartPanel>
       </section>
 
-      {/* Upcoming payments */}
-      <section className="flex flex-col gap-md pb-xl">
-        <SectionTitle
-          action={
-            <Link to="/subscriptions" className="font-bold underline hover:bg-brand-yellow px-1">
-              View All
-            </Link>
-          }
-        >
-          Upcoming Payments
-        </SectionTitle>
+      <section aria-label="Upcoming payments">
+        <div className="fse-upcoming-head">
+          <h2>Upcoming Payments</h2>
+          <div className="fse-upcoming-actions">
+            {data.upcomingPayments.length > 0 && (
+              <Badge color="surface">{data.upcomingPayments.length} due this week</Badge>
+            )}
+            <Link to="/subscriptions" className="fse-text-link">View All →</Link>
+          </div>
+        </div>
+
         {data.upcomingPayments.length === 0 ? (
-          <p className="font-bold text-on-surface-variant">
-            No payments due in the next 7 days.
-          </p>
+          <p className="fse-empty">No payments due in the next 7 days.</p>
         ) : (
-          <div className="flex gap-md overflow-x-auto no-scrollbar pb-sm pt-xs pl-xs -ml-xs">
+          <div className="fse-strip">
             {data.upcomingPayments.map((p) => {
-              const dueInDays = daysUntil(p.dueDate)
-              const meta = TYPE_META[p.type] ?? {
-                icon: 'payments',
-                bg: 'bg-surface-variant',
-              }
-              const action = dueInDays <= 5 ? 'Pay Now' : 'Schedule'
+              const dueIn = daysUntil(p.dueDate)
+              const meta = TYPE_META[p.type] ?? { icon: 'payments', label: p.type || 'Payment' }
+              const urgent = dueIn <= 5
+              const target = p.type === 'subscription' ? `/subscriptions/${p.id}` : '/recurring'
               return (
-                <div
-                  key={p.id}
-                  className={`min-w-[280px] brutal p-md flex flex-col gap-sm nb-card-enter nb-card-hover cursor-pointer ${meta.bg}`}
-                >
-                  <div className="flex justify-between items-start gap-sm">
-                    <div className="flex items-center gap-xs min-w-0">
-                      <div className="w-10 h-10 bg-surface-variant brutal-thin flex items-center justify-center shrink-0">
-                        <Icon name={meta.icon} />
-                      </div>
-                      <span className="font-bold truncate min-w-0">{p.name}</span>
+                <article key={p.id} className={cn('fse-upcoming', urgent && 'is-accent')}>
+                  <div className="fse-upcoming-top">
+                    <div className="fse-upcoming-title">
+                      <span className="fse-upcoming-icon">
+                        <Icon name={meta.icon} className="text-base" aria-hidden="true" />
+                      </span>
+                      <span className="fse-upcoming-name">{p.name}</span>
                     </div>
+                    <Badge color={urgent ? 'error' : 'surface'}>
+                      {urgent ? `Due in ${Math.max(dueIn, 0)}d` : 'Upcoming'}
+                    </Badge>
+                  </div>
+                  <div className="fse-upcoming-amt">{formatCurrency(p.amount)}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span
-                      className={`border-2 border-on-surface px-2 py-1 font-bold text-xs whitespace-nowrap shrink-0 ${
-                        dueInDays <= 5
-                          ? 'bg-error-container text-on-error-container'
-                          : 'bg-white'
-                      }`}
+                      className="fse-kicker"
+                      style={{ textTransform: 'none', letterSpacing: 0, fontSize: 11 }}
                     >
-                      Due {formatDate(p.dueDate)}
+                      {meta.label} · due {formatDate(p.dueDate)}
                     </span>
+                    <Link to={target} className="fin-button fse-btn is-sm is-block">
+                      Review {p.type === 'subscription' ? 'subscription' : 'payment'}
+                    </Link>
                   </div>
-                  <div className="font-bold text-2xl mt-sm">
-                    {formatCurrency(p.amount)}
-                  </div>
-                  <Button
-                    variant={action === 'Pay Now' ? 'primary' : 'white'}
-                    size="sm"
-                    block
-                  >
-                    {action}
-                  </Button>
-                </div>
+                </article>
               )
             })}
           </div>
         )}
       </section>
+
+      {/* Member switching lives in the shared shell header (Header.tsx), which
+          reads the same activeMemberId this page fetches against. */}
     </div>
   )
 }

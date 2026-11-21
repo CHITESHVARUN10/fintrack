@@ -7,153 +7,140 @@
    ================================================================ */
 @layer base {
   :root {
-    /* Light — FinStack neubrutalist light */
-    --bg-page: #ffffff;
-    --bg-sidebar: #ffffff;
-    --bg-header: #ffffff;
-    --bg-surface: #ffffff;           /* chart canvas / flat panels */
-    --bg-card: #ffffff;
-    --bg-input: #ffffff;
-    --bg-table-header: #1e1c10;
-    --bg-table-row: #ffffff;
-    --bg-table-row-alt: #faf3df;
-    --bg-elevated: #f4eeda;
-    --bg-hover: #f4eeda;
-    --text-primary: #1e1c10;
-    --text-secondary: #4b4731;
-    --text-muted: #7a7868;
-    --text-placeholder: #67655a;
-    --border: #1e1c10;
-    --border-subtle: rgba(30,28,16,0.18);
-    --border-strong: #1e1c10;
-    --shadow: #1e1c10;               /* ink shadow in light */
-    --accent: #FFE500;
-    --accent-hover: #E6CE00;
-    --accent-text: #1e1c10;
-    --chart-1: #FFE500;
-    --chart-2: #00fcfb;
-    --chart-3: #1e1c10;
-    --chart-4: #FF6B6B;
-    --chart-5: #9b5de5;
-    --chart-6: #00bbf9;
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+    --nb-yellow: #FFE500;
+    --nb-cyan: #00F0FF;
+    --nb-teal: #00A884;
+    --nb-pink: #FF3B7F;
+    --nb-violet: #7C5CFF;
+    --nb-orange: #FF6B35;
+    --ink-fixed: #11110E;
+    --ink-inverse: #FAF5E6;
+
+    --bg-page: #FAF5E6;
+    --bg-grid: rgb(17 17 14 / 6.5%);
+    --bg-sidebar: #FFFFFF;
+    --bg-header: var(--bg-card);
+    --bg-surface: var(--bg-card);
+    --bg-card: #FFFFFF;
+    --bg-input: #FFFFFF;
+    --bg-table-header: #11110E;
+    --bg-table-row: var(--bg-card);
+    --bg-table-row-alt: #F7F1DF;
+    --bg-warm: #F2EBD5;
+    --bg-elevated: var(--bg-warm);
+    --bg-hover: #F7F1DF;
+    --text-primary: #11110E;
+    --text-secondary: #5C594F;
+    --text-muted: #686457;
+    --text-placeholder: var(--text-muted);
+    --border: #11110E;
+    --border-subtle: rgb(17 17 14 / 22%);
+    --border-strong: #11110E;
+    --shadow: #11110E;
+    --accent: var(--nb-yellow);
+    --accent-hover: #F0D700;
+    --accent-text: var(--ink-fixed);
+    --chart-1: var(--nb-yellow);
+    --chart-2: var(--nb-cyan);
+    --chart-3: var(--nb-pink);
+    --chart-4: var(--nb-violet);
+    --chart-5: var(--nb-teal);
+    --chart-6: var(--nb-orange);
     --chart-7: #6BCB77;
     --chart-8: #4D96FF;
-    --chart-grid: rgba(30,28,16,0.10);
-    --chart-axis: #1e1c10;
-    --chart-axis-text: #333333;
-    /* Line-safe series colours (bright yellow is a fill, not a 2px stroke) */
-    --chart-line-primary: #0e8f8b;
-    --chart-line-secondary: #d43a6c;
-    --chart-line-accent: #b58900;
-    /* Spend-heatmap ramp (light: cream → deep amber → ink) */
-    --heat-1: #ffffff;
-    --heat-2: #fff3a0;
-    --heat-3: #ffe500;
-    --heat-4: #d4a017;
-    --heat-5: #8a7a0a;
-    --heat-6: #1e1c10;
-    --heat-ink: #1e1c10;
-    --heat-inverse: #ffffff;
-    --nb-yellow: #FFE500;
-    --nb-flash-from: #1e1c10;
+    --chart-grid: rgb(17 17 14 / 11%);
+    --chart-axis: var(--border);
+    --chart-axis-text: var(--text-secondary);
+    --chart-line-primary: #087A66;
+    --chart-line-secondary: #B51D57;
+    --chart-line-accent: #926D00;
+    --heat-1: var(--bg-card);
+    --heat-2: #FFF3A0;
+    --heat-3: var(--accent);
+    --heat-4: #D4A017;
+    --heat-5: #8A7A0A;
+    --heat-6: #11110E;
+    --heat-ink: var(--ink-fixed);
+    --heat-inverse: #FFFFFF;
+    --nb-flash-from: var(--border);
 
-    /* Legacy color aliases remapped in tailwind.config.js (rgb triplets support alpha) */
+    /* Tailwind aliases use RGB channels so opacity utilities continue to work. */
     --c-white: 255 255 255;
-    --c-bg: 255 255 255;
+    --c-bg: 250 245 230;
     --c-surface-base: 255 255 255;
     --c-surface-lowest: 255 255 255;
-    --c-surface-low: 250 243 223;
-    --c-surface: 244 238 218;
-    --c-surface-high: 238 232 212;
-    --c-surface-variant: 233 226 207;
-    --c-surface-highest: 233 226 207;
-    --c-on-surface: 30 28 16;
-    --c-on-surface-variant: 75 71 49;
+    --c-surface-low: 247 241 223;
+    --c-surface: 242 235 213;
+    --c-surface-high: 242 235 213;
+    --c-surface-variant: 235 225 199;
+    --c-surface-highest: 235 225 199;
+    --c-on-surface: 17 17 14;
+    --c-on-surface-variant: 92 89 79;
     --c-outline-variant: 206 199 170;
-    --c-tertiary-container: 0 252 251;
-    --c-on-tertiary-container: 0 113 113;
-    --c-secondary-container: 226 226 226;
-    --c-on-secondary-container: 100 100 100;
-    --c-error-container: 255 218 214;
-    --c-on-error-container: 147 0 10;
+    --c-tertiary-container: 0 240 255;
+    --c-on-tertiary-container: 0 92 89;
+    --c-secondary-container: 239 231 205;
+    --c-on-secondary-container: 78 72 52;
+    --c-error-container: 255 214 220;
+    --c-on-error-container: 159 21 46;
     --c-accent: 255 229 0;
     color-scheme: light;
   }
 
-  /* Polished neubrutalism dark — near-black page, layered charcoal cards,
-     accent-tinted structure lines, glowing accent shadow (not black). */
   :root:where(.dark, [data-theme="dark"]) {
-    --bg-page: #0a0a0a;
-    --bg-sidebar: #111114;
-    --bg-header: #111114;
-    --bg-surface: #0d0d10;           /* chart canvas — very-near-black, not pure #000 */
-    --bg-card: #19191e;
-    --bg-input: #131317;
-    --bg-table-header: #23232a;
-    --bg-table-row: #131317;
-    --bg-table-row-alt: #17171c;
-    --bg-elevated: #26262d;
-    --bg-hover: #2b2b32;
-    --text-primary: #f5f5f2;         /* off-white — 15:1 on page */
-    --text-secondary: #b3b3ab;       /* 7:1 on card — comfortable reading */
-    --text-muted: #8f8f88;           /* 4.6:1 on card */
-    --text-placeholder: #8f8f88;
-    --border: rgba(255,229,0,0.34);  /* accent-tinted structure line */
-    --border-subtle: rgba(245,245,240,0.14);
-    --border-strong: #f5f5f0;
-    --shadow: #FFE000;               /* glowing accent shadow — not black */
-    --accent: #FFE500;
-    --accent-hover: #E6CE00;
-    --accent-text: #0a0a0a;
-    /* Chart — boosted for dark (sat/light +10-15%) */
-    --chart-1: #FFE500;
-    --chart-2: #2EC4B6;
-    --chart-3: #E8487F;
-    --chart-4: #7B61FF;
-    --chart-5: #FF7A45;
-    --chart-6: #FFB347;
-    --chart-7: #6BCB77;
-    --chart-8: #4D96FF;
-    --chart-grid: rgba(255, 255, 255, 0.08);
-    --chart-axis: #d8d8d0;           /* axis text — 4.5:1 */
-    --chart-axis-text: #d8d8d0;
-    --chart-line-primary: #2ec4b6;
-    --chart-line-secondary: #ff6b9a;
-    --chart-line-accent: #ffe500;
-    /* Heatmap ramp (dark: near-black → deep amber → full accent) */
-    --heat-1: #131317;
-    --heat-2: #3a3410;
-    --heat-3: #6b5e08;
-    --heat-4: #b09012;
-    --heat-5: #e6c814;
-    --heat-6: #FFE500;
-    --heat-ink: #f5f5f2;
-    --heat-inverse: #0a0a0a;
-    --nb-yellow: #FFE500;
-    --nb-flash-from: #111114;
+    --ink-inverse: #11110E;
+    --focus-ring: var(--accent);
+    --bg-page: #0E0E0C;
+    --bg-grid: rgb(245 242 232 / 5.5%);
+    --bg-sidebar: #161613;
+    --bg-card: #1C1C18;
+    --bg-input: #141411;
+    --bg-table-header: #242420;
+    --bg-table-row-alt: #22221D;
+    --bg-warm: #252520;
+    --bg-hover: #2A2A24;
+    --text-primary: #F5F2E8;
+    --text-secondary: #A8A496;
+    --text-muted: #A8A496;
+    --border: #E5E0D0;
+    --border-subtle: rgb(229 224 208 / 24%);
+    --border-strong: #F5F2E8;
+    --shadow: var(--accent);
+    --chart-grid: rgb(245 242 232 / 12%);
+    --chart-line-primary: #54D4BB;
+    --chart-line-secondary: #FF70A1;
+    --chart-line-accent: var(--accent);
+    --heat-2: #3A3410;
+    --heat-3: #6B5E08;
+    --heat-4: #B09012;
+    --heat-5: #E6C814;
+    --heat-6: var(--accent);
+    --heat-ink: var(--text-primary);
+    --heat-inverse: var(--ink-fixed);
+    --nb-flash-from: var(--bg-sidebar);
 
-    /* Legacy color aliases — flip with .dark so legacy classes theme correctly.
-       ALL must be rgb channel triplets: the Tailwind config wraps them in
-       rgb(var(--x) / <alpha>) — a hex var here would be invalid there. */
-    --c-white: 25 25 30;               /* == var(--bg-card) #19191e */
-    --c-bg: 10 10 10;                  /* == var(--bg-page) #0a0a0a */
-    --c-surface-base: 13 13 16;        /* == var(--bg-surface) #0d0d10 */
-    --c-surface-lowest: 25 25 30;      /* == var(--bg-card) #19191e */
-    --c-surface-low: 19 19 23;         /* == var(--bg-input) #131317 */
-    --c-surface: 13 13 16;             /* == var(--bg-surface) #0d0d10 */
-    --c-surface-high: 38 38 45;        /* == var(--bg-elevated) #26262d */
-    --c-surface-variant: 38 38 45;
-    --c-surface-highest: 38 38 45;
-    --c-on-surface: 245 245 242;
-    --c-on-surface-variant: 179 179 171;
-    --c-outline-variant: 84 84 90;
-    --c-tertiary-container: 36 56 58;
-    --c-on-tertiary-container: 126 221 214;
-    --c-secondary-container: 38 38 45;
-    --c-on-secondary-container: 179 179 171;
-    --c-error-container: 56 34 46;
-    --c-on-error-container: 242 160 184;
-    --c-accent: 255 229 0;
+    --c-white: 28 28 24;
+    --c-bg: 14 14 12;
+    --c-surface-base: 28 28 24;
+    --c-surface-lowest: 28 28 24;
+    --c-surface-low: 34 34 29;
+    --c-surface: 28 28 24;
+    --c-surface-high: 37 37 32;
+    --c-surface-variant: 42 42 36;
+    --c-surface-highest: 42 42 36;
+    --c-on-surface: 245 242 232;
+    --c-on-surface-variant: 168 164 150;
+    --c-outline-variant: 98 94 83;
+    --c-tertiary-container: 32 61 57;
+    --c-on-tertiary-container: 138 224 209;
+    --c-secondary-container: 42 42 36;
+    --c-on-secondary-container: 189 184 168;
+    --c-error-container: 65 34 44;
+    --c-on-error-container: 255 173 189;
     color-scheme: dark;
   }
 
@@ -165,13 +152,18 @@
 
   body {
     margin: 0;
-    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-family: var(--font-body);
     font-weight: 500;
+    line-height: 1.5;
     color: var(--text-primary);
     background: var(--bg-page);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
   }
 
   .material-symbols-outlined {
@@ -191,39 +183,19 @@
 }
 
 @layer components {
-  /* Neubrutalist — light: black border+shadow; dark: off-white border + accent shadow (inverted) */
   .brutal {
-    border: 3px solid var(--border);
-    box-shadow: 4px 4px 0px 0px var(--shadow);
-  }
-  .dark .brutal,
-  :root[data-theme="dark"] .brutal {
-    border: 3px solid var(--border);
-    box-shadow: 4px 4px 0px 0px var(--shadow);
+    border: 2px solid var(--border);
+    box-shadow: 5px 5px 0 var(--shadow);
   }
   .brutal-3 {
     border: 3px solid var(--border);
   }
-  .dark .brutal-3,
-  :root[data-theme="dark"] .brutal-3 {
-    border: 3px solid var(--border);
-  }
-  /* brutal-thin is for inputs/controls — subtle in dark, not stark */
   .brutal-thin {
     border: 1.5px solid var(--border);
   }
-  .dark .brutal-thin,
-  :root[data-theme="dark"] .brutal-thin {
-    border: 1px solid var(--border-subtle);
-  }
   .brutal-sm {
     border: 2px solid var(--border);
-    box-shadow: 2px 2px 0px 0px var(--shadow);
-  }
-  .dark .brutal-sm,
-  :root[data-theme="dark"] .brutal-sm {
-    border: 2px solid var(--border);
-    box-shadow: 2px 2px 0px 0px var(--shadow);
+    box-shadow: 3px 3px 0 var(--shadow);
   }
   .brutal-hover {
     transition: all 0.15s ease-in-out;
@@ -245,14 +217,9 @@
 
   .bg-grid-pattern {
     background-image:
-      linear-gradient(to right, rgba(30,28,16,0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(30,28,16,0.08) 1px, transparent 1px);
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
     background-size: 24px 24px;
-  }
-  .dark .bg-grid-pattern {
-    background-image:
-      linear-gradient(to right, rgba(242,240,223,0.04) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(242,240,223,0.04) 1px, transparent 1px);
   }
 }
 
@@ -324,14 +291,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   animation: nb-fade-in 0.18s ease-out both;
 }
 @keyframes nb-fade-in { from { opacity: 0; } to { opacity: 1; } }
-.nb-drawer { transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
 .nb-pop-menu { animation: nb-pop-menu 0.16s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top left; }
 @keyframes nb-pop-menu {
   from { opacity: 0; transform: translateY(-4px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nb-drawer { transition-duration: 0.01ms; }
   .nb-backdrop, .nb-pop-menu { animation: none; }
 }
 .nb-chart-legend {
@@ -364,7 +329,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   color: var(--text-primary);
   border: 2px solid var(--border);
   box-shadow: 3px 3px 0 0 var(--shadow);
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 700;
   animation: nb-tooltip-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
@@ -395,8 +360,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 @media (prefers-reduced-motion: reduce) {
   .nb-page-enter,
   .nb-card-enter,
-  .nb-chart-tooltip,
-  .nb-notification-badge { animation: none !important; }
+  .nb-chart-tooltip { animation: none !important; }
 }
 @keyframes nb-card-enter {
   from { transform: translateY(18px); opacity: 0; }
@@ -429,18 +393,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   60% { transform: scale(1.08); }
   100% { transform: scale(1); }
 }
-.nb-sidebar-fill {
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  transform-origin: left center;
-  transform: scaleX(0);
-  pointer-events: none;
-}
-.nb-sidebar-fill.is-active { animation: nb-sidebar-fill 0.15s steps(6) forwards; }
-@keyframes nb-sidebar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.nb-notification-badge { animation: nb-notification-pulse 2s steps(2) infinite; }
-@keyframes nb-notification-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
 .nb-shake { animation: nb-shake 0.4s steps(1) both; }
 @keyframes nb-shake {
   0% { transform: translateX(0); } 15% { transform: translateX(-6px); } 30% { transform: translateX(6px); }
@@ -498,7 +450,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .text-white { color: var(--text-primary) !important; }
 .dark ::placeholder { color: var(--text-placeholder) !important; }
 
-/* Structure borders — accent-tinted warm lines keep the brutal look */
+/* Structure borders follow the theme while decorative separators remain muted. */
 .dark .border-on-surface { border-color: var(--border) !important; }
 .dark .border-outline-variant { border-color: var(--border-subtle) !important; }
 /* Keep 3px brutal width in dark — stark structure, not 1px */
@@ -509,13 +461,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .border-l-\[3px\] { border-left-width: 3px !important; border-color: var(--border) !important; }
 .dark .border-b-2,
 .dark .border-t-2 { border-color: var(--border-subtle) !important; }
-.dark .border-2 { border-width: 1px !important; }
 
 /* Ink-on-accent: yellow surfaces keep dark text */
 .dark .bg-brand-yellow {
   background-color: var(--accent) !important;
   color: var(--accent-text) !important;
-  border-color: var(--accent) !important;
 }
 .dark .bg-brand-yellow .text-on-surface,
 .dark .bg-brand-yellow * { color: var(--accent-text); }
@@ -528,7 +478,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 /* bg-on-surface ink inverts: dark ink → light for bars/buttons.
    Table header rows (tr.bg-on-surface / thead) keep a distinct dark header. */
 .dark thead.bg-on-surface,
-.dark tr.bg-on-surface { background: var(--bg-table-header) !important; color: var(--text-secondary) !important; }
+.dark tr.bg-on-surface { background: var(--bg-table-header) !important; color: #F5F2E8 !important; }
 .dark thead.bg-on-surface th { font-weight: 700; letter-spacing: 0.04em; }
 .dark .bg-on-surface:not(thead):not(th):not(tr) { background: var(--text-primary) !important; color: var(--bg-page) !important; }
 
@@ -573,9 +523,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .dark .nb-skeleton-card { border-color: var(--border); background: var(--bg-surface); }
 .dark .nb-indeterminate { background: var(--bg-input); border-color: var(--border); }
 
-/* Yellow flash stays; accent selection */
-.dark .nb-sidebar-fill { background: var(--accent); }
-
 /* ---------------------------------------------------------------------------
    Browser surfaces — selection, caret, placeholders, keyboard focus.
    These render with UA defaults that belong to no design system; theme them
@@ -594,7 +541,7 @@ textarea::placeholder {
 /* One visible focus ring for every control, including ones that set
    outline-none for mouse use. Ink on every surface in both themes. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 3px solid var(--text-primary) !important;
+  outline: 2px solid var(--focus-ring, var(--text-primary)) !important;
   outline-offset: 2px;
 }
 
@@ -615,3 +562,63 @@ img, svg, video { max-width: 100%; }
 }
 /* Long unbroken strings (UPIs, IDs, URLs) must wrap instead of overflowing */
 .break-all-safe { overflow-wrap: anywhere; }
+
+@layer components {
+  .fin-button {
+    --button-fill: var(--accent);
+    --button-hover: var(--accent-hover);
+    --button-foreground: var(--accent-text);
+    --button-border: var(--ink-fixed);
+    background: var(--button-fill);
+    color: var(--button-foreground);
+    border: 2px solid var(--button-border);
+    box-shadow: 3px 3px 0 var(--shadow);
+  }
+
+  .fin-button[data-variant="white"] {
+    --button-fill: var(--bg-card);
+    --button-hover: var(--bg-hover);
+    --button-foreground: var(--text-primary);
+    --button-border: var(--border);
+  }
+
+  .fin-button[data-variant="primary"] {
+    --button-fill: var(--text-primary);
+    --button-hover: color-mix(in srgb, var(--text-primary) 85%, var(--bg-card));
+    --button-foreground: var(--bg-page);
+    --button-border: var(--text-primary);
+  }
+
+  .fin-button[data-variant="primary"]:where(.dark *) {
+    --button-fill: var(--accent);
+    --button-hover: var(--accent-hover);
+    --button-foreground: var(--accent-text);
+    --button-border: var(--ink-fixed);
+  }
+
+  .fin-button[data-variant="cyan"] {
+    --button-fill: var(--nb-cyan);
+    --button-hover: #41F5FF;
+    --button-foreground: var(--ink-fixed);
+  }
+
+  .fin-button[data-variant="error"] {
+    --button-fill: rgb(var(--c-error-container));
+    --button-hover: color-mix(in srgb, rgb(var(--c-on-error-container)) 14%, rgb(var(--c-error-container)));
+    --button-foreground: rgb(var(--c-on-error-container));
+    --button-border: var(--border);
+  }
+
+  .fin-button:enabled:hover { background: var(--button-hover); }
+  .fin-button:enabled:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--shadow); }
+  .fin-color-yellow { background: var(--accent); color: var(--accent-text); border-color: var(--ink-fixed); }
+  .fin-color-cyan { background: var(--nb-cyan); color: var(--ink-fixed); border-color: var(--ink-fixed); }
+  .fin-input { background: var(--bg-input); color: var(--text-primary); border: 2px solid var(--border); font-size: 0.875rem; }
+  .fin-input:focus { box-shadow: 2px 2px 0 var(--shadow); }
+  .fin-table-head { background: var(--bg-table-header); color: #FAF5E6; }
+  .fin-modal-panel { box-shadow: 7px 7px 0 var(--shadow); }
+
+  @media (max-width: 640px) {
+    .fin-input { font-size: 1rem; }
+  }
+}

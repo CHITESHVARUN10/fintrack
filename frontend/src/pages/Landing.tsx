@@ -1,154 +1,226 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { useInView } from 'react-intersection-observer'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Icon } from '../components/ui/Icon'
-import { Button } from '../components/ui/Button'
+import { Reveal } from '../components/motion'
+import { formatCurrency } from '../lib/format'
+import { Badge } from '../components/ui/Badge'
+import './entry-overview.css'
 
-const features = [
-  { icon: 'account_balance_wallet', title: 'Income Tracker', desc: 'Log multiple income streams accurately.', color: 'bg-brand-yellow' },
-  { icon: 'subscriptions', title: 'Subscriptions', desc: 'Never pay for forgotten services again.', color: 'bg-white' },
-  { icon: 'trending_up', title: 'SIPs & Mutuals', desc: 'Auto-sync your investment portfolios.', color: 'bg-brand-yellow' },
-  { icon: 'receipt_long', title: 'Daily Expenses', desc: 'Categorize spending with custom tags.', color: 'bg-brand-yellow' },
-  { icon: 'monitoring', title: 'Family Dashboard', desc: 'See every member’s spend in one place.', color: 'bg-white' },
-  { icon: 'bar_chart', title: 'Reports & Budgets', desc: 'Monthly, annual and family reports.', color: 'bg-brand-yellow' },
+const FEATURES = [
+  { icon: 'account_balance_wallet', title: 'Income Tracker', desc: 'Log multiple income streams accurately.', accent: true },
+  { icon: 'subscriptions', title: 'Subscriptions', desc: 'Never pay for forgotten services again.', accent: false },
+  { icon: 'trending_up', title: 'SIPs & Mutuals', desc: 'Auto-sync your investment portfolios.', accent: true },
+  { icon: 'receipt_long', title: 'Daily Expenses', desc: 'Categorize spending with custom tags.', accent: true },
+  { icon: 'monitoring', title: 'Family Dashboard', desc: 'See every member’s spend in one place.', accent: false },
+  { icon: 'bar_chart', title: 'Reports & Budgets', desc: 'Monthly, annual and family reports.', accent: true },
 ]
 
-export function Landing() {
-  const { ref: featuresRef, inView: featuresVisible } = useInView({ threshold: 0.15, triggerOnce: true })
-  const { ref: footerRef, inView: footerVisible } = useInView({ threshold: 0.15, triggerOnce: true })
-  return (
-    <div className="min-h-screen flex flex-col bg-white text-on-surface font-sans overflow-x-hidden">
-      {/* Navbar */}
-      <nav className="w-full border-b-4 border-on-surface bg-white sticky top-0 z-50 flex flex-wrap justify-between items-center gap-2 px-md py-sm min-w-0">
-        <div className="font-bold text-xl sm:text-2xl uppercase tracking-tighter break-words min-w-0">FinStack</div>
-        <div className="hidden md:flex gap-md font-bold">
-          <a className="hover:underline underline-offset-4 decoration-[3px]" href="#features">
-            Features
-          </a>
-          <Link to="/docs" className="hover:underline underline-offset-4 decoration-[3px]">
-            Docs
-          </Link>
-          <Link to="/privacy" className="hover:underline underline-offset-4 decoration-[3px]">
-            Privacy
-          </Link>
-        </div>
-        <Link to="/login">
-          <button className="bg-brand-yellow border-4 border-on-surface px-md py-1 font-bold shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all">
-            Log In
-          </button>
-        </Link>
-      </nav>
+// Illustrative sample used only for the marketing preview. Month labels follow
+// the current calendar so the hero never looks stale.
+const OUTFLOW_SAMPLE = [21400, 33800, 45200, 26900, 17650]
 
-      {/* Hero */}
-      <section className="relative w-full flex flex-col md:flex-row items-stretch border-b-4 border-on-surface">
-        <div className="w-full md:w-1/2 min-w-0 p-md md:p-xl flex flex-col justify-center border-b-4 md:border-b-0 md:border-r-4 border-on-surface">
-          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="text-4xl sm:text-5xl md:text-7xl font-bold uppercase leading-[0.95] tracking-tight mb-md break-words">
+function monthLabels(count: number): string[] {
+  const now = new Date()
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (count - 1 - i), 1)
+    return d.toLocaleDateString('en-IN', { month: 'short' }).toUpperCase()
+  })
+}
+
+export function Landing() {
+  const reduceMotion = useReducedMotion()
+  const months = useMemo(() => monthLabels(OUTFLOW_SAMPLE.length), [])
+  const peak = OUTFLOW_SAMPLE.indexOf(Math.max(...OUTFLOW_SAMPLE))
+  const [activeBar, setActiveBar] = useState(peak)
+
+  const BAR_W = 58
+  const GAP = 20
+  const START_X = 14
+  const BASE_Y = 106
+  const maxVal = Math.max(...OUTFLOW_SAMPLE)
+
+  return (
+    <div className="fse-landing">
+      <header className="fse-landing-nav">
+        <Link to="/" className="fse-brand" aria-label="FinStack home">
+          <span className="fse-brand-sq" aria-hidden="true">F</span>
+          <span className="fse-brand-word">FinStack</span>
+        </Link>
+        <nav className="fse-landing-links" aria-label="Landing">
+          <a href="#features">Features</a>
+          <Link to="/docs">Docs</Link>
+          <Link to="/privacy">Privacy</Link>
+        </nav>
+        <Link to="/login" className="fin-button fse-btn is-sm">Log In</Link>
+      </header>
+
+      <section className="fse-hero">
+        <div className="fse-hero-left">
+          <motion.h1
+            className="fse-hero-h1"
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+          >
             Know where
             <br />
-            every{' '}
-            <span className="bg-brand-yellow px-2 border-4 border-on-surface shadow-brutal-sm inline-block -rotate-2">
-              rupee
-            </span>
+            every <span className="fse-rupee">rupee</span>
             <br />
             is going.
           </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15, ease: 'easeOut' }} className="text-lg font-medium mb-xl max-w-lg border-l-4 border-on-surface pl-sm">
+          <motion.p
+            className="fse-hero-sub"
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1, ease: 'easeOut' }}
+          >
             Stop wondering where your money went. Track income, investments,
             subscriptions, and family expenses in one ruthlessly organized
             dashboard.
           </motion.p>
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.3, ease: 'easeOut' }} className="flex flex-col sm:flex-row gap-sm">
-            <Link to="/register" className="flex-1 min-w-0">
-              <Button variant="yellow" size="lg" block>
-                Get Started Free
-              </Button>
-            </Link>
-            <Link to="/login" className="flex-1 min-w-0">
-              <Button variant="white" size="lg" block>
-                See How It Works
-              </Button>
-            </Link>
+          <motion.div
+            className="fse-hero-ctas"
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.2, ease: 'easeOut' }}
+          >
+            <Link to="/register" className="fin-button fse-btn">Get Started Free</Link>
+            <a href="#features" className="fin-button fse-btn is-white">See How It Works</a>
           </motion.div>
         </div>
 
-        <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.45, ease: 'easeOut' }} className="w-full md:w-1/2 min-w-0 p-md flex items-center justify-center bg-surface-container-low relative overflow-hidden">
-          <div className="w-full max-w-lg max-w-full min-w-0 bg-white border-4 border-on-surface p-md shadow-brutal relative z-10">
-            <div className="border-b-4 border-on-surface pb-sm mb-sm flex justify-between items-center">
-              <div className="font-bold text-lg">Dashboard Overview</div>
-              <Icon name="dashboard" className="text-2xl" filled />
+        <motion.div
+          className="fse-hero-right"
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        >
+          <div className="fse-preview">
+            <div className="fse-preview-head">
+              <span>Dashboard Overview</span>
+              <Badge color="surface">Preview</Badge>
             </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center p-sm border-2 border-on-surface">
-                <div className="font-bold">Total Balance</div>
-                <div className="font-bold">₹14,50,000</div>
+
+            <div className="fse-preview-row">
+              <span>Total Balance</span>
+              <span>{formatCurrency(1450000)}</span>
+            </div>
+            <div className="fse-preview-row is-accent">
+              <span>Monthly Expenses</span>
+              <span>{formatCurrency(45200)}</span>
+            </div>
+
+            <div className="fse-preview-chart">
+              <div className="fse-readout">
+                <span>5-month outflow · {months[0]}–{months[months.length - 1]}</span>
+                <strong aria-live="polite">
+                  {months[activeBar]} · {formatCurrency(OUTFLOW_SAMPLE[activeBar])}
+                </strong>
               </div>
-              <div className="flex justify-between items-center p-sm border-2 border-on-surface bg-brand-yellow">
-                <div className="font-bold">Monthly Expenses</div>
-                <div className="font-bold">₹45,200</div>
-              </div>
-              <div className="h-32 border-2 border-on-surface mt-sm flex items-end gap-2 p-2">
-                <div className="w-1/5 bg-on-surface h-[40%]" />
-                <div className="w-1/5 bg-on-surface h-[70%]" />
-                <div className="w-1/5 bg-brand-yellow border-2 border-on-surface h-[90%]" />
-                <div className="w-1/5 bg-on-surface h-[50%]" />
-                <div className="w-1/5 bg-on-surface h-[30%]" />
-              </div>
+              <svg
+                className="fse-hero-svg"
+                viewBox="0 0 400 130"
+                role="img"
+                aria-label="Sample monthly outflow for the last five months"
+              >
+                <line x1="8" y1={BASE_Y} x2="392" y2={BASE_Y} stroke="var(--fse-line)" strokeWidth="2" />
+                <line x1="8" y1={BASE_Y - 45} x2="392" y2={BASE_Y - 45} stroke="var(--fse-muted)" strokeOpacity="0.3" strokeDasharray="3 3" />
+                <line x1="8" y1={BASE_Y - 90} x2="392" y2={BASE_Y - 90} stroke="var(--fse-muted)" strokeOpacity="0.3" strokeDasharray="3 3" />
+                {OUTFLOW_SAMPLE.map((value, i) => {
+                  const h = Math.max(8, Math.round((value / maxVal) * 92))
+                  const x = START_X + i * (BAR_W + GAP)
+                  const y = BASE_Y - h
+                  const on = i === activeBar
+                  return (
+                    <g
+                      key={months[i]}
+                      className="fse-hero-bar"
+                      tabIndex={0}
+                      role="img"
+                      aria-label={`${months[i]}: ${formatCurrency(value)}`}
+                      onMouseEnter={() => setActiveBar(i)}
+                      onFocus={() => setActiveBar(i)}
+                      onClick={() => setActiveBar(i)}
+                    >
+                      <rect
+                        x={x}
+                        y={y}
+                        width={BAR_W}
+                        height={h}
+                        fill={on ? 'var(--fse-accent)' : 'var(--fse-ink)'}
+                        stroke="var(--fse-line)"
+                        strokeWidth="2"
+                      />
+                      <rect x={x} y={0} width={BAR_W} height={BASE_Y} fill="transparent" />
+                      <text
+                        x={x + BAR_W / 2}
+                        y={BASE_Y + 18}
+                        textAnchor="middle"
+                        fill={on ? 'var(--fse-ink)' : 'var(--fse-muted)'}
+                        fontSize="10.5"
+                        fontWeight="800"
+                        letterSpacing="0.04em"
+                      >
+                        {months[i]}
+                      </text>
+                    </g>
+                  )
+                })}
+              </svg>
             </div>
           </div>
-          <div className="absolute w-64 h-64 max-w-full border-4 border-on-surface bg-brand-yellow translate-x-12 translate-y-12 -z-0 hidden sm:block" />
         </motion.div>
       </section>
 
-      {/* Features */}
-      <section ref={featuresRef} id="features" className="w-full p-md md:p-xl border-b-4 border-on-surface">
-        <h2 className="text-3xl md:text-4xl font-bold mb-xl uppercase border-b-4 border-on-surface pb-sm inline-block">
-          Everything in one place.
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
-          {features.map((f, index) => (
-            <motion.div
-              key={f.title}
-              initial={{ opacity: 0, y: 40 }}
-              animate={featuresVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
-              transition={{ duration: 0.4, delay: index * 0.1, ease: 'easeOut' }}
-              className={`border-4 border-on-surface p-md shadow-brutal nb-card-hover ${f.color}`}
-            >
-              <div
-                className={`w-12 h-12 border-4 border-on-surface flex items-center justify-center mb-sm ${
-                  f.color === 'bg-brand-yellow' ? 'bg-white' : 'bg-brand-yellow'
-                }`}
-              >
-                <Icon name={f.icon} className="text-2xl" filled={f.color === 'bg-white'} />
-              </div>
-              <h3 className="text-lg font-bold mb-1">{f.title}</h3>
-              <p className="font-medium">{f.desc}</p>
-            </motion.div>
-          ))}
+      <section className="fse-features" id="features">
+        <div className="fse-features-inner">
+          <h2 className="fse-h2">Everything in one place.</h2>
+          <div className="fse-feature-grid">
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} delay={i * 0.05} y={14}>
+                <article className={`fse-feature${f.accent ? ' is-accent' : ''}`}>
+                  <div className="fse-feature-icon">
+                    <Icon name={f.icon} className="text-[20px]" filled />
+                  </div>
+                  <h3>{f.title}</h3>
+                  <p>{f.desc}</p>
+                </article>
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <motion.footer ref={footerRef} initial={{ opacity: 0, y: 20 }} animate={footerVisible ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }} transition={{ duration: 0.35, ease: 'easeOut' }} className="w-full p-md md:p-xl bg-white flex flex-col sm:flex-row flex-wrap justify-between gap-xl border-t-8 border-on-surface min-w-0">
-        <div className="flex-1">
-          <div className="font-bold text-2xl uppercase tracking-tighter mb-sm">FinStack</div>
-          <p className="font-medium max-w-xs border-l-4 border-brand-yellow pl-xs">
-            Neubrutalist wealth management for those who want radical transparency.
-          </p>
+      <footer className="fse-landing-footer">
+        <div className="fse-footer-inner">
+          <div>
+            <span className="fse-brand-word">FinStack</span>
+            <p className="fse-footer-tagline">
+              Neubrutalist wealth management for those who want radical transparency.
+            </p>
+          </div>
+          <div className="fse-footer-cols">
+            <div className="fse-footer-col">
+              <h4>Product</h4>
+              <ul>
+                <li><a href="#features">Features</a></li>
+                <li><Link to="/register">Get Started</Link></li>
+                <li><Link to="/docs">Docs &amp; Tutorials</Link></li>
+              </ul>
+            </div>
+            <div className="fse-footer-col">
+              <h4>Legal</h4>
+              <ul>
+                <li><Link to="/privacy">Privacy Policy</Link></li>
+                <li><Link to="/terms">Terms of Service</Link></li>
+                <li><Link to="/login">Log In</Link></li>
+              </ul>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <div className="font-bold mb-xs uppercase">Product</div>
-          <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Features</a>
-          <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Pricing</a>
-          <a className="hover:bg-brand-yellow px-1 w-fit" href="#">Security</a>
-        </div>
-        <div className="flex flex-col gap-1">
-          <div className="font-bold mb-xs uppercase">Legal</div>
-          <Link to="/privacy" className="hover:bg-brand-yellow px-1 w-fit">Privacy Policy</Link>
-          <Link to="/docs" className="hover:bg-brand-yellow px-1 w-fit">Docs & Tutorials</Link>
-          <Link to="/terms" className="hover:bg-brand-yellow px-1 w-fit">Terms of Service</Link>
-          <p className="text-xs mt-sm text-on-surface-variant">© 2026 FinStack Inc.</p>
-        </div>
-      </motion.footer>
+        <div className="fse-footer-copy">© 2026 FinStack Inc.</div>
+      </footer>
     </div>
   )
 }

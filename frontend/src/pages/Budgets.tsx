@@ -1,13 +1,19 @@
 import type { Budget } from '../types/api'
 import { toApiError } from '../lib/apiError'
 import { useEffect, useState } from 'react'
-import { PageHeader } from '../components/ui/PageHeader'
 import { apiClient } from '../services/apiClient'
+import { LedgerEmpty, LedgerNotice, LedgerPage } from '../components/ledger/LedgerShell'
+
+function money(paise?: number) {
+  return `₹${((paise || 0) / 100).toLocaleString('en-IN')}`
+}
 
 export function Budgets() {
   const [items, setItems] = useState<Budget[]>([])
   const [form, setForm] = useState({ scope:'FAMILY', category:'', period:'MONTHLY', amount:'' })
   const [err, setErr] = useState<string|null>(null)
+  const [busy, setBusy] = useState(false)
+  const [deletingId, setDeletingId] = useState<string|null>(null)
 
   function load(){ apiClient.get('/budgets').then(r=> setItems(r.data.items||r.data||[])).catch(()=>{}) }
   useEffect(()=>{ load() }, [])
@@ -16,25 +22,176 @@ export function Budgets() {
     e.preventDefault(); setErr(null)
     const amountPaise = Math.round(Number(form.amount||0)*100)
     if(!amountPaise) return
-    try { await apiClient.post('/budgets', { scope: form.scope, category: form.category || undefined, period: form.period, amountPaise }); load(); setForm({ scope:'FAMILY', category:'', period:'MONTHLY', amount:'' }) } catch (caught: unknown) { const ex = toApiError(caught); setErr(ex.response?.data?.error||ex.message)}
+    setBusy(true)
+    try {
+      await apiClient.post('/budgets', { scope: form.scope, category: form.category || undefined, period: form.period, amountPaise })
+      load()
+      setForm({ scope:'FAMILY', category:'', period:'MONTHLY', amount:'' })
+    } catch (caught: unknown) {
+      const ex = toApiError(caught)
+      setErr(ex.response?.data?.error || ex.message)
+    } finally { setBusy(false) }
   }
 
+  async function removeBudget(item: Budget) {
+    if (!confirm(`Delete the ${item.scope.toLowerCase()}${item.category ? ` · ${item.category}` : ''} budget?`)) return
+    setErr(null)
+    setDeletingId(item._id)
+    try {
+      await apiClient.delete(`/budgets/${item._id}`)
+      load()
+    } catch (caught: unknown) {
+      const ex = toApiError(caught)
+      setErr(ex.response?.data?.error || ex.message || 'Delete failed')
+    } finally { setDeletingId(null) }
+  }
+
+  const familyBudget = items.find((b) => b.scope === 'FAMILY')
+  const totalCapPaise = familyBudget?.amountPaise || 0
+  const spentPaise = familyBudget?.spentPaise || 0
+  const headroomPaise = Math.max(0, totalCapPaise - spentPaise)
+  const nearLimit = items.filter((b) => (b.amountPaise || 0) > 0 && (b.spentPaise || 0) / b.amountPaise >= 0.7).length
+
   return (
-    <div className="min-w-0">
-      <PageHeader title="Budgets" subtitle="Family / category / member budgets. Spend is actual expenditure only." />
-      {err && <div className="brutal-thin bg-error-container p-sm mb-md text-sm break-words">{err}</div>}
-      <form onSubmit={submit} className="brutal bg-white p-md flex flex-wrap gap-sm mb-md items-end min-w-0 [&>label]:min-w-0 [&_input]:max-w-full [&_select]:max-w-full">
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Scope<select value={form.scope} onChange={e=> setForm({...form, scope:e.target.value})} className="brutal-thin px-sm py-xs"><option>FAMILY</option><option>CATEGORY</option><option>MEMBER</option></select></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Category<input value={form.category} onChange={e=> setForm({...form, category:e.target.value})} className="brutal-thin px-sm py-xs" placeholder="Groceries" /></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Period<select value={form.period} onChange={e=> setForm({...form, period:e.target.value})} className="brutal-thin px-sm py-xs"><option>MONTHLY</option><option>WEEKLY</option><option>YEARLY</option></select></label>
-        <label className="flex flex-col text-xs font-bold uppercase gap-1">Amount ₹<input value={form.amount} onChange={e=> setForm({...form, amount:e.target.value})} className="brutal-thin px-sm py-xs" placeholder="10000" /></label>
-        <button type="submit" className="brutal bg-brand-yellow px-md py-xs font-bold uppercase">Save Budget</button>
+    <LedgerPage
+      title="Budgets"
+      subtitle="Family / category / member budgets. Spend is actual expenditure only."
+    >
+      {err && (
+        <LedgerNotice tone="error">
+          <span className="led-notice-mark">!</span>
+          <span>{err}</span>
+        </LedgerNotice>
+      )}
+
+      <div className="led-grid-4">
+        <div className="led-card-yellow led-kpi">
+          <span className="led-label">Total family cap</span>
+          <div>
+            <div className="led-kpi-val">{money(totalCapPaise)}</div>
+            <div className="led-kpi-sub">
+              {familyBudget ? `${familyBudget.period.toLowerCase()} family budget` : 'No family budget yet'}
+            </div>
+          </div>
+        </div>
+        <div className="led-card-sm led-kpi">
+          <span className="led-label" style={{ color: 'var(--text-secondary)' }}>Spent this period</span>
+          <div>
+            <div className="led-kpi-val">{money(spentPaise)}</div>
+            <div className="led-kpi-sub">Actual expenditure only</div>
+          </div>
+        </div>
+        <div className="led-card-sm led-kpi">
+          <span className="led-label" style={{ color: 'var(--text-secondary)' }}>Remaining headroom</span>
+          <div className="led-kpi-val" style={{ color: 'var(--nb-teal)' }}>{money(headroomPaise)}</div>
+        </div>
+        <div className="led-card-sm led-kpi">
+          <span className="led-label" style={{ color: 'var(--text-secondary)' }}>Categories near limit</span>
+          <div className="led-kpi-val">
+            {nearLimit} <span className="led-mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>(≥70%)</span>
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={submit} className="led-card">
+        <div className="led-budget-form">
+          <label className="led-field">Scope
+            <select
+              value={form.scope}
+              onChange={e => {
+                const scope = e.target.value
+                setForm(f => ({ ...f, scope, category: scope === 'CATEGORY' ? f.category : '' }))
+              }}
+              className="led-select led-mono"
+            >
+              <option>FAMILY</option>
+              <option>CATEGORY</option>
+              <option>MEMBER</option>
+            </select>
+          </label>
+          <label className="led-field">Category
+            <input
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              className="led-input"
+              placeholder={form.scope === 'CATEGORY' ? 'e.g. Groceries, Dining' : 'Only for CATEGORY scope'}
+              disabled={form.scope !== 'CATEGORY'}
+            />
+          </label>
+          <label className="led-field">Period
+            <select value={form.period} onChange={e => setForm(f => ({ ...f, period: e.target.value }))} className="led-select led-mono">
+              <option>MONTHLY</option>
+              <option>WEEKLY</option>
+              <option>YEARLY</option>
+            </select>
+          </label>
+          <label className="led-field">Amount ₹
+            <input
+              value={form.amount}
+              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              className="led-input led-mono"
+              placeholder="10000"
+              type="number"
+              min="1"
+            />
+          </label>
+          <button type="submit" disabled={busy} className="led-btn">{busy ? 'Saving…' : 'Save Budget'}</button>
+        </div>
       </form>
-      {items.length===0 ? <div className="brutal bg-white p-md text-sm">No budgets yet.</div> : (
-        <div className="brutal bg-white overflow-x-auto">
-          <table className="w-full min-w-[600px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap"><thead className="bg-on-surface text-white"><tr><th className="text-left px-sm py-xs">Scope</th><th className="text-left px-sm py-xs">Category</th><th className="text-left px-sm py-xs">Period</th><th className="text-left px-sm py-xs">Budget</th><th className="text-left px-sm py-xs">Spent</th></tr></thead><tbody>{items.map((b)=> <tr key={b._id} className="border-t-2 border-on-surface/20"><td className="px-sm py-xs">{b.scope}</td><td className="px-sm py-xs">{b.category||'—'}</td><td className="px-sm py-xs">{b.period}</td><td className="px-sm py-xs">{(b.amountPaise/100).toLocaleString('en-IN')}</td><td className="px-sm py-xs">{((b.spentPaise||0)/100).toLocaleString('en-IN')}</td></tr>)}</tbody></table>
+
+      {items.length === 0 ? (
+        <LedgerEmpty title="No budgets yet">Create a family, category, or member budget above.</LedgerEmpty>
+      ) : (
+        <div className="led-table-card">
+          <div className="led-table-scroll">
+            <table className="led-table compact">
+              <thead>
+                <tr>
+                  <th>Scope</th>
+                  <th>Category</th>
+                  <th>Period</th>
+                  <th>Budget</th>
+                  <th>Spent</th>
+                  <th>Utilization</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((b) => {
+                  const pct = (b.amountPaise || 0) > 0 ? Math.round(((b.spentPaise || 0) / b.amountPaise) * 100) : 0
+                  const fillClass = pct >= 100 ? ' over' : pct >= 75 ? ' warn' : ''
+                  return (
+                    <tr key={b._id}>
+                      <td className="led-mono led-strong">{b.scope}</td>
+                      <td>{b.category || '—'}</td>
+                      <td className="led-mono">{b.period}</td>
+                      <td className="led-num">{money(b.amountPaise)}</td>
+                      <td className="led-mono">{money(b.spentPaise)}</td>
+                      <td>
+                        <div className="led-budget-bar">
+                          <div className="led-budget-track">
+                            <div className={`led-budget-fill${fillClass}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                          </div>
+                          <span className="led-budget-pct">{pct}%</span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          onClick={() => removeBudget(b)}
+                          disabled={deletingId === b._id}
+                          className="led-btn led-btn-danger led-btn-xs"
+                        >
+                          {deletingId === b._id ? '…' : 'Del'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
-    </div>
+    </LedgerPage>
   )
 }

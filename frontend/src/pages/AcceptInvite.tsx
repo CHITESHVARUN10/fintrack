@@ -1,10 +1,11 @@
 import { useState, type CSSProperties } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Field, Input } from '../components/ui/Field'
-import { Button } from '../components/ui/Button'
+import { cn } from '../lib/cn'
 import { Icon } from '../components/ui/Icon'
 import { PasswordInput } from '../components/ui/PasswordInput'
+import { AuthBackground } from '../components/layout/AuthBackground'
 import { acceptInvite } from '../services/apiClient'
+import './entry-overview.css'
 
 export function AcceptInvite() {
   const { token } = useParams<{ token: string }>()
@@ -37,84 +38,85 @@ export function AcceptInvite() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-md bg-white relative overflow-x-hidden">
+    <div className="fse-auth">
+      <AuthBackground />
       <div
-        className="w-full max-w-md max-w-[calc(100vw-2rem)] bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10 min-w-0"
+        className="fse-auth-card"
         style={flash ? ({ ['--nb-flash-from' as string]: '#ffffff' } as CSSProperties) : undefined}
       >
-        <div className="mb-lg">
-          <h1 className="text-4xl font-bold uppercase tracking-tighter text-on-surface">
-            FinStack
-          </h1>
-          <h2 className="text-2xl font-bold uppercase text-on-surface mt-2">
-            Accept Invite
-          </h2>
-          <p className="font-medium text-on-surface-variant">
-            Set your details to activate your account.
-          </p>
+        <div>
+          <Link to="/" className="fse-brand" aria-label="FinStack home">
+            <span className="fse-brand-sq" aria-hidden="true">F</span>
+            <span className="fse-brand-word">FinStack</span>
+          </Link>
+          <h1 className="fse-auth-h1">Accept Invite</h1>
+          <p className="fse-auth-sub">Set your details to activate your account.</p>
         </div>
 
         {done ? (
-          <div className="flex flex-col gap-md">
-            <div className="border-[3px] border-on-surface bg-brand-yellow px-sm py-3 font-bold">
-              Account activated! You can now log in.
+          <>
+            <div className="fse-activated" role="status">
+              <Icon name="check_circle" className="text-base" filled />
+              Account activated — you can log in now.
             </div>
-            <Button variant="yellow" size="lg" block onClick={() => navigate('/login')}>
+            <button type="button" className="fin-button fse-btn is-block" onClick={() => navigate('/login')}>
               Go to Login
-              <Icon name="login" className="text-xl" />
-            </Button>
-          </div>
+              <Icon name="login" className="text-base" />
+            </button>
+          </>
         ) : !token ? (
-          <div className="border-[3px] border-on-surface bg-red-100 px-sm py-3 font-bold">
-            This invite link is missing its token.
+          <div className="fse-error" role="alert">
+            This invite link is missing its token. Ask whoever invited you to resend it.
           </div>
         ) : (
-          <form className="flex flex-col gap-sm" onSubmit={onSubmit}>
+          <form className="fse-form-stack" onSubmit={onSubmit}>
             {error && (
-              <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
+              <div className="fse-error" role="alert">
                 {error}
               </div>
             )}
-            <Field label="Name (optional)">
-              <Input
-                id="name"
+
+            <div className="fse-field">
+              <label className="fse-label" htmlFor="invite-name">Name (optional)</label>
+              <input
+                id="invite-name"
+                className="fin-input fse-input"
                 type="text"
+                autoComplete="name"
                 placeholder="e.g. Rohan Sharma"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-            </Field>
-            <Field label="Password">
+            </div>
+
+            <div className="fse-field">
+              <label className="fse-label" htmlFor="invite-password">Password</label>
               <PasswordInput
-                id="password"
+                id="invite-password"
+                className="fin-input fse-input"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-            </Field>
-            <div className="pt-sm">
-              <Button
-                type="submit"
-                variant="yellow"
-                size="lg"
-                block
-                disabled={loading}
-                className={flash ? 'nb-yellow-flash' : undefined}
-                style={flash ? ({ ['--nb-flash-from' as string]: '#ffe500' } as CSSProperties) : undefined}
-              >
-                {loading ? 'Activating…' : 'Activate Account'}
-              </Button>
             </div>
-            <p className="text-center font-medium mt-2">
-              Already set up?{' '}
-              <Link
-                to="/login"
-                className="font-bold hover:bg-brand-yellow px-1 transition-colors"
-              >
-                Log in
-              </Link>
-            </p>
+
+            <button
+              type="submit"
+              className={cn('fin-button fse-btn is-block', flash && 'nb-yellow-flash')}
+              disabled={loading}
+              style={flash ? ({ ['--nb-flash-from' as string]: '#ffe500' } as CSSProperties) : undefined}
+            >
+              {loading ? 'Activating…' : 'Activate Account'}
+            </button>
+
+            <div className="fse-auth-foot">
+              <span>
+                Already set up?{' '}
+                <Link to="/login" className="fse-link">Log in</Link>
+              </span>
+            </div>
           </form>
         )}
       </div>

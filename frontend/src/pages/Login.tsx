@@ -2,11 +2,10 @@ import { useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { cn } from '../lib/cn'
-import { Field, Input } from '../components/ui/Field'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
 import { AuthBackground } from '../components/layout/AuthBackground'
 import { PasswordInput } from '../components/ui/PasswordInput'
+import './entry-overview.css'
 
 export function Login() {
   const { login } = useAuth()
@@ -39,86 +38,78 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-md bg-white relative overflow-x-hidden">
+    <div className="fse-auth">
       <AuthBackground />
-      <div
-        className={cn(
-          'w-full max-w-md max-w-[calc(100vw-2rem)] bg-white border-[3px] border-on-surface shadow-brutal p-lg relative z-10 min-w-0',
-          shake && 'nb-shake',
-        )}
+      <form
+        className={cn('fse-auth-card', shake && 'nb-shake')}
+        onSubmit={onSubmit}
         style={flash ? ({ ['--nb-flash-from' as string]: '#ffffff' } as CSSProperties) : undefined}
+        noValidate={false}
       >
-        <div className="mb-lg">
-          <h1 className="text-4xl font-bold uppercase tracking-tighter text-on-surface">
-            FinStack
-          </h1>
-          <h2 className="text-2xl font-bold uppercase text-on-surface mt-2">Login</h2>
-          <p className="font-medium text-on-surface-variant">
-            Enter your credentials to continue.
-          </p>
+        <div>
+          <Link to="/" className="fse-brand" aria-label="FinStack home">
+            <span className="fse-brand-sq" aria-hidden="true">F</span>
+            <span className="fse-brand-word">FinStack</span>
+          </Link>
+          <h1 className="fse-auth-h1">Login</h1>
+          <p className="fse-auth-sub">Enter your credentials to continue.</p>
         </div>
 
         {error && (
-          <div className="mb-md border-[3px] border-on-surface bg-error-container text-on-error-container px-sm py-2 font-bold text-sm">
+          <div className="fse-error" role="alert">
             {error}
           </div>
         )}
 
-        <form className="flex flex-col gap-sm" onSubmit={onSubmit}>
-          <Field label="Email Address">
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </Field>
-
-          <div>
-            <div className="flex flex-wrap justify-between items-center gap-2 mb-1 min-w-0">
-              <span className="font-bold text-sm uppercase tracking-wide text-on-surface">
-                Password
-              </span>
-            </div>
-            <PasswordInput
-              id="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="pt-sm">
-            <Button
-              type="submit"
-              variant="yellow"
-              size="lg"
-              block
-              disabled={loading}
-              className={flash ? 'nb-yellow-flash' : undefined}
-              style={flash ? ({ ['--nb-flash-from' as string]: '#ffe500' } as CSSProperties) : undefined}
-            >
-              {loading ? 'Logging in…' : 'Login'}
-              {!loading && <Icon name="login" className="text-xl" />}
-            </Button>
-          </div>
-        </form>
-
-        <div className="mt-lg pt-sm border-t-4 border-on-surface text-center">
-          <p className="font-medium text-on-surface">
-            New here?{' '}
-            <Link
-              to="/register"
-              className="font-bold hover:bg-brand-yellow px-1 transition-colors"
-            >
-              Create account
-            </Link>
-          </p>
+        <div className="fse-field">
+          <label className="fse-label" htmlFor="login-email">Email Address</label>
+          <input
+            id="login-email"
+            className="fin-input fse-input"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
-      </div>
+
+        <div className="fse-field">
+          <label className="fse-label" htmlFor="login-password">Password</label>
+          <PasswordInput
+            id="login-password"
+            className="fin-input fse-input"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          className={cn('fin-button fse-btn is-block', flash && 'nb-yellow-flash')}
+          disabled={loading}
+          style={flash ? ({ ['--nb-flash-from' as string]: '#ffe500' } as CSSProperties) : undefined}
+        >
+          {loading ? 'Logging in…' : 'Login'}
+          {!loading && <Icon name="arrow_forward" className="text-base" />}
+        </button>
+
+        <div className="fse-auth-divider" />
+
+        <div className="fse-auth-foot">
+          <span>
+            New here?{' '}
+            <Link to="/register" className="fse-link">Create account</Link>
+          </span>
+          <span>
+            Have an invite? Open the activation link from your email.
+          </span>
+        </div>
+      </form>
     </div>
   )
 }

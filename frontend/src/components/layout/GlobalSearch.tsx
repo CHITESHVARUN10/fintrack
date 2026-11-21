@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { Icon } from '../ui/Icon'
 import { navItems } from './nav'
 import { apiClient } from '../../services/apiClient'
-import { OPAQUE_HEADER_STYLE, OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../ui/Overlay'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
+import '../../pages/entry-overview.css'
 
 type SearchItem = {
   id: string
@@ -40,14 +41,14 @@ function saveRecent(q: string) {
 function highlight(text: string, query: string) {
   if (!query.trim()) return text
   const tokens = query.trim().split(/\s+/).filter(Boolean)
-  // escape regex
   const pattern = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
   if (!pattern) return text
   const re = new RegExp(`(${pattern})`, 'ig')
   const parts = text.split(re)
-  return parts.map((part, i) =>
-    re.test(part) ? <mark key={i} className="bg-brand-yellow px-0.5 font-bold">{part}</mark> : <span key={i}>{part}</span>
-  )
+  return parts.map((part, i) => {
+    re.lastIndex = 0
+    return re.test(part) ? <mark key={i}>{part}</mark> : <span key={i}>{part}</span>
+  })
 }
 
 function scoreItem(item: SearchItem, tokens: string[]): number | null {
@@ -68,12 +69,9 @@ function scoreItem(item: SearchItem, tokens: string[]): number | null {
     if (subLow.includes(t)) score += 4
     if (kwLow.includes(t)) score += 2
 
-    // bonus if token appears at word boundary
     if (new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(hay)) score += 3
   }
-  // group boosting: Pages slightly higher for nav queries
   if (item.group === 'Pages') score += 1
-  // transactions/vendors with amount match boost
   return score
 }
 
@@ -91,11 +89,8 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const timer = setTimeout(() => inputRef.current?.focus(), 50)
-    return () => clearTimeout(timer)
-  }, [open])
+  const panelRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(panelRef, onClose, open, inputRef)
 
   // fetch data once when opened (and cache)
   useEffect(() => {
@@ -103,7 +98,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     if (items.length) return // already loaded
     let cancelled = false
 
-    // static pages
     const pageItems: SearchItem[] = navItems.map(n => ({
       id: `page-${n.to}`,
       group: 'Pages',
@@ -114,7 +108,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
       keywords: `${n.label} ${n.to} navigation page`,
       rawKeywords: [n.label, n.to],
     }))
-    // add extra pages not in nav but in titles
     const extraPages: SearchItem[] = [
       { id: 'page-landing', group: 'Pages', title: 'Landing', subtitle: '/', icon: 'home', to: '/', keywords: 'landing home', rawKeywords: ['landing'] },
       { id: 'page-notifications', group: 'Pages', title: 'Notifications', subtitle: '/notifications', icon: 'notifications', to: '/notifications', keywords: 'notifications alerts', rawKeywords: ['notifications'] },
@@ -200,7 +193,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
 
       try {
         const bRes = await apiClient.get<{ items: Budget[] }>('/budgets').then(r => r.data).catch(() => ({ items: [] }))
-        // budgets may be object
         const bItems = bRes.items
         bItems.slice(0, 30).forEach((b) => {
           if (!b.category && !b.scope) return
@@ -217,7 +209,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
         })
       } catch { /* Storage or optional suggestions may be unavailable. */ }
 
-      // Family members via /families/me + /families/:id/members is handled via members list if available
       try {
         const fam = await apiClient.get<{ family?: { _id: string } }>('/families/me').then(r => r.data).catch(() => null)
         const fid = fam?.family?._id
@@ -274,10 +265,8 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
       if (arr.length < 5) arr.push(it)
       map.set(it.group, arr)
     }
-    // order groups by priority
     const order = ['Pages', 'Transactions', 'Vendors', 'Subscriptions', 'Investments', 'Budgets', 'Family']
-    const sorted = Array.from(map.entries()).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
-    return sorted
+    return Array.from(map.entries()).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
   }, [filtered])
 
   const flatResults = useMemo(() => filtered.slice(0, 30), [filtered])
@@ -293,6 +282,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
+      if (e.target !== inputRef.current || e.defaultPrevented) return
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setActiveIdx(i => Math.min(i + 1, Math.max(0, flatResults.length - 1)))
@@ -304,13 +294,10 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
           e.preventDefault()
           handleSelect(flatResults[activeIdx])
         } else if (query.trim() && flatResults.length === 0) {
-          // fallback: navigate to transactions search
           saveRecent(query)
           onClose()
           navigate(`/transactions?q=${encodeURIComponent(query.trim())}`)
         }
-      } else if (e.key === 'Escape') {
-        onClose()
       }
     }
     window.addEventListener('keydown', handler)
@@ -318,7 +305,6 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
   }, [open, flatResults, activeIdx, handleSelect, query, onClose, navigate])
 
   useEffect(() => {
-    // scroll active into view
     if (!listRef.current) return
     const el = listRef.current.querySelector(`[data-idx="${activeIdx}"]`) as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest' })
@@ -326,124 +312,170 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
 
   if (!open) return null
 
+  const quickPages = items.filter(i => i.group === 'Pages').slice(0, 8)
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={onClose} aria-hidden="true" />
-      <div className="relative w-full max-w-[640px] brutal bg-white overflow-hidden flex flex-col max-h-[72vh] shadow-brutal" style={OPAQUE_PANEL_STYLE}>
-        {/* input row */}
-        <div className="flex items-center gap-sm p-sm border-b-[3px] border-on-surface bg-white shrink-0" style={OPAQUE_HEADER_STYLE}>
-          <Icon name="search" className="text-xl text-on-surface-variant" />
+    <div className="fse-palette-backdrop" role="dialog" aria-modal="true" aria-label="Global search">
+      <div className="fse-palette-scrim" onClick={onClose} aria-hidden="true" />
+      <div ref={panelRef} tabIndex={-1} className="fse-palette">
+        <div className="fse-palette-head">
+          <Icon name="search" className="text-xl" style={{ color: 'var(--fse-muted)' }} aria-hidden="true" />
           <input
             ref={inputRef}
+            className="fin-input fse-palette-input"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
-            placeholder="Search pages, transactions, vendors…  (try 'zomato', '₹500')"
-            className="flex-1 bg-transparent outline-none text-sm font-bold placeholder:font-medium placeholder:text-on-surface-variant"
+            placeholder="Search pages, transactions, vendors…"
+            aria-label="Search pages, transactions, vendors"
             autoComplete="off"
             spellCheck={false}
           />
-          {query && (
-            <button onClick={() => setQuery('')} className="brutal-thin px-xs py-0.5 bg-white text-xs font-bold hover:bg-brand-yellow">Clear</button>
+          {query ? (
+            <button type="button" className="fse-try-btn" onClick={() => setQuery('')}>
+              Clear
+            </button>
+          ) : (
+            <button type="button" className="fse-try-btn fse-hide-sm" onClick={() => setQuery('Netflix')}>
+              Try: Netflix
+            </button>
           )}
-          <span className="hidden md:flex items-center gap-1 brutal-thin bg-surface-container-low px-xs py-0.5 text-[10px] font-bold uppercase">ESC</span>
+          <button type="button" className="fse-kbd-btn" onClick={onClose} aria-label="Close search">
+            Esc
+          </button>
         </div>
 
-        {/* content */}
-        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar bg-surface-container-low/30 p-sm flex flex-col gap-sm">
+        <div ref={listRef} className="fse-palette-body">
           {loading ? (
-            <div className="flex flex-col gap-sm">
-              {[1,2,3].map(i => <div key={i} className="brutal bg-white p-sm flex gap-sm items-center animate-pulse"><div className="w-8 h-8 bg-surface-container-high" /><div className="flex-1 space-y-2"><div className="h-4 bg-surface-container-high w-1/2" /><div className="h-3 bg-surface-container-high w-1/3" /></div></div>)}
+            <div className="fse-skels" aria-busy="true" aria-label="Loading search index">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="fse-skel-row">
+                  <div className="fse-skel-ico nb-skeleton" />
+                  <div className="fse-skel-lines">
+                    <div className="fse-skel-line nb-skeleton" style={{ width: '55%' }} />
+                    <div className="fse-skel-line nb-skeleton" style={{ width: '35%' }} />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : !query.trim() ? (
-            <div className="flex flex-col gap-md">
+            <>
               {recent.length > 0 && (
-                <div className="brutal bg-white p-sm">
-                  <div className="flex justify-between items-center mb-sm">
-                    <span className="text-xs font-bold uppercase tracking-wider">Recent searches</span>
-                    <button onClick={() => { localStorage.removeItem(RECENT_KEY); setRecent([]) }} className="text-[11px] underline opacity-60">Clear</button>
+                <div className="fse-quick-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span className="fse-label" style={{ color: 'var(--fse-muted)' }}>Recent searches</span>
+                    <button
+                      type="button"
+                      className="fse-link"
+                      style={{ fontSize: 11, fontFamily: 'var(--fse-mono)' }}
+                      onClick={() => { try { localStorage.removeItem(RECENT_KEY) } catch { /* ignore */ } setRecent([]) }}
+                    >
+                      Clear
+                    </button>
                   </div>
-                  <div className="flex flex-wrap gap-xs">
+                  <div className="fse-recents">
                     {recent.map(r => (
-                      <button key={r} onClick={() => setQuery(r)} className="brutal-thin bg-surface-container-low px-sm py-xs text-xs font-bold hover:bg-brand-yellow">
-                        <Icon name="history" className="text-sm mr-1 align-middle" />{r}
+                      <button key={r} type="button" className="fse-recent-btn" onClick={() => setQuery(r)}>
+                        <Icon name="history" className="text-sm" aria-hidden="true" />
+                        {r}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="brutal bg-white p-sm">
-                <div className="text-xs font-bold uppercase tracking-wider mb-sm">Quick links</div>
-                <div className="grid grid-cols-2 gap-xs">
-                  {navItems.slice(0, 8).map(n => (
-                    <button key={n.to} onClick={() => handleSelect({ id: n.to, group: 'Pages', title: n.label, icon: n.icon, to: n.to, keywords: '', rawKeywords: [] })} className="brutal-thin bg-white px-sm py-sm text-xs font-bold flex items-center gap-xs hover:bg-brand-yellow text-left">
-                      <Icon name={n.icon} className="text-base" />{n.label}
+
+              <div className="fse-quick-card">
+                <div className="fse-label" style={{ color: 'var(--fse-muted)' }}>Quick links</div>
+                <div className="fse-quick-grid">
+                  {quickPages.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="fse-quick-btn"
+                      onClick={() => handleSelect(p)}
+                    >
+                      <Icon name={p.icon} className="text-base" aria-hidden="true" />
+                      <span>{p.title}</span>
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="brutal-thin bg-brand-yellow/30 p-sm text-xs">
-                <div className="font-bold uppercase mb-xs flex items-center gap-xs"><Icon name="lightbulb" className="text-base" />How search works</div>
-                <ul className="list-disc ml-4 space-y-1 opacity-80">
-                  <li>Type any words — all must match (AND). e.g. <span className="font-bold">zomato 500</span> finds ₹500 Zomato spend.</li>
+
+              <div className="fse-help">
+                <h4>How search works</h4>
+                <ul>
+                  <li>Type any words — all must match (AND). e.g. <strong>zomato 500</strong> finds ₹500 Zomato spend.</li>
                   <li>Searches pages, transactions, vendors, subscriptions, investments &amp; family.</li>
-                  <li>Press <span className="brutal-thin bg-white px-1 text-[10px]">↑ ↓</span> + <span className="brutal-thin bg-white px-1 text-[10px]">Enter</span> to jump. <span className="brutal-thin bg-white px-1 text-[10px]">Ctrl K</span> anytime.</li>
+                  <li>Press <span className="fse-kbd">↑ ↓</span> + <span className="fse-kbd">Enter</span> to jump. <span className="fse-kbd">Ctrl K</span> anytime.</li>
                 </ul>
               </div>
-            </div>
+            </>
           ) : filtered.length === 0 ? (
-            <div className="brutal bg-white p-lg text-center flex flex-col gap-sm items-center">
-              <Icon name="search_off" className="text-4xl opacity-30" />
-              <div className="font-bold">No results for “{query}”</div>
-              <div className="text-xs opacity-60 max-w-[420px]">Try fewer words, check spelling, or search amount like 500. Press Enter to search transactions with this term.</div>
-              <button onClick={() => { saveRecent(query); onClose(); navigate(`/transactions?q=${encodeURIComponent(query)}`) }} className="brutal bg-brand-yellow px-md py-xs text-xs font-bold uppercase">Search in Transactions</button>
+            <div className="fse-no-results">
+              <strong>No results for “{query}”</strong>
+              <p>Try fewer words, check spelling, or search an amount like 500.</p>
+              <button
+                type="button"
+                className="fin-button fse-btn is-sm"
+                onClick={() => { saveRecent(query); onClose(); navigate(`/transactions?q=${encodeURIComponent(query)}`) }}
+              >
+                Search in Transactions
+              </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-md">
-              <div className="text-xs font-bold uppercase opacity-60 px-xs">{filtered.length} results — showing top {flatResults.length} grouped</div>
+            <>
+              <div className="fse-count-line">
+                {filtered.length} results — showing top {flatResults.length} grouped
+              </div>
               {grouped.map(([group, arr]) => (
-                <div key={group} className="brutal bg-white overflow-hidden">
-                  <div className="px-sm py-xs bg-surface-container-low border-b-2 border-on-surface/20 flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider">{group}</span>
-                    <span className="text-[10px] brutal-thin bg-white px-xs py-0.5">{arr.length}</span>
+                <div key={group} className="fse-res-group">
+                  <div className="fse-res-head">
+                    <span>{group}</span>
+                    <span className="fse-kbd">{arr.length}</span>
                   </div>
-                  <div className="flex flex-col divide-y divide-on-surface/10">
-                    {arr.map(item => {
-                      const flatIdx = flatResults.findIndex(f => f.id === item.id)
-                      const isActive = flatIdx === activeIdx
-                      return (
-                        <button
-                          key={item.id}
-                          data-idx={flatIdx}
-                          onClick={() => handleSelect(item)}
-                          onMouseEnter={() => setActiveIdx(flatIdx)}
-                          className={`text-left p-sm flex items-center gap-sm w-full transition-colors ${isActive ? 'bg-brand-yellow text-on-surface' : 'hover:bg-surface-container-low bg-white'}`}
-                        >
-                          <span className={`w-8 h-8 border-2 border-on-surface flex items-center justify-center shrink-0 ${isActive ? 'bg-white text-on-surface' : 'bg-surface-container-low'}`}>
-                            <Icon name={item.icon} className="text-base" />
+                  {arr.map(item => {
+                    const flatIdx = flatResults.findIndex(f => f.id === item.id)
+                    const isActive = flatIdx === activeIdx
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-idx={flatIdx}
+                        onClick={() => handleSelect(item)}
+                        onMouseEnter={() => setActiveIdx(flatIdx)}
+                        className={`fse-res-row${isActive ? ' is-active' : ''}`}
+                      >
+                        <span className="fse-res-left">
+                          <span className="fse-res-ico">
+                            <Icon name={item.icon} className="text-base" aria-hidden="true" />
                           </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="font-bold text-sm truncate block">{highlight(item.title, query)}</span>
-                            {item.subtitle && <span className="text-xs opacity-70 truncate block">{highlight(item.subtitle, query)}</span>}
+                          <span className="fse-res-body">
+                            <span className="fse-res-title">{highlight(item.title, query)}</span>
+                            {item.subtitle && <span className="fse-res-sub">{highlight(item.subtitle, query)}</span>}
                           </span>
-                          <Icon name="arrow_forward" className={`text-sm opacity-60 ${isActive ? 'opacity-100 translate-x-0' : ''}`} />
-                        </button>
-                      )
-                    })}
-                  </div>
+                        </span>
+                        <Icon name="arrow_forward" className="text-sm" aria-hidden="true" />
+                      </button>
+                    )
+                  })}
                 </div>
               ))}
-            </div>
+            </>
           )}
         </div>
 
-        {/* footer */}
-        <div className="border-t-[3px] border-on-surface bg-surface-container-low px-sm py-xs flex flex-wrap items-center justify-between gap-sm text-[11px] font-bold uppercase shrink-0">
-          <span className="flex items-center gap-sm">
-            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white px-1">↑ ↓</span> Navigate</span>
-            <span className="flex items-center gap-1"><span className="brutal-thin bg-white px-1">↵</span> Select</span>
-            <span className="hidden md:flex items-center gap-1"><span className="brutal-thin bg-white px-1">ESC</span> Close</span>
+        <div className="fse-palette-foot">
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="fse-kbd">↑ ↓</span> Navigate
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="fse-kbd">↵</span> Select
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="fse-kbd">Esc</span> Close
+            </span>
           </span>
-          <span className="opacity-60 hidden md:block">Global search • transactions, vendors, pages</span>
+          <span className="fse-hide-sm">Global search · transactions, vendors, pages</span>
         </div>
       </div>
     </div>

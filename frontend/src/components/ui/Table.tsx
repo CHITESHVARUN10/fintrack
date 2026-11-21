@@ -25,16 +25,16 @@ export function Table<T>({
   onRowClick,
 }: TableProps<T>) {
   return (
-    <div className="brutal overflow-hidden bg-white">
-      <div className="overflow-x-auto">
+    <div className="brutal min-w-0 bg-token-card">
+      <div className="overflow-x-auto custom-scrollbar">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-on-surface text-white">
+            <tr className="fin-table-head">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 font-bold uppercase tracking-wide text-left',
+                    'px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wide text-left',
                     col.align === 'right' && 'text-right',
                     col.align === 'center' && 'text-center',
                   )}
@@ -60,8 +60,8 @@ export function Table<T>({
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-t-[2px] border-on-surface/30 transition-none hover:bg-brand-yellow/50',
-                    i % 2 === 1 && 'bg-surface-container-low/80',
+                    'border-t border-on-surface/20 transition-none hover:bg-surface-container-high',
+                    i % 2 === 1 && 'bg-surface-container-low',
                     onRowClick && 'cursor-pointer hover:bg-brand-yellow',
                   )}
                 >

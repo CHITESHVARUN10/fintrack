@@ -1,37 +1,141 @@
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Icon } from '../components/ui/Icon'
-import { initials } from '../lib/format'
+import { formatCurrency, initials } from '../lib/format'
 import type { FamilyMember } from '../types'
 import { InviteMemberModal } from '../components/family/InviteMemberModal'
-import { familyService } from '../services/api'
+import { analyticsService, familyService } from '../services/api'
 import { apiClient } from '../services/apiClient'
+import './family-workspace.css'
 
-const AVATAR_COLORS = ['bg-brand-yellow', 'bg-tertiary-container', 'bg-error-container', 'bg-surface-variant']
+const AVATAR_COLORS = [
+  'var(--accent)',
+  'var(--nb-cyan)',
+  'var(--nb-teal)',
+  'var(--nb-violet)',
+  'var(--nb-orange)',
+  'var(--nb-pink)',
+]
+
+interface JoinRequest {
+  _id: string
+  userId: { name: string; email: string }
+}
+
+interface FamilyRecord {
+  _id: string
+  inviteCode?: string
+  name: string
+}
+
+function currentMonthRange() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  return { from, to: now.toISOString().slice(0, 10) }
+}
 
 export function Family() {
   const navigate = useNavigate()
   const { refreshSession, members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [family, setFamily] = useState<{ _id: string; inviteCode?: string; name: string } | null>(null)
-  const [requests, setRequests] = useState<{ _id: string; userId: { name: string; email: string } }[]>([])
+  const [family, setFamily] = useState<FamilyRecord | null>(null)
+  const [requests, setRequests] = useState<JoinRequest[]>([])
+  const [removingId, setRemovingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [rotating, setRotating] = useState(false)
+  const [spendByMember, setSpendByMember] = useState<Record<string, number> | null>(null)
+
+  const loadFamily = useCallback(() => {
+    apiClient
+      .get('/families/me')
+      .then((r) => {
+        const f = r.data?.family
+        if (!f) return
+        setFamily(f)
+        const amAdmin = r.data?.membership?.role === 'ADMIN'
+        if (amAdmin) {
+          familyService
+            .requests(f._id)
+            .then((d) => setRequests(d.requests || []))
+            .catch(() => setRequests([]))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Spend per member for the current month, from the same analytics endpoint
+  // the family dashboard uses. Best-effort: the cards still render without it.
+  useEffect(() => {
+    analyticsService
+      .family(currentMonthRange())
+      .then((d) => {
+        const map: Record<string, number> = {}
+        for (const row of d.byMember || []) map[row.memberId] = row.spend
+        setSpendByMember(map)
+      })
+      .catch(() => setSpendByMember({}))
+  }, [])
 
   useEffect(() => {
-    apiClient.get('/families/me').then((r) => {
-      if (r.data?.family) {
-        setFamily(r.data.family)
-        familyService.requests(r.data.family._id).then((d) => setRequests(d.requests || [])).catch(() => {})
-      }
-    }).catch(() => {})
-  }, [])
+    loadFamily()
+  }, [loadFamily])
 
   async function handleReview(id: string, action: 'accept' | 'reject') {
     if (!family) return
-    await familyService.review(family._id, id, action)
-    await refreshSession()
-    setRequests((prev) => prev.filter((x) => x._id !== id))
+    setActionError(null)
+    try {
+      await familyService.review(family._id, id, action)
+      setRequests((prev) => prev.filter((x) => x._id !== id))
+      await refreshSession()
+    } catch {
+      setActionError(`Could not ${action} that join request. Please try again.`)
+    }
+  }
+
+  async function handleRemove(member: FamilyMember) {
+    setActionError(null)
+    if (!window.confirm(`Remove ${member.name} from the household?`)) return
+    setRemovingId(member.id)
+    try {
+      await removeMember(member.id)
+    } catch {
+      setActionError(`Could not remove ${member.name}. Please try again.`)
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
+  async function copyInviteCode() {
+    if (!family?.inviteCode) return
+    try {
+      await navigator.clipboard.writeText(family.inviteCode)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setActionError('Could not copy the invite code — select it and copy manually.')
+    }
+  }
+
+  async function rotateCode() {
+    if (!family) return
+    setActionError(null)
+    setRotating(true)
+    try {
+      const r = await familyService.rotateCode(family._id)
+      setFamily(r.family)
+    } catch {
+      setActionError('Could not rotate the invite code. Please try again.')
+    } finally {
+      setRotating(false)
+    }
+  }
+
+  function openMemberDashboard(member: FamilyMember) {
+    setActiveMemberId(member.id)
+    navigate('/dashboard')
   }
 
   if (loading) return <LoadingBlock label="Loading members…" />
@@ -40,159 +144,241 @@ export function Family() {
 
   if (hasNoFamily) {
     return (
-      <div className="min-w-0">
+      <div className="fw-page">
         <PageHeader
           title="Family Members"
           subtitle="You’re not in a family yet — create one or join with an invite code."
         />
-        <div className="brutal bg-white p-lg sm:p-xl flex flex-col gap-md max-w-2xl max-w-full min-w-0">
-          <div className="flex items-center gap-sm text-sm font-bold bg-brand-yellow border-[3px] border-on-surface p-sm">
-            <Icon name="info" />
-            Create a new family to become admin and invite members, or join an existing family with a code from your admin.
+        <div className="fw-card fw-stack">
+          <div className="fw-status" style={{ background: 'var(--accent)', color: 'var(--ink-fixed)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="info" className="text-base" />
+              Create a new family to become admin and invite members, or join an existing family
+              with a code from your admin.
+            </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
-            <a
-              href="/settings#family"
-              className="brutal bg-brand-yellow p-lg flex flex-col items-center justify-center gap-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] transition-all text-center"
-            >
+
+          <div className="fw-grid-2">
+            <a href="/settings#family" className="fw-choice fw-choice--accent">
               <Icon name="group_add" className="text-4xl" />
-              <span className="font-bold text-lg uppercase">Create Family</span>
-              <span className="text-xs font-medium text-on-surface-variant">Start a new household as admin</span>
+              <span className="fw-choice__title">Create Family</span>
+              <span className="fw-choice__sub">Start a new household as admin</span>
             </a>
-            <a
-              href="/settings#family"
-              className="brutal bg-white p-lg flex flex-col items-center justify-center gap-sm hover:bg-surface-container-high hover:translate-x-[1px] hover:translate-y-[1px] transition-all text-center"
-            >
+            <a href="/settings#family" className="fw-choice">
               <Icon name="login" className="text-4xl" />
-              <span className="font-bold text-lg uppercase">Join Family</span>
-              <span className="text-xs font-medium text-on-surface-variant">Enter an invite code like VF7K92</span>
+              <span className="fw-choice__title">Join Family</span>
+              <span className="fw-choice__sub">Use an invite code from your admin</span>
             </a>
           </div>
-          <div className="text-xs font-bold text-on-surface-variant bg-surface-container-low border-[3px] border-on-surface p-sm">
-            Tip: After creating or joining, you’ll unlock Import, Transactions, Budgets and the Invite Member button. Go to <span className="underline">Settings → Family</span>.
-          </div>
+
+          <p className="fw-muted" style={{ fontSize: 12 }}>
+            After creating or joining, Import, Transactions, Budgets and the Invite Member button
+            unlock. Setup lives in Settings → Family.
+          </p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-w-0">
+    <div className="fw-page">
       <PageHeader
         title="Family Members"
         subtitle="Manage access, roles, and view spending for your household."
         action={
           isAdmin ? (
-            <button
-              onClick={() => setInviteOpen(true)}
-              className="bg-brand-yellow border-[3px] border-on-surface px-4 py-2 font-bold uppercase shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center gap-2"
-            >
-              <Icon name="person_add" className="text-xl" />
-              Invite Member
+            <button type="button" className="fw-btn" onClick={() => setInviteOpen(true)}>
+              <Icon name="person_add" className="text-base" />
+              INVITE MEMBER
             </button>
           ) : undefined
         }
       />
 
-      {family?.inviteCode && (
-        <div className="brutal bg-brand-yellow p-sm flex flex-col sm:flex-row flex-wrap sm:items-center justify-between gap-2 mb-md min-w-0">
-          <div className="min-w-0 break-words"><span className="text-xs font-bold uppercase tracking-wider">Invite Code</span><span className="ml-sm font-mono font-bold text-lg tracking-widest break-all">{family.inviteCode}</span></div>
-          <div className="flex flex-wrap gap-xs">
-            <button onClick={() => navigator.clipboard.writeText(family.inviteCode!)} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Copy</button>
-            {isAdmin && <button onClick={async () => { const r = await familyService.rotateCode(family._id); setFamily(r.family) }} className="brutal-thin bg-white px-sm py-xs text-xs font-bold uppercase">Rotate</button>}
+      <div className="fw-flow">
+        {actionError && (
+          <div className="fw-status fw-status--error" role="alert">
+            {actionError}
           </div>
-        </div>
-      )}
+        )}
 
-      {isAdmin && requests.length > 0 && (
-        <div className="brutal bg-white p-md mb-md">
-          <h3 className="font-bold uppercase tracking-tight mb-sm">Join Requests</h3>
-          {requests.map((rq) => (
-            <div key={rq._id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 brutal-thin p-sm mb-xs min-w-0">
-              <span className="text-sm font-medium break-words min-w-0">{rq.userId?.name || rq.userId?.email}</span>
-              <div className="flex flex-wrap gap-xs">
-                <button onClick={() => handleReview(rq._id, 'accept')} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase">Accept</button>
-                <button onClick={() => handleReview(rq._id, 'reject')} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase">Reject</button>
-              </div>
+        {family.inviteCode ? (
+          <div className="fw-invitebar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minWidth: 0 }}>
+              <span className="fw-label">INVITE CODE</span>
+              <span className="fw-invitebar__code">{family.inviteCode}</span>
             </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
-        {members.map((m: FamilyMember, i: number) => (
-          <article key={m.id} className="bg-white brutal p-md flex flex-col gap-md nb-card-enter nb-card-hover min-w-0 max-w-full">
-            <div className="flex flex-wrap justify-between items-start gap-2 border-b-[3px] border-on-surface pb-md min-w-0">
-              <div className="flex items-center gap-sm min-w-0">
-                <div
-                  className={`w-16 h-16 border-[3px] border-on-surface flex items-center justify-center font-bold text-2xl ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" className="fw-btn fw-btn--white fw-btn--sm" onClick={copyInviteCode}>
+                {copied ? 'COPIED' : 'COPY'}
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="fw-btn fw-btn--white fw-btn--sm"
+                  onClick={rotateCode}
+                  disabled={rotating}
                 >
-                  {initials(m.name)}
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold leading-none break-words">{m.name}</h2>
-                  <div
-                    className={`mt-1 inline-block px-2 py-0.5 border-2 border-on-surface font-bold text-xs uppercase ${
-                      m.role === 'admin' ? 'bg-on-surface text-white' : 'bg-white'
-                    }`}
+                  {rotating ? 'ROTATING…' : 'ROTATE'}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          isAdmin && (
+            <div className="fw-card fw-split">
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontWeight: 700, fontSize: 14.5 }}>No invite code yet</p>
+                <p className="fw-muted" style={{ fontSize: 13, marginTop: 3 }}>
+                  Generate one so people can request to join this household.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="fw-btn"
+                onClick={rotateCode}
+                disabled={rotating}
+              >
+                {rotating ? 'GENERATING…' : 'GENERATE CODE'}
+              </button>
+            </div>
+          )
+        )}
+
+        {isAdmin && requests.length > 0 && (
+          <section className="fw-card fw-stack">
+            <h2 className="fw-h2" style={{ fontSize: 16 }}>
+              Join requests
+            </h2>
+            {requests.map((rq) => (
+              <div
+                key={rq._id}
+                className="fw-ranked"
+                style={{ padding: '12px 14px', backgroundColor: 'var(--bg-card)' }}
+              >
+                <span style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>
+                  {rq.userId?.name || rq.userId?.email || 'Pending applicant'}
+                </span>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="fw-btn fw-btn--sm"
+                    onClick={() => handleReview(rq._id, 'accept')}
                   >
-                    {m.role}
+                    ACCEPT
+                  </button>
+                  <button
+                    type="button"
+                    className="fw-btn fw-btn--white fw-btn--sm"
+                    onClick={() => handleReview(rq._id, 'reject')}
+                  >
+                    REJECT
+                  </button>
+                </span>
+              </div>
+            ))}
+            <p className="fw-muted" style={{ fontSize: 12 }}>
+              Accepting adds the member to the household immediately; rejecting keeps the code
+              valid for someone else.
+            </p>
+          </section>
+        )}
+
+        <div className="fw-grid-2">
+          {members.map((m: FamilyMember, i: number) => {
+            const isAdminMember = m.role === 'admin'
+            return (
+              <article key={m.id} className="fw-card fw-member">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                  <div className="fw-avatar" style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}>
+                    {initials(m.name)}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <h2 className="fw-member__name">{m.name}</h2>
+                    <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <span className={`fw-tag${isAdminMember ? ' fw-tag--dark' : ''}`}>
+                        {isAdminMember ? 'ADMIN' : 'MEMBER'}
+                      </span>
+                      {!m.isActive && <span className="fw-tag fw-tag--accent">INACTIVE</span>}
+                    </div>
+                    {m.email && (
+                      <p className="fw-muted" style={{ fontSize: 12, marginTop: 6, overflowWrap: 'anywhere' }}>
+                        {m.email}
+                      </p>
+                    )}
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row flex-wrap justify-between sm:items-end gap-3 pt-xs min-w-0">
-              <div>
-                <p className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
-                  Monthly Spend
-                </p>
-                <p className="text-2xl font-bold mt-1">—</p>
-              </div>
-              <div className="flex gap-sm">
-                {isAdmin && m.role !== 'admin' && (
-                  <button
-                    onClick={() => { setActiveMemberId(m.id); navigate('/dashboard') }}
-                    className="bg-white border-[3px] border-on-surface px-sm py-xs font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
-                  >
-                    Dashboard
-                  </button>
-                )}
-                {isAdmin && m.role !== 'admin' && m.id !== user?.id && (
-                  <button
-                    aria-label="Remove member"
-                    title="Remove member"
-                    onClick={async () => {
-                      if (!window.confirm(`Remove ${m.name}?`)) return
-                      try {
-                        await removeMember(m.id)
-                      } catch {
-                        window.alert('Could not remove member.')
-                      }
-                    }}
-                    className="bg-error-container text-on-error-container border-[3px] border-on-surface px-xs py-xs flex items-center justify-center shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all"
-                  >
-                    <Icon name="delete" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </article>
-        ))}
 
-        {isAdmin && (
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="w-full h-full min-h-[200px] border-[3px] border-dashed border-on-surface bg-white flex flex-col items-center justify-center gap-sm hover:bg-surface-container-high transition-colors group cursor-pointer shadow-brutal"
-          >
-            <div className="w-16 h-16 bg-brand-yellow border-[3px] border-on-surface flex items-center justify-center group-hover:-translate-y-1 transition-transform">
-              <Icon name="add" className="text-4xl" />
+                <div className="fw-member__divider" />
+
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <span className="fw-label" style={{ color: 'var(--text-secondary)' }}>
+                      MONTHLY SPEND
+                    </span>
+                    <div className="fw-member__spend">
+                      {spendByMember === null
+                        ? '—'
+                        : spendByMember[m.id] !== undefined
+                          ? formatCurrency(spendByMember[m.id])
+                          : formatCurrency(0)}
+                    </div>
+                    <span className="fw-muted" style={{ fontSize: 11 }}>
+                      {m.isActive ? 'This month, as recorded in the ledger' : 'Inactive member'}
+                    </span>
+                  </div>
+
+                  {isAdmin && !isAdminMember && m.id !== user?.id && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="fw-btn fw-btn--white fw-btn--sm"
+                        onClick={() => openMemberDashboard(m)}
+                      >
+                        DASHBOARD
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${m.name}`}
+                        title={`Remove ${m.name}`}
+                        className="fw-btn fw-btn--danger fw-btn--icon"
+                        onClick={() => handleRemove(m)}
+                        disabled={removingId === m.id}
+                      >
+                        <Icon name="delete" className="text-base" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+
+          {members.length === 0 && (
+            <div className="fw-card">
+              <div className="fw-empty">No active members yet — send an invite to get started.</div>
             </div>
-            <span className="text-xl font-bold">Invite Member</span>
-          </button>
-        )}
+          )}
+
+          {isAdmin && (
+            <button type="button" className="fw-dashed" onClick={() => setInviteOpen(true)}>
+              <span className="fw-dashed__plus">+</span>
+              <span className="fw-dashed__title">Invite Member</span>
+              <span className="fw-muted" style={{ fontSize: 12 }}>
+                They get an activation link to set a password
+              </span>
+            </button>
+          )}
+        </div>
       </div>
 
-      <InviteMemberModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <InviteMemberModal
+        open={inviteOpen}
+        onClose={() => {
+          setInviteOpen(false)
+          loadFamily()
+        }}
+      />
     </div>
   )
 }

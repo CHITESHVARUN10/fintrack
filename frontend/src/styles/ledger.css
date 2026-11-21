@@ -1,0 +1,1706 @@
+/* =========================================================================
+   Ledger routes — Vendors, Vendor Detail, Transactions, Import, Budgets
+   Everything is scoped under .led-page so no rule leaks into other routes.
+   Tokens consumed: --bg-page/card/input/warm, --text-primary/secondary,
+   --border & --shadow (colors), --accent, --font-display/body/mono,
+   --nb-yellow/cyan/teal/pink/violet/orange.
+   ========================================================================= */
+
+.led-page {
+  --led-thead-bg: var(--text-primary);
+  --led-thead-fg: #faf5e6;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 1360px;
+  min-width: 0;
+  margin: 0 auto;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.dark .led-page,
+[data-theme='dark'] .led-page {
+  --led-thead-bg: var(--bg-warm);
+  --led-thead-fg: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------- headings */
+.led-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 2.5px solid var(--border);
+}
+
+.led-page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.led-page-sub {
+  margin-top: 5px;
+  max-width: 780px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.led-page-sub.led-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.led-h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.led-h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------- text */
+.led-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.led-muted {
+  color: var(--text-secondary);
+}
+
+.led-tiny {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.led-strong {
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ cards */
+.led-card,
+.led-card-sm,
+.led-card-warm,
+.led-card-yellow {
+  min-width: 0;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+  box-shadow: 5px 5px 0 var(--shadow);
+}
+
+.led-card {
+  padding: 18px 20px;
+}
+
+.led-card-sm {
+  padding: 14px 16px;
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-card-warm {
+  padding: 16px 18px;
+  background: var(--bg-warm);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-card-yellow {
+  padding: 18px 20px;
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-card-yellow .led-label {
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.led-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.led-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.led-grow {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+/* ----------------------------------------------------------------- buttons */
+.led-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 15px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  border: 2px solid var(--border);
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  box-shadow: 3px 3px 0 var(--shadow);
+  cursor: pointer;
+  transition: background 0.1s ease, transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.led-btn:hover {
+  background: var(--accent-hover);
+}
+
+.led-btn:active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: none;
+}
+
+.led-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-btn-white {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.led-btn-white:hover {
+  background: var(--bg-hover);
+}
+
+.led-btn-dark {
+  background: var(--ink-fixed, #11110e);
+  color: var(--ink-inverse, #faf5e6);
+}
+
+.led-btn-dark:hover {
+  background: var(--ink-fixed, #11110e);
+  opacity: 0.9;
+}
+
+.dark .led-btn-dark,
+[data-theme='dark'] .led-btn-dark {
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+}
+
+.dark .led-btn-dark:hover,
+[data-theme='dark'] .led-btn-dark:hover {
+  background: var(--accent-hover);
+  opacity: 1;
+}
+
+.led-btn-danger {
+  background: rgb(var(--c-error-container));
+  color: rgb(var(--c-on-error-container));
+}
+
+.led-btn-sm {
+  padding: 7px 11px;
+  font-size: 11px;
+}
+
+.led-btn-xs {
+  padding: 4px 8px;
+  font-size: 10px;
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.led-btn-full {
+  width: 100%;
+}
+
+.led-ml-auto {
+  margin-left: auto;
+}
+
+/* -------------------------------------------------------------------- tags */
+.led-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.led-tag-cased {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.led-tag-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.led-tag-yellow {
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-tag-cyan {
+  background: var(--nb-cyan);
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-tag-warm {
+  background: var(--bg-warm);
+  color: var(--text-primary);
+}
+
+.led-tag-red {
+  background: rgb(var(--c-error-container));
+  color: rgb(var(--c-on-error-container));
+}
+
+.led-tag-green {
+  background: color-mix(in srgb, var(--nb-teal) 20%, var(--bg-card));
+  color: var(--text-primary);
+}
+
+.led-tag-inverse {
+  background: var(--text-primary);
+  color: var(--bg-page);
+}
+
+.led-tag-muted {
+  background: var(--bg-warm);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------------ fields */
+.led-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.led-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.led-input,
+.led-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 11px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  outline: none;
+}
+
+.led-select {
+  cursor: pointer;
+}
+
+.led-input:focus,
+.led-select:focus {
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.led-input:disabled,
+.led-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--bg-warm);
+}
+
+.led-input.led-mono,
+.led-select.led-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.led-input-xs {
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  outline: none;
+  max-width: 130px;
+}
+
+.led-input-xs.led-mono {
+  font-family: var(--font-mono);
+}
+
+/* --------------------------------------------------------- filters / widths */
+.led-scope-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.led-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.led-filter-row > .led-input,
+.led-filter-row > .led-select {
+  width: auto;
+  flex: 0 1 auto;
+}
+
+.led-filter-row > .led-grow {
+  flex: 1 1 220px;
+}
+
+.led-w-120 { width: 120px; max-width: 100%; }
+.led-w-130 { width: 130px; max-width: 100%; }
+.led-w-142 { width: 142px; max-width: 100%; }
+.led-w-145 { width: 145px; max-width: 100%; }
+.led-w-150 { width: 150px; max-width: 100%; }
+.led-w-155 { width: 155px; max-width: 100%; }
+.led-w-170 { width: 170px; max-width: 100%; }
+.led-w-185 { width: 185px; max-width: 100%; }
+.led-w-240 { width: 240px; max-width: 100%; }
+
+.led-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  border: 2px solid var(--border);
+  background: var(--bg-card);
+  flex: 0 0 auto;
+}
+
+.led-stepper button {
+  padding: 8px 11px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.led-stepper button:hover {
+  background: var(--bg-hover);
+}
+
+.led-stepper span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 8px 14px;
+  border-left: 2px solid var(--border);
+  border-right: 2px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- grids */
+.led-grid-2,
+.led-grid-3,
+.led-grid-4 {
+  display: grid;
+  min-width: 0;
+}
+
+.led-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.led-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.led-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* -------------------------------------------------------------------- KPIs */
+.led-kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 104px;
+  min-width: 0;
+}
+
+.led-kpi-val {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.led-kpi-sub {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.led-kpi-yellow .led-kpi-sub {
+  color: rgb(17 17 14 / 72%);
+}
+
+.led-card-yellow .led-kpi-sub {
+  color: rgb(17 17 14 / 72%);
+}
+
+/* ------------------------------------------------------------------ tables */
+.led-table-card {
+  min-width: 0;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: 5px 5px 0 var(--shadow);
+  overflow: hidden;
+}
+
+.led-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.led-table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: collapse;
+}
+
+.led-table.compact {
+  min-width: 720px;
+}
+
+.led-table.wide {
+  min-width: 1100px;
+}
+
+.led-table th {
+  padding: 11px 13px;
+  background: var(--led-thead-bg);
+  color: var(--led-thead-fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.led-table td {
+  padding: 11px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  vertical-align: middle;
+  border-bottom: 1.5px solid var(--border-subtle);
+}
+
+.led-table tbody tr {
+  transition: background 0.08s ease;
+}
+
+.led-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.led-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+.led-table tbody tr.led-row-clickable {
+  cursor: pointer;
+}
+
+.led-table tbody tr.led-row-selected td {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
+}
+
+.led-table tbody tr.led-row-selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--border);
+}
+
+.led-table .led-num {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.led-table .led-nowrap {
+  white-space: nowrap;
+}
+
+.led-table .led-cell-actions {
+  white-space: nowrap;
+}
+
+.led-empty-cell {
+  padding: 26px 14px !important;
+  text-align: center;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.led-table-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  border-top: 2px solid var(--border);
+  background: var(--bg-warm);
+}
+
+.led-filter-meta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------- vendors */
+.led-vendor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  min-width: 0;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: 5px 5px 0 var(--shadow);
+  cursor: pointer;
+  transition: background 0.1s ease, box-shadow 0.1s ease;
+}
+
+.led-vendor-card:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+}
+
+.led-vendor-card.led-vendor-editing {
+  cursor: default;
+  background: var(--bg-card);
+}
+
+.led-vendor-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.led-vendor-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  min-width: 0;
+}
+
+.led-vendor-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.led-vendor-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.led-vendor-sells {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.led-vendor-sells strong {
+  color: var(--text-primary);
+}
+
+.led-vendor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1.5px dashed var(--border-subtle);
+}
+
+.led-vendor-actions-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.led-hits {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.led-edit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  border: 1.5px solid var(--border);
+}
+
+.led-merge-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-card));
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+/* ---------------------------------------------------------- chips & pills */
+.led-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.led-chip {
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.led-chip:hover {
+  background: var(--bg-hover);
+}
+
+.led-chip.is-on {
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.led-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 11px;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.led-pill button {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.led-pill button:hover {
+  color: var(--nb-pink);
+}
+
+.led-product-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 110px auto;
+  gap: 10px;
+  align-items: end;
+}
+
+/* ---------------------------------------------------------------- charts */
+.led-chart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 270px;
+  min-width: 0;
+}
+
+.led-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.led-chart-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.led-readout {
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  white-space: nowrap;
+}
+
+.led-chart-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.led-chart-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.led-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 210px;
+}
+
+.led-donut-stage {
+  position: relative;
+  width: 176px;
+  height: 176px;
+  max-width: 100%;
+  margin: 4px auto;
+  display: grid;
+  place-items: center;
+}
+
+.led-donut-center {
+  position: absolute;
+  text-align: center;
+  pointer-events: none;
+}
+
+.led-donut-val {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.led-donut-sub {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.led-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.led-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.led-legend-item span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.led-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1.5px solid var(--border);
+}
+
+.led-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.led-bar-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.led-bar-head span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.led-bar-track {
+  height: 14px;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+}
+
+.led-bar-fill {
+  height: 100%;
+  border-right: 1.5px solid var(--border);
+  transition: width 0.35s ease;
+}
+
+/* ----------------------------------------------------- notices & banners */
+.led-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.led-notice-yellow {
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-notice-error {
+  background: rgb(var(--c-error-container));
+  color: rgb(var(--c-on-error-container));
+  border-color: var(--border);
+}
+
+.led-notice-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.led-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 15px 18px;
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  border: 2px solid var(--border);
+  box-shadow: 5px 5px 0 var(--shadow);
+}
+
+.led-banner-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.led-banner-text {
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------ duplicate UI */
+.led-dup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  border: 2px solid var(--border);
+  box-shadow: 5px 5px 0 var(--shadow);
+}
+
+.led-dup-panel .led-label {
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-dup-panel .led-select {
+  background: #fff;
+  color: #11110e;
+  border-color: #11110e;
+}
+
+.led-dup-panel .led-btn-dark,
+.led-dup-panel .led-btn-dark:hover,
+.dark .led-dup-panel .led-btn-dark,
+[data-theme='dark'] .led-dup-panel .led-btn-dark,
+.dark .led-dup-panel .led-btn-dark:hover,
+[data-theme='dark'] .led-dup-panel .led-btn-dark:hover {
+  background: #11110e;
+  color: #faf5e6;
+}
+
+.led-dup-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 13px 15px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+}
+
+.led-dup-meta {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.led-dup-sub {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.led-dup-helper {
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- quick add */
+.led-quick-grid {
+  display: grid;
+  grid-template-columns: 120px 155px 110px 145px minmax(180px, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.led-quick-row2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.led-suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  max-width: calc(100vw - 3rem);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-suggest button {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.led-suggest button:hover {
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+}
+
+.led-suggest-note {
+  padding: 6px 11px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* -------------------------------------------------------------- compare */
+.led-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.led-compare-card {
+  padding: 12px 14px;
+  min-width: 0;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+}
+
+/* ---------------------------------------------------------- overlay/modal */
+.led-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(10 10 10 / 65%);
+  animation: led-fade-in 0.16s ease-out;
+}
+
+.led-overlay-right {
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.led-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: 7px 7px 0 var(--shadow);
+  animation: led-scale-in 0.18s ease-out;
+}
+
+.led-modal-sm {
+  max-width: 440px;
+}
+
+.led-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 15px 18px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-card);
+}
+
+.led-modal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.led-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.led-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 13px 18px;
+  border-top: 2px solid var(--border);
+  background: var(--bg-card);
+}
+
+.led-close-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--border);
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.led-close-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* -------------------------------------------------------------- drawer */
+.led-drawer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 490px;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-card);
+  border-left: 3px solid var(--border);
+  animation: led-slide-left 0.18s ease-out;
+}
+
+.led-drawer-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-card);
+}
+
+.led-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  padding: 18px 20px 28px;
+  overflow-y: auto;
+}
+
+.led-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.led-kv:last-child {
+  border-bottom: none;
+}
+
+.led-kv-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.led-kv-val {
+  max-width: 68%;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.led-teach {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 15px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-card));
+  border: 2px solid var(--border);
+}
+
+.led-source-card {
+  padding: 10px 12px;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.led-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ----------------------------------------------------------------- import */
+.led-upload-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.led-upload-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.led-file-btn {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+  cursor: pointer;
+}
+
+.led-file-btn:hover {
+  background: var(--accent-hover);
+}
+
+.led-file-btn-white {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.led-file-btn-white:hover {
+  background: var(--bg-hover);
+}
+
+.led-file-btn-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.led-json {
+  margin-top: 12px;
+  max-height: 155px;
+  overflow: auto;
+  padding: 11px 12px;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.led-result-head {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.led-success-circle {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin: 6px auto 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ink-fixed, #11110e);
+  border: 2.5px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+  animation: led-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.led-success-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.led-success-summary {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- budgets */
+.led-budget-form {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 150px 170px auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.led-budget-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 170px;
+}
+
+.led-budget-track {
+  flex: 1;
+  height: 12px;
+  overflow: hidden;
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+}
+
+.led-budget-fill {
+  height: 100%;
+  background: var(--nb-teal);
+  border-right: 1.5px solid var(--border);
+  transition: width 0.35s ease;
+}
+
+.led-budget-fill.warn {
+  background: var(--accent);
+}
+
+.led-budget-fill.over {
+  background: var(--nb-pink);
+}
+
+.led-budget-pct {
+  width: 42px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 800;
+  text-align: right;
+}
+
+/* -------------------------------------------------------- loading / empty */
+.led-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 96px;
+}
+
+.led-skel {
+  height: 14px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-warm) 25%,
+    var(--bg-card) 50%,
+    var(--bg-warm) 75%
+  );
+  background-size: 200% 100%;
+  animation: led-shimmer 1.6s infinite linear;
+}
+
+.led-skel-lg {
+  height: 34px;
+}
+
+.led-empty {
+  padding: 26px 20px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow);
+}
+
+.led-empty-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.led-empty-text {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------- motion */
+@keyframes led-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes led-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes led-slide-left {
+  from { transform: translateX(36px); opacity: 0.8; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes led-pop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes led-shimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-overlay,
+  .led-modal,
+  .led-drawer,
+  .led-success-circle,
+  .led-skel {
+    animation: none;
+  }
+  .led-budget-fill,
+  .led-bar-fill {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------ responsive */
+@media (max-width: 1180px) {
+  .led-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .led-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .led-quick-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .led-budget-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .led-product-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .led-page {
+    gap: 16px;
+  }
+  .led-page-head {
+    align-items: flex-start;
+  }
+  .led-grid-2,
+  .led-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .led-compare-grid {
+    grid-template-columns: 1fr;
+  }
+  .led-filter-row > .led-input,
+  .led-filter-row > .led-select {
+    width: 100%;
+    flex: 1 1 140px;
+  }
+  .led-filter-row > .led-grow {
+    flex-basis: 100%;
+  }
+  .led-filter-row > .led-btn,
+  .led-stepper {
+    flex: 0 0 auto;
+  }
+  .led-w-120,
+  .led-w-130,
+  .led-w-142,
+  .led-w-145,
+  .led-w-150,
+  .led-w-155,
+  .led-w-170,
+  .led-w-185,
+  .led-w-240 {
+    width: 100%;
+  }
+  .led-table-foot {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .led-page-title {
+    font-size: 25px;
+  }
+  .led-quick-grid,
+  .led-quick-row2,
+  .led-budget-form,
+  .led-product-form {
+    grid-template-columns: 1fr;
+  }
+  .led-quick-row2 {
+    display: grid;
+  }
+  .led-vendor-actions {
+    align-items: stretch;
+  }
+  .led-vendor-actions-left,
+  .led-vendor-actions .led-btn {
+    width: 100%;
+  }
+  .led-vendor-actions-left .led-btn {
+    flex: 1 1 40%;
+  }
+  .led-card,
+  .led-card-sm,
+  .led-card-warm,
+  .led-card-yellow,
+  .led-vendor-card {
+    padding: 14px;
+  }
+  .led-overlay {
+    padding: 10px;
+  }
+  .led-overlay-right {
+    padding: 0;
+  }
+  .led-drawer {
+    max-width: 100%;
+  }
+  .led-modal-foot {
+    flex-wrap: wrap;
+  }
+  .led-modal-foot .led-btn {
+    flex: 1 1 auto;
+  }
+  .led-kv-val {
+    max-width: 60%;
+  }
+}
+
+.led-transaction-link {
+  text-align: start;
+  font-weight: inherit;
+  text-underline-offset: 3px;
+}
+
+.led-transaction-link:hover { text-decoration: underline; }

@@ -1,144 +1,279 @@
-import { taxService } from '../services/api'
-import { useAsync } from '../hooks/useAsync'
+import { useState } from 'react'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { DownloadButton } from '../components/ui/DownloadButton'
 import { Icon } from '../components/ui/Icon'
+import { reportService, taxService } from '../services/api'
+import { useAsync } from '../hooks/useAsync'
 import { formatCurrency } from '../lib/format'
-import type { TaxRegimeResult } from '../types'
+import type { TaxDeductions, TaxRegimeResult } from '../types'
+import { WORKSPACE_COLORS } from '../components/family/workspaceTheme'
+import './family-workspace.css'
 
-function RegimeCard({ r, recommended }: { r: TaxRegimeResult; recommended: boolean }) {
+const DEDUCTION_TILES: { key: keyof TaxDeductions; label: string; cap: string }[] = [
+  { key: 'section80C', label: '80C', cap: 'MAX ₹1.5L' },
+  { key: 'section80CCD', label: '80CCD', cap: 'MAX ₹50K' },
+  { key: 'section80D', label: '80D', cap: 'MAX ₹25K' },
+  { key: 'section80E', label: '80E', cap: 'NO LIMIT' },
+  { key: 'section24', label: '24 (HOME)', cap: 'MAX ₹2.0L' },
+]
+
+function RegimeCard({
+  regime,
+  recommended,
+  deductions,
+}: {
+  regime: TaxRegimeResult
+  recommended: boolean
+  deductions: number
+}) {
   return (
-    <div
-      className={`brutal flex flex-col min-w-0 max-w-full ${
-        recommended ? 'bg-brand-yellow' : 'bg-white'
-      }`}
-    >
-      <div className="bg-white border-b-[3px] border-on-surface p-sm flex justify-between items-center">
-        <h2 className="text-lg font-bold uppercase">{r.regime} Regime</h2>
-        {recommended && <Icon name="verified" className="text-2xl" filled />}
+    <article className={`fw-regime${recommended ? ' is-rec' : ''}`}>
+      <div className="fw-regime__head">
+        <span className="fw-regime__title">{regime.regime} Regime</span>
+        {recommended && (
+          <span title="Recommended" aria-label="Recommended">
+            <Icon name="verified" className="text-xl" filled />
+          </span>
+        )}
       </div>
-      <div className="p-md flex flex-col gap-sm">
-        <div className="flex flex-col gap-xs">
-          <label className="font-bold uppercase text-xs">Gross Income</label>
-          <div className="border-[3px] border-on-surface bg-white p-sm text-right font-bold">
-            {formatCurrency(r.grossIncome)}
+
+      <div className="fw-regime__body">
+        <div className="fw-stack" style={{ gap: 5 }}>
+          <span className="fw-label">Gross income</span>
+          <div className="fw-rowbox">
+            <span className="fw-mono" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              ANNUAL ₹
+            </span>
+            <span className="fw-rowbox__value">{formatCurrency(regime.grossIncome)}</span>
           </div>
         </div>
-        <div className="bg-tertiary-container border-[3px] border-on-surface p-sm flex justify-between items-center">
-          <span className="font-bold uppercase text-xs">Deductions</span>
-          <span className="bg-white px-2 border-2 border-on-surface font-bold">
-            {formatCurrency(r.deductions)}
-          </span>
+
+        <div className="fw-rowbox fw-rowbox--cyan">
+          <span className="fw-label">Deductions</span>
+          <span className="fw-tag">{formatCurrency(deductions)}</span>
         </div>
-        <div className="bg-white border-[3px] border-on-surface p-sm flex justify-between items-center">
-          <span className="font-bold uppercase text-xs">Taxable Income</span>
-          <span className="bg-brand-yellow px-2 border-2 border-on-surface font-bold">
-            {formatCurrency(r.taxableIncome)}
-          </span>
+
+        <div className="fw-rowbox">
+          <span className="fw-label">Taxable income</span>
+          <span className="fw-tag fw-tag--accent">{formatCurrency(regime.taxableIncome)}</span>
         </div>
-        <div className="border-t-[3px] border-on-surface p-md text-center mt-auto min-w-0">
-          <span className="font-bold uppercase text-xs block mb-1">Total Tax Payable</span>
-          <div className={`text-3xl sm:text-4xl font-bold break-words ${recommended ? '' : 'text-error'}`}>
-            {formatCurrency(r.totalTax)}
+
+        <div className="fw-tax-total">
+          <span className="fw-label">Total tax payable</span>
+          <div className={`fw-tax-total__value${recommended ? '' : ' is-red'}`}>
+            {formatCurrency(regime.totalTax)}
           </div>
-          <span className="text-xs font-bold text-on-surface-variant">
-            Effective {r.effectiveRate}%
-          </span>
+          <div className="fw-mono" style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>
+            Effective {regime.effectiveRate}%
+          </div>
         </div>
+      </div>
+    </article>
+  )
+}
+
+// Stacked take-home / tax / deductions bar for one regime. Shares come from
+// the server's gross, deduction and liability figures — nothing is estimated
+// in the browser.
+function RegimeBar({ regime, deductions }: { regime: TaxRegimeResult; deductions: number }) {
+  const gross = Math.max(1, regime.grossIncome)
+  const taxPct = Math.min(100, (regime.totalTax / gross) * 100)
+  const dedPct = Math.min(Math.max(0, 100 - taxPct), (deductions / gross) * 100)
+  const takePct = Math.max(0, 100 - taxPct - dedPct)
+  const takeHome = Math.max(0, regime.grossIncome - regime.totalTax)
+
+  return (
+    <div className="fw-bar">
+      <div className="fw-bar__meta">
+        <span>{regime.regime.toUpperCase()} REGIME</span>
+        <span>
+          Take-Home {formatCurrency(takeHome)} · Tax {formatCurrency(regime.totalTax)}
+        </span>
+      </div>
+      <div
+        className="fw-bar__track"
+        role="img"
+        aria-label={`${regime.regime} regime: take-home ${formatCurrency(takeHome)}, tax ${formatCurrency(regime.totalTax)}, deductions ${formatCurrency(deductions)}`}
+      >
+        <div className="fw-bar__seg" style={{ width: `${takePct.toFixed(1)}%`, background: WORKSPACE_COLORS.teal }} />
+        <div className="fw-bar__seg" style={{ width: `${taxPct.toFixed(1)}%`, background: WORKSPACE_COLORS.pink }} />
+        <div className="fw-bar__seg" style={{ width: `${dedPct.toFixed(1)}%`, background: WORKSPACE_COLORS.cyan }} />
       </div>
     </div>
   )
 }
 
-export function Tax() {
-  const { data, loading } = useAsync(() => taxService.estimate(), [])
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
 
-  if (loading || !data) return <LoadingBlock label="Calculating tax…" />
+export function Tax() {
+  const { data, loading, error } = useAsync(() => taxService.estimate(), [])
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  if (loading) return <LoadingBlock label="Calculating tax…" />
+
+  if (!data) {
+    return (
+      <div className="fw-page">
+        <PageHeader title="Tax Calculator" subtitle="Compare Old vs New regimes." />
+        <div className="fw-status fw-status--error" role="alert">
+          Could not load your tax estimate{error ? ` — ${error}` : ''}. Check that your income and
+          tax-payment records are set up, then reload.
+        </div>
+      </div>
+    )
+  }
+
+  const oldDeductions = data.oldRegime.deductions
+  const newDeductions = data.newRegime.deductions
+  const recommendedNew = data.recommended === 'New'
+  const reportYear = new Date().getFullYear()
+
+  const exportSummary = async () => {
+    setExportError(null)
+    setExporting(true)
+    try {
+      const blob = await reportService.download('tax', { year: reportYear }, 'pdf')
+      downloadBlob(blob, `tax-summary-${reportYear}.pdf`)
+    } catch {
+      setExportError('Could not export the tax summary. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
-    <div className="min-w-0">
+    <div className="fw-page">
       <PageHeader
         title="Tax Calculator"
-        subtitle="Compare Old vs New regimes for FY 2025-26."
+        subtitle="Old vs New regime for the current financial year, computed from your income and declared tax payments."
         action={
           <DownloadButton
-            variant="excel"
+            variant="pdf"
             size="large"
-            label="EXPORT XLSX"
-            onClick={() => {}}
+            label="EXPORT TAX SUMMARY"
+            onClick={exportSummary}
+            loading={exporting}
           />
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg mb-xl min-w-0">
-        <RegimeCard r={data.oldRegime} recommended={data.recommended === 'Old'} />
-        <RegimeCard r={data.newRegime} recommended={data.recommended === 'New'} />
-      </div>
-
-      <div className="bg-on-surface text-white py-6 px-6 brutal mb-xl">
-        <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center gap-4">
-          <span className="text-lg font-bold uppercase tracking-wider">
-            Recommended: <span className="text-brand-yellow">{data.recommended} Regime</span>
-          </span>
-          <span className="text-2xl sm:text-3xl md:text-4xl font-bold text-brand-yellow break-words text-center sm:text-right">
-            Save {formatCurrency(data.savings)}
-          </span>
-        </div>
-      </div>
-
-      <div className="bg-white brutal p-md mb-xl flex flex-col gap-xs nb-card-enter nb-card-hover">
-        <span className="font-bold uppercase text-xs text-on-surface-variant tracking-wider">
-          Deductions Claimed (annual)
-        </span>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-sm min-w-0">
-          <div className="brutal-thin bg-surface-container-high p-sm">
-            <span className="block text-xs font-bold uppercase">80C</span>
-            <span className="font-bold">{formatCurrency(data.deductions.section80C)}</span>
-          </div>
-          <div className="brutal-thin bg-surface-container-high p-sm">
-            <span className="block text-xs font-bold uppercase">80CCD</span>
-            <span className="font-bold">{formatCurrency(data.deductions.section80CCD)}</span>
-          </div>
-          <div className="brutal-thin bg-surface-container-high p-sm">
-            <span className="block text-xs font-bold uppercase">80D</span>
-            <span className="font-bold">{formatCurrency(data.deductions.section80D)}</span>
-          </div>
-          <div className="brutal-thin bg-surface-container-high p-sm">
-            <span className="block text-xs font-bold uppercase">80E</span>
-            <span className="font-bold">{formatCurrency(data.deductions.section80E)}</span>
-          </div>
-          <div className="brutal-thin bg-surface-container-high p-sm">
-            <span className="block text-xs font-bold uppercase">24 (Home)</span>
-            <span className="font-bold">{formatCurrency(data.deductions.section24)}</span>
-          </div>
-          <div className="brutal-thin bg-brand-yellow p-sm">
-            <span className="block text-xs font-bold uppercase">Total</span>
-            <span className="font-bold">{formatCurrency(data.deductions.totalDeductions)}</span>
-          </div>
-        </div>
-      </div>
-
-      <h3 className="text-2xl font-bold uppercase mb-md">Tax-Saving Tips</h3>
-      {data.tips.length === 0 ? (
-        <p className="font-bold text-on-surface-variant">
-          No specific tips yet — add investments, insurance or loans to get personalised
-          suggestions.
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-md min-w-0">
-          {data.tips.map((tip, i) => (
-            <div key={i} className="bg-white brutal p-md flex flex-col gap-2 nb-card-enter nb-card-hover">
-              <div className="flex items-center gap-xs">
-                <div className="w-9 h-9 bg-brand-yellow brutal-thin flex items-center justify-center">
-                  <Icon name="lightbulb" />
-                </div>
-                <span className="font-bold">Tip {i + 1}</span>
-              </div>
-              <p className="font-medium text-sm">{tip}</p>
-            </div>
-          ))}
+      {exportError && (
+        <div className="fw-status fw-status--error" role="alert">
+          {exportError}
         </div>
       )}
+
+      <div className="fw-flow">
+        <div className="fw-grid-2">
+          <RegimeCard
+            regime={data.oldRegime}
+            recommended={!recommendedNew}
+            deductions={oldDeductions}
+          />
+          <RegimeCard
+            regime={data.newRegime}
+            recommended={recommendedNew}
+            deductions={newDeductions}
+          />
+        </div>
+
+        <div className="fw-ink-banner">
+          <span className="fw-ink-banner__title">
+            RECOMMENDED: <strong>{data.recommended.toUpperCase()} REGIME</strong>
+          </span>
+          <span className="fw-ink-banner__value">Save {formatCurrency(data.savings)}</span>
+        </div>
+
+        <section className="fw-card fw-stack" style={{ gap: 14 }}>
+          <div className="fw-split">
+            <span className="fw-label" style={{ color: 'var(--text-secondary)' }}>
+              Regime breakdown (take-home vs tax vs deductions)
+            </span>
+            <div className="fw-legend">
+              <span className="fw-legend-item">
+                <span className="fw-swatch" style={{ background: WORKSPACE_COLORS.teal }} />
+                Take-Home
+              </span>
+              <span className="fw-legend-item">
+                <span className="fw-swatch" style={{ background: WORKSPACE_COLORS.pink }} />
+                Tax Payable
+              </span>
+              <span className="fw-legend-item">
+                <span className="fw-swatch" style={{ background: WORKSPACE_COLORS.cyan }} />
+                Deductions
+              </span>
+            </div>
+          </div>
+          <RegimeBar regime={data.oldRegime} deductions={oldDeductions} />
+          <RegimeBar regime={data.newRegime} deductions={newDeductions} />
+        </section>
+
+        <section className="fw-card fw-stack" style={{ gap: 14 }}>
+          <span className="fw-label" style={{ color: 'var(--text-secondary)' }}>
+            Deductions claimed (annual)
+          </span>
+          <div className="fw-grid-3">
+            {DEDUCTION_TILES.map((tile) => (
+              <div key={tile.key} className="fw-ded">
+                <div className="fw-ded__head">
+                  <span>{tile.label}</span>
+                  <span className="fw-ded__cap">{tile.cap}</span>
+                </div>
+                <div className="fw-ded__value">{formatCurrency(data.deductions[tile.key])}</div>
+              </div>
+            ))}
+            <div className="fw-ded fw-ded--total">
+              <div className="fw-ded__head">
+                <span>TOTAL</span>
+                <span className="fw-ded__cap" style={{ color: 'inherit' }}>
+                  OLD REGIME
+                </span>
+              </div>
+              <div className="fw-ded__value">{formatCurrency(data.deductions.totalDeductions)}</div>
+            </div>
+          </div>
+          <p className="fw-muted" style={{ fontSize: 12 }}>
+            Claimed amounts are aggregated from the tax payments recorded against your investments
+            for this financial year. Update those records to change the calculation.
+          </p>
+        </section>
+
+        <section className="fw-stack">
+          <h2 className="fw-h2" style={{ fontSize: 18 }}>
+            Tax-saving tips
+          </h2>
+          {data.tips.length === 0 ? (
+            <p className="fw-muted">
+              No specific tips yet — add investments, insurance or loans to get personalised
+              suggestions.
+            </p>
+          ) : (
+            <div className="fw-grid-3">
+              {data.tips.map((tip, i) => (
+                <article key={tip} className="fw-tip">
+                  <div className="fw-tip__head">
+                    <span className="fw-bulb">
+                      <Icon name="lightbulb" className="text-base" />
+                    </span>
+                    <span>Tip {i + 1}</span>
+                  </div>
+                  <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--text-primary)' }}>{tip}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { Icon } from '../components/ui/Icon'
 import { formatDate } from '../lib/format'
 import type { AppNotification, NotificationType } from '../types'
+import './family-workspace.css'
 
 const typeIcon: Record<NotificationType, string> = {
   subscription: 'payments',
@@ -17,14 +18,14 @@ const typeIcon: Record<NotificationType, string> = {
   budget: 'warning',
 }
 
-const typeColor: Record<NotificationType, string> = {
-  subscription: 'bg-tertiary-container',
-  emi: 'bg-error-container',
-  insurance: 'bg-surface-variant',
-  fd: 'bg-brand-yellow',
-  sip: 'bg-tertiary-container',
-  report: 'bg-secondary-container',
-  budget: 'bg-error-container',
+const typeTint: Record<NotificationType, string> = {
+  subscription: 'var(--nb-cyan)',
+  emi: 'var(--nb-pink)',
+  insurance: 'var(--nb-violet)',
+  fd: 'var(--accent)',
+  sip: 'var(--nb-teal)',
+  report: 'var(--bg-warm)',
+  budget: 'var(--nb-orange)',
 }
 
 const tabMap: { label: string; value: 'all' | NotificationType }[] = [
@@ -35,90 +36,124 @@ const tabMap: { label: string; value: 'all' | NotificationType }[] = [
 ]
 
 export function Notifications() {
-  const { data, loading } = useAsync(() => notificationService.list(), [])
+  const { data, loading, error } = useAsync(() => notificationService.list(), [])
   const [tab, setTab] = useState<'all' | NotificationType>('all')
   const [read, setRead] = useState<Set<string>>(new Set())
+  const [actionError, setActionError] = useState<string | null>(null)
 
-  if (loading || !data) return <LoadingBlock label="Loading notifications…" />
+  if (loading) return <LoadingBlock label="Loading notifications…" />
+
+  if (!data) {
+    return (
+      <div className="fw-page">
+        <PageHeader title="Notifications" subtitle="Alerts from your subscriptions, budgets and reports." />
+        <div className="fw-status fw-status--error" role="alert">
+          Could not load notifications{error ? ` — ${error}` : ''}. Reload to try again.
+        </div>
+      </div>
+    )
+  }
 
   const unreadCount = data.filter((n) => !n.isRead && !read.has(n.id)).length
   const filtered = tab === 'all' ? data : data.filter((n) => n.type === tab)
 
   const markAllRead = async () => {
+    setActionError(null)
+    const previous = read
     setRead(new Set(data.map((n) => n.id)))
     try {
       await notificationService.markAllRead()
     } catch {
-      // Optimistic: keep the local visual state even if the request fails.
+      setRead(previous)
+      setActionError('Could not mark all notifications as read. Please try again.')
     }
   }
 
+  const subtitle =
+    unreadCount > 0
+      ? `You have ${unreadCount} unread alert${unreadCount === 1 ? '' : 's'}.`
+      : 'All caught up — 0 unread alerts.'
+
   return (
-    <div className="max-w-4xl mx-auto min-w-0 w-full">
+    <div className="fw-page">
       <PageHeader
         title="Notifications"
-        subtitle={`You have ${unreadCount} unread alerts.`}
+        subtitle={subtitle}
         action={
           <button
+            type="button"
+            className="fw-btn fw-btn--white fw-btn--sm"
             onClick={markAllRead}
-            className="bg-white border-[3px] border-on-surface py-2 px-sm font-bold shadow-brutal-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none transition-all flex items-center gap-2"
+            disabled={unreadCount === 0}
           >
-            <Icon name="done_all" className="text-lg" /> All read
+            <Icon name="done_all" className="text-base" />
+            ALL READ
           </button>
         }
       />
 
-      <div className="flex flex-wrap gap-sm mb-lg border-b-[3px] border-on-surface pb-md min-w-0">
-        {tabMap.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`border-[3px] border-on-surface py-2 px-sm font-bold uppercase shadow-brutal-sm transition-all active:translate-x-[3px] active:translate-y-[3px] active:shadow-none ${
-              tab === t.value
-                ? 'bg-brand-yellow translate-x-[1px] translate-y-[1px] shadow-none'
-                : 'bg-white hover:bg-surface-container-high'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="border-[3px] border-on-surface bg-white min-w-0 max-w-full">
-        {filtered.length === 0 && (
-          <div className="p-xl text-center font-bold text-on-surface-variant">
-            No notifications.
+      <div className="fw-flow">
+        {actionError && (
+          <div className="fw-status fw-status--error" role="alert">
+            {actionError}
           </div>
         )}
-        {filtered.map((n: AppNotification, i) => {
-          const isUnread = !n.isRead && !read.has(n.id)
-          return (
-            <Link
-              key={n.id}
-              to={`/${n.relatedModule}`}
-              className={`flex items-start gap-2 p-md border-b-[3px] border-on-surface relative group hover:bg-surface-container-low transition-none nb-card-enter min-w-0 max-w-full ${
-                i === filtered.length - 1 ? 'border-b-0' : ''
-              } ${isUnread ? '' : 'bg-surface-container-lowest'}`}
-              style={{ '--nb-stagger': `${i * 40}ms` } as React.CSSProperties}
+
+        <div className="fw-tabs" role="tablist" aria-label="Notification categories">
+          {tabMap.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.value}
+              onClick={() => setTab(t.value)}
+              className={`fw-btn fw-btn--sm${tab === t.value ? '' : ' fw-btn--white'}`}
             >
-              {isUnread && (
-                <div className="absolute left-0 top-0 bottom-0 w-2 bg-brand-yellow" />
-              )}
-              <div
-                className={`w-12 h-12 border-[3px] border-on-surface shrink-0 flex items-center justify-center ${typeColor[n.type]}`}
+              {t.label.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        <div className="fw-notif">
+          {filtered.length === 0 && <div className="fw-empty">No notifications in this category.</div>}
+
+          {filtered.map((n: AppNotification) => {
+            const isUnread = !n.isRead && !read.has(n.id)
+            const destination = n.relatedModule ? `/${n.relatedModule}` : '/dashboard'
+            return (
+              <Link
+                key={n.id}
+                to={destination}
+                className={`fw-notif__row${isUnread ? ' is-unread' : ''}`}
+                onClick={() => {
+                  if (!isUnread) return
+                  setRead((prev) => new Set(prev).add(n.id))
+                }}
               >
-                <Icon name={typeIcon[n.type]} />
-              </div>
-              <div className="flex-1 min-w-0 pr-sm">
-                <p className="font-medium text-on-surface leading-tight mb-1 break-words">{n.message}</p>
-                <p className="font-bold text-xs text-on-surface-variant">
-                  {formatDate(n.scheduledAt)}
-                </p>
-              </div>
-              {isUnread && <div className="w-3 h-3 shrink-0 bg-on-surface mt-2" />}
-            </Link>
-          )
-        })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+                  <span
+                    className="fw-notif__icon"
+                    style={{ background: typeTint[n.type] ?? 'var(--bg-warm)', color: 'var(--ink-fixed)' }}
+                  >
+                    <Icon name={typeIcon[n.type] ?? 'notifications'} className="text-base" />
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="fw-notif__msg" style={{ fontWeight: isUnread ? 800 : 600 }}>
+                      {n.message}
+                    </div>
+                    <div className="fw-notif__date">{formatDate(n.scheduledAt)}</div>
+                  </div>
+                </div>
+                {isUnread && <span className="fw-unread" title="Unread" aria-label="Unread" />}
+              </Link>
+            )
+          })}
+        </div>
+
+        <p className="fw-muted" style={{ fontSize: 12 }}>
+          Opening an alert takes you to the matching record. Reading a single alert only clears the
+          badge in this tab — use <strong>ALL READ</strong> to clear it everywhere.
+        </p>
       </div>
     </div>
   )

@@ -1,7 +1,10 @@
 import * as React from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from '../components/ui/Icon'
+import { CodeText } from './docsPages/CodeText'
+import { PublicPageHeader } from './docsPages/PublicPageHeader'
+import './docsPages/docsPages.css'
 
 type DocStep = { title: string; detail: string }
 type DocSection = {
@@ -199,212 +202,280 @@ const SECTIONS: DocSection[] = [
   },
 ]
 
+// Prototype's Getting Started quick-explore tiles, mapped onto real sections.
+const EXPLORE: { id: string; icon: string; title: string }[] = [
+  { id: 'nav', icon: 'dashboard', title: 'NAVIGATION SHELL' },
+  { id: 'dashboard', icon: 'monitoring', title: 'DASHBOARD' },
+  { id: 'family-dashboard', icon: 'group', title: 'FAMILY DASHBOARD' },
+  { id: 'transactions', icon: 'receipt_long', title: 'TRANSACTIONS' },
+]
+
+function matches(section: DocSection, query: string): boolean {
+  if (!query.trim()) return true
+  const hay = `${section.label} ${section.summary} ${section.route ?? ''} ${section.steps
+    .map((step) => `${step.title} ${step.detail}`)
+    .join(' ')}`.toLowerCase()
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return tokens.every((token) => hay.includes(token))
+}
+
 export function Docs(): React.ReactElement {
   const [active, setActive] = useState<string>(SECTIONS[0].id)
   const [q, setQ] = useState<string>('')
-  const [openMobileNav, setOpenMobileNav] = useState<boolean>(false)
+  const [contentsOpen, setContentsOpen] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  const filtered = useMemo(() => {
-    if (!q.trim()) return SECTIONS
-    const needle = q.toLowerCase()
-    return SECTIONS.filter((s) => `${s.label} ${s.summary} ${s.steps.map((x) => `${x.title} ${x.detail}`).join(' ')}`.toLowerCase().includes(needle))
-  }, [q])
+  const filtered = useMemo(() => SECTIONS.filter((section) => matches(section, q)), [q])
 
-  const current = useMemo(() => filtered.find((s) => s.id === active) ?? filtered[0], [filtered, active])
+  const currentId = filtered.some((section) => section.id === active) ? active : filtered[0]?.id
+  const currentIndex = SECTIONS.findIndex((section) => section.id === currentId)
+  const current = currentIndex >= 0 ? SECTIONS[currentIndex] : undefined
+
+  // While searching, Prev/Next walk the visible results so the pager cannot
+  // land on a section the filtered contents list is hiding.
+  const pagerList = filtered.some((section) => section.id === currentId) ? filtered : SECTIONS
+  const pagerIndex = pagerList.findIndex((section) => section.id === currentId)
+  const prev = pagerIndex > 0 ? pagerList[pagerIndex - 1] : undefined
+  const next = pagerIndex >= 0 && pagerIndex < pagerList.length - 1 ? pagerList[pagerIndex + 1] : undefined
+
+  // Track the displayed section so quick repeated Prev/Next clicks move one
+  // section per click instead of all reading the same stale render.
+  const shownRef = useRef<string | undefined>(currentId)
+  useEffect(() => {
+    shownRef.current = currentId
+  }, [currentId])
+
+  const select = (id: string) => {
+    shownRef.current = id
+    setActive(id)
+    setContentsOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const step = (offset: number) => {
+    const base = pagerList.findIndex((section) => section.id === (shownRef.current ?? currentId))
+    const target = base >= 0 ? pagerList[base + offset] : undefined
+    if (target) select(target.id)
+  }
+
+  // "/" focuses the docs search unless a form control already has focus.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const el = document.activeElement
+      const typing = el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      if (typing) return
+      event.preventDefault()
+      searchRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
-      <nav className="w-full border-b-[3px] flex flex-wrap justify-between items-center gap-2 px-md py-sm sticky top-0 z-40" style={{ background: 'var(--bg-header)', borderColor: 'var(--border)' }}>
-        <Link to="/" className="font-bold text-2xl uppercase tracking-tighter" style={{ color: 'var(--text-primary)' }}>
-          FinStack
-        </Link>
-        <div className="hidden md:flex items-center gap-sm text-xs font-bold">
-          <span className="opacity-60 hidden lg:inline">Docs</span>
-          <div className="flex items-center brutal-thin px-2 py-1 gap-2" style={{ background: 'var(--bg-input)', borderColor: 'var(--border)' }}>
-            <Icon name="search" className="text-sm" style={{ color: 'var(--text-muted)' } as React.CSSProperties} />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search docs (e.g., vendor, budget, reports)…"
-              className="bg-transparent outline-none placeholder:text-xs min-w-[220px]"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            {q && (
-              <button onClick={() => setQ('')} className="text-[10px] brutal-thin px-1" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
-                Clear
-              </button>
-            )}
-          </div>
-          <Link to="/privacy" className="brutal-thin px-sm py-xs uppercase hidden md:inline-flex" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-            Privacy
-          </Link>
-          <Link to="/login" className="brutal bg-brand-yellow px-md py-xs uppercase text-sm" style={{ borderColor: 'var(--border)' }}>
-            Log In
-          </Link>
+    <div className="fdocs-page">
+      <PublicPageHeader active="docs">
+        <div className="fdp-search">
+          <Icon name="search" className="fdp-search-icon" />
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={(event) => {
+              setQ(event.target.value)
+              setContentsOpen(event.target.value.trim().length > 0)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setQ('')
+                event.currentTarget.blur()
+              }
+            }}
+            placeholder="Search docs (e.g., vendor, budget, reports)…"
+            aria-label="Search documentation"
+            className="fdp-search-input"
+          />
+          {q ? (
+            <button type="button" className="fdp-search-clear" onClick={() => setQ('')} aria-label="Clear search">
+              ×
+            </button>
+          ) : (
+            <span className="fdp-kbd" aria-hidden="true">
+              /
+            </span>
+          )}
         </div>
-        <button onClick={() => setOpenMobileNav((v) => !v)} className="md:hidden brutal-thin p-2" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-          <Icon name={openMobileNav ? 'close' : 'menu'} />
-        </button>
-      </nav>
+      </PublicPageHeader>
 
-      <div className="flex-1 w-full max-w-6xl mx-auto flex flex-col md:flex-row gap-xl p-md md:p-xl">
-        {/* Sidebar */}
-        <aside className={`${openMobileNav ? 'flex' : 'hidden'} md:flex w-full md:w-[280px] shrink-0 flex-col gap-sm md:sticky md:top-[68px] md:h-fit min-w-0`}>
-          <div className="brutal p-sm" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-            <div className="font-bold uppercase text-xs tracking-wider mb-sm flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
-              <span>Contents</span>
-              <span className="brutal-thin px-1 text-[10px]" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
+      <div className="fdocs-layout">
+        <aside className="fdocs-sidebar" aria-label="Documentation contents">
+          <div className="fdocs-toc" data-mobile-open={contentsOpen}>
+            <button
+              type="button"
+              className="fdocs-toc-toggle"
+              aria-expanded={contentsOpen}
+              aria-controls="fdocs-contents"
+              onClick={() => setContentsOpen((open) => !open)}
+            >
+              <span className="fdocs-kicker">Contents</span>
+              <Icon name={contentsOpen ? 'expand_less' : 'expand_more'} />
+            </button>
+            <div className="fdocs-toc-head">
+              <span className="fdocs-kicker">Contents</span>
+              <span className="fdocs-toc-count">
                 {filtered.length}/{SECTIONS.length}
               </span>
             </div>
-            <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-              {filtered.map((s) => (
+            <nav id="fdocs-contents" className="fdocs-toc-list custom-scrollbar">
+              {filtered.length === 0 && (
+                <div className="fdocs-toc-empty">
+                  No matching docs.
+                  <button type="button" className="fdp-btn fdp-btn-white fdp-btn-sm" onClick={() => setQ('')}>
+                    RESET SEARCH
+                  </button>
+                </div>
+              )}
+              {filtered.map((section) => (
                 <button
-                  key={s.id}
-                  onClick={() => {
-                    setActive(s.id)
-                    setOpenMobileNav(false)
-                  }}
-                  className={`flex items-center gap-2 px-2 py-2 text-left text-xs font-bold border-l-[3px] transition-colors ${active === s.id ? 'bg-brand-yellow text-on-surface' : 'hover:brightness-110'}`}
-                  style={
-                    active === s.id
-                      ? { background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--border)' }
-                      : { color: 'var(--text-secondary)', borderColor: 'transparent', background: 'transparent' }
-                  }
+                  key={section.id}
+                  type="button"
+                  onClick={() => select(section.id)}
+                  aria-current={currentId === section.id ? 'true' : undefined}
+                  className={`fdocs-toc-item${currentId === section.id ? ' fdocs-toc-item--active' : ''}`}
                 >
-                  <Icon name={s.icon} className="text-sm shrink-0" />
-                  <span className="flex-1 truncate text-left">{s.label}</span>
-                  {s.route && <Icon name="arrow_outward" className="text-xs opacity-60" />}
+                  <span className="fdocs-toc-left">
+                    <Icon name={section.icon} />
+                    <span className="fdocs-toc-label">{section.label}</span>
+                  </span>
+                  {section.route && (
+                    <span className="fdocs-toc-arrow" aria-hidden="true">
+                      ↗
+                    </span>
+                  )}
                 </button>
               ))}
-              {filtered.length === 0 && <div className="text-xs p-2" style={{ color: 'var(--text-secondary)' }}>No results for “{q}”.</div>}
-            </div>
+            </nav>
           </div>
 
-          <div className="brutal-thin p-sm text-xs" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
-            <div className="font-bold uppercase mb-1 flex items-center gap-1">
-              <Icon name="lightbulb" className="text-sm" /> How to use this
+          <div className="fdocs-howto">
+            <div className="fdocs-howto-head">
+              <Icon name="lightbulb" /> HOW TO USE THIS
             </div>
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Click a section → read steps → follow the <span className="font-bold" style={{ color: 'var(--text-primary)' }}>Route</span> in the app (e.g., <span className="brutal-thin px-1" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>/vendors</span>). Use search above to jump. All code paths are typed — hover types in your IDE show `DocSection` & `DocStep`.
+            <p className="fdocs-howto-body">
+              Click a section → read steps → follow the <strong>Route</strong> in the app (e.g., <code>/vendors</code>).
+              Use search above to jump. All code paths are typed — hover types in your IDE show <code>DocSection</code> &amp;{' '}
+              <code>DocStep</code>.
             </p>
           </div>
         </aside>
 
-        {/* Content */}
-        <article className="flex-1 min-w-0 flex flex-col gap-lg">
+        <main className="fdocs-main">
           {current ? (
-            <div className="brutal p-md md:p-lg" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-              <div className="flex flex-wrap items-start justify-between gap-sm min-w-0">
-                <div>
-                  <div className="inline-flex items-center gap-2 brutal-thin px-2 py-1 text-xs font-bold uppercase mb-sm" style={{ background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--border)' }}>
-                    <Icon name={current.icon} className="text-base" />
-                    {current.label}
-                  </div>
-                  <h1 className="text-2xl md:text-3xl font-bold uppercase tracking-tight leading-none">{current.label}</h1>
-                  <p className="mt-xs text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {current.summary}
-                  </p>
+            <>
+              <article className="fdocs-article">
+                <div className="fdocs-top">
+                  <span className="fdp-badge">
+                    <Icon name={current.icon} /> {current.label}
+                  </span>
+                  {current.route && (
+                    <Link to={current.route} className="fdp-btn fdp-btn-sm">
+                      OPEN {current.label.toUpperCase()} →
+                    </Link>
+                  )}
                 </div>
-                {current.route && (
-                  <Link to={current.route} className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-xs shrink-0" style={{ borderColor: 'var(--border)' }}>
-                    Open {current.label} →
-                  </Link>
-                )}
-              </div>
 
-              <div className="mt-lg flex flex-col gap-md">
-                {current.steps.map((st, idx) => (
-                  <div key={`${current.id}-${idx}`} className="brutal-thin p-md" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}>
-                    <div className="flex items-start gap-sm">
-                      <span className="w-7 h-7 shrink-0 flex items-center justify-center border font-bold text-xs" style={{ background: 'var(--accent)', color: 'var(--accent-text)', borderColor: 'var(--border)' }}>
-                        {idx + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-sm uppercase tracking-wide">{st.title}</h3>
-                        <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                          {st.detail}
+                <div>
+                  <h1 className="fdocs-h1">{current.label}</h1>
+                  <p className="fdocs-subtitle">{current.summary}</p>
+                </div>
+
+                <div className="fdocs-steps">
+                  {current.steps.map((step, index) => (
+                    <section key={`${current.id}-${index}`} className="fdocs-step">
+                      <div className="fdocs-step-num" aria-hidden="true">
+                        {index + 1}
+                      </div>
+                      <div className="fdocs-step-content">
+                        <h2 className="fdocs-step-title">{step.title}</h2>
+                        <p className="fdocs-step-desc">
+                          <CodeText text={step.detail} />
                         </p>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    </section>
+                  ))}
+                </div>
 
-              {current.tips && current.tips.length > 0 && (
-                <div className="mt-md brutal-thin p-sm" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-                  <div className="font-bold text-xs uppercase tracking-wider mb-1">Tips</div>
-                  <ul className="list-disc ml-5 space-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {current.tips.map((t, i) => (
-                      <li key={i}>{t}</li>
-                    ))}
-                  </ul>
+                {current.tips && current.tips.length > 0 && (
+                  <div className="fdocs-tips">
+                    <h3>TIPS</h3>
+                    <ul>
+                      {current.tips.map((tip) => (
+                        <li key={tip}>
+                          <CodeText text={tip} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="fdocs-bottom">
+                  <div className="fdocs-pager">
+                    <button
+                      type="button"
+                      className="fdp-btn fdp-btn-white fdp-btn-sm"
+                      disabled={!prev}
+                      onClick={() => step(-1)}
+                    >
+                      ← PREV
+                    </button>
+                    <button type="button" className="fdp-btn fdp-btn-sm" disabled={!next} onClick={() => step(1)}>
+                      NEXT →
+                    </button>
+                  </div>
+                  <Link to="/privacy" className="fdp-btn fdp-btn-white fdp-btn-sm">
+                    PRIVACY POLICY
+                  </Link>
+                </div>
+              </article>
+
+              {current.id === SECTIONS[0].id && (
+                <div className="fdocs-explore">
+                  {EXPLORE.map((tile) => {
+                    const target = SECTIONS.find((section) => section.id === tile.id)
+                    if (!target) return null
+                    return (
+                      <button key={tile.id} type="button" className="fdocs-explore-card" onClick={() => select(tile.id)}>
+                        <span className="fdocs-explore-icon">
+                          <Icon name={tile.icon} />
+                        </span>
+                        <span className="fdocs-explore-title">{tile.title}</span>
+                        <p className="fdocs-explore-desc">{target.summary}</p>
+                        <span className="fdocs-explore-cta">EXPLORE →</span>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
-
-              <div className="mt-lg flex flex-col sm:flex-row flex-wrap gap-sm">
-                <button
-                  onClick={() => {
-                    const idx = SECTIONS.findIndex((s) => s.id === current.id)
-                    const prev = SECTIONS[Math.max(0, idx - 1)]
-                    setActive(prev.id)
-                  }}
-                  className="brutal bg-white px-md py-xs font-bold uppercase text-xs"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
-                >
-                  ← Prev
-                </button>
-                <button
-                  onClick={() => {
-                    const idx = SECTIONS.findIndex((s) => s.id === current.id)
-                    const next = SECTIONS[Math.min(SECTIONS.length - 1, idx + 1)]
-                    setActive(next.id)
-                  }}
-                  className="brutal bg-brand-yellow px-md py-xs font-bold uppercase text-xs"
-                  style={{ borderColor: 'var(--border)' }}
-                >
-                  Next →
-                </button>
-                <Link to="/privacy" className="brutal-thin px-md py-xs font-bold uppercase text-xs ml-auto" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
-                  Privacy Policy
-                </Link>
-              </div>
-            </div>
+            </>
           ) : (
-            <div className="brutal p-lg text-center" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-              <Icon name="search_off" className="text-4xl" style={{ color: 'var(--text-muted)' } as React.CSSProperties} />
-              <div className="font-bold mt-sm">No docs match.</div>
-            </div>
+            <article className="fdocs-article fdocs-empty">
+              <span className="fdp-badge">0 MATCHES</span>
+              <h1 className="fdocs-h1">No sections match “{q.trim()}”</h1>
+              <p className="fdocs-subtitle">
+                Try searching for <code>vendor</code>, <code>budget</code>, <code>tax</code>, <code>gemini</code>, or{' '}
+                <code>fintrack.sid</code>.
+              </p>
+              <button type="button" className="fdp-btn" onClick={() => setQ('')}>
+                CLEAR SEARCH
+              </button>
+            </article>
           )}
-
-          {/* Overview grid when on Getting Started */}
-          {active === 'start' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
-              {SECTIONS.slice(1, 5).map((s) => (
-                <button
-                  key={`card-${s.id}`}
-                  onClick={() => setActive(s.id)}
-                  className="brutal p-md text-left hover:brightness-110 flex flex-col gap-sm"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-                >
-                  <div className="w-10 h-10 flex items-center justify-center border" style={{ background: 'var(--accent)', borderColor: 'var(--border)', color: 'var(--accent-text)' }}>
-                    <Icon name={s.icon} />
-                  </div>
-                  <div className="font-bold uppercase text-sm">{s.label}</div>
-                  <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {s.summary}
-                  </div>
-                  <span className="text-xs font-bold uppercase underline decoration-[3px] underline-offset-2">Explore →</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="text-xs text-center" style={{ color: 'var(--text-secondary)' }}>
-            FinStack Docs · Typed with <span className="font-bold" style={{ color: 'var(--text-primary)' }}>DocSection & DocStep</span> · Last updated Aug 30, 2026 · <Link to="/privacy" className="underline">Privacy</Link>
-          </div>
-        </article>
+        </main>
       </div>
+
+      <footer className="fdp-footer">
+        FinStack Docs · Typed with <strong>DocSection</strong> &amp; <strong>DocStep</strong> · Last updated Aug 30, 2026 ·{' '}
+        <Link to="/privacy">Privacy</Link>
+      </footer>
     </div>
   )
 }

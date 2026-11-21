@@ -2,31 +2,39 @@ import type { ImportResult } from '../types/api'
 import { toApiError } from '../lib/apiError'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { PageHeader } from '../components/ui/PageHeader'
 import { importService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
-import { OPAQUE_PANEL_STYLE, SOLID_SCRIM_STYLE } from '../components/ui/Overlay'
+import { LedgerEmpty, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
 
 type HistoryItem = { batchId: string; fileName?: string; source: string; total: number; created: number; reconciled: number; pendingReview: number; deduped: number; failed: number; status: string; createdAt: string; createdBy?: { name: string; email: string } }
 
-function SuccessOverlay({ show, summary, onClose }: { show: boolean; summary?: string; onClose: () => void }) {
+function SuccessOverlay({ show, summary, onClose, onView }: { show: boolean; summary?: string; onClose: () => void; onView: () => void }) {
   if (!show) return null
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-md" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/60" style={SOLID_SCRIM_STYLE} onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-white brutal max-w-md max-w-[calc(100vw-2rem)] w-full max-h-[90vh] overflow-y-auto p-lg sm:p-xl flex flex-col items-center gap-md animate-[scaleIn_0.35s_ease] min-w-0" style={OPAQUE_PANEL_STYLE}>
-        <div className="w-20 h-20 rounded-full bg-brand-yellow border-[3px] border-on-surface flex items-center justify-center animate-[pop_0.45s_cubic-bezier(0.34,1.56,0.64,1)]">
-          <Icon name="check" className="text-4xl" />
+    <LedgerOverlay onClose={onClose} label="Import successful">
+      <div className="led-modal led-modal-sm">
+        <div className="led-modal-body" style={{ alignItems: 'center', padding: '32px 26px 28px', gap: 14 }}>
+          <div className="led-success-circle">
+            <Icon name="check" className="text-4xl" />
+          </div>
+          <h2 className="led-success-title">Import Successful</h2>
+          {summary && <p className="led-success-summary">{summary}</p>}
+          <div className="led-row" style={{ gap: 10, marginTop: 8, width: '100%', justifyContent: 'center' }}>
+            <button onClick={onView} className="led-btn">View Transactions</button>
+            <button onClick={onClose} className="led-btn led-btn-white">Close</button>
+          </div>
         </div>
-        <h2 className="text-xl font-bold uppercase tracking-tight">Import Successful</h2>
-        {summary && <p className="text-sm text-center text-on-surface-variant">{summary}</p>}
-        <button onClick={onClose} className="brutal bg-brand-yellow px-xl py-sm font-bold uppercase">View Transactions</button>
       </div>
-      <style>{`@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.15)}100%{transform:scale(1)}}@keyframes scaleIn{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}`}</style>
-    </div>
+    </LedgerOverlay>
   )
+}
+
+function statusClass(status: string) {
+  if (status === 'success') return 'led-tag led-tag-green'
+  if (status === 'partial') return 'led-tag led-tag-yellow'
+  return 'led-tag led-tag-red'
 }
 
 export function ImportPage() {
@@ -76,71 +84,121 @@ export function ImportPage() {
   }
 
   return (
-    <div className="min-w-0">
-      <PageHeader title="Import" subtitle="Upload bank statements (CSV/XLSX) or UPI screenshots. Re-uploads are deduplicated." />
+    <LedgerPage
+      title="Import"
+      subtitle="Upload bank statements (CSV/XLSX) or UPI screenshots. Re-uploads are deduplicated."
+    >
       {hasNoFamily && (
-        <div className="brutal bg-brand-yellow p-md mb-md flex flex-wrap items-center justify-between gap-sm min-w-0">
-          <div className="flex items-center gap-sm">
+        <div className="led-banner">
+          <div className="led-row" style={{ minWidth: 0 }}>
             <Icon name="group_add" />
-            <span className="font-bold text-sm break-words min-w-0">You need a family to import. Create a new family or join one, then try again.</span>
+            <span className="led-banner-title">You need a family to import. Create a new family or join one, then try again.</span>
           </div>
-          <Link to="/settings#family" className="brutal bg-white px-md py-xs font-bold uppercase text-sm">
-            Create / Join Family
-          </Link>
+          <Link to="/settings#family" className="led-btn led-btn-white led-btn-sm">Create / Join Family</Link>
         </div>
       )}
-      {err && <div className="brutal-thin bg-error-container text-on-error-container p-sm mb-md text-sm">{err}</div>}
+      {err && (
+        <LedgerNotice tone="error">
+          <span className="led-notice-mark">!</span>
+          <span>{err}</span>
+        </LedgerNotice>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-md min-w-0">
-        <div className="brutal bg-white p-md flex flex-col gap-sm min-w-0 max-w-full">
-          <h3 className="font-bold uppercase flex items-center gap-sm"><Icon name="description" /> Bank Statement</h3>
-          <p className="text-sm text-on-surface-variant">CSV or Excel (.xlsx). Header row must contain date, description, amount (Kotak-style: “Transaction Date”, “Description”, “Amount”, “Dr / Cr”).</p>
-          <label className={`brutal-thin bg-brand-yellow px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'bank' || hasNoFamily ? 'opacity-60 pointer-events-none' : ''}`}>
-            {hasNoFamily ? 'Create a family first' : busy === 'bank' ? 'Importing…' : 'Choose File'}
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={onBank} className="hidden" disabled={busy !== null || hasNoFamily} />
-          </label>
-          {bankResult && (
-            <div className="brutal-thin bg-surface-container-low p-sm text-xs overflow-auto max-h-64 min-w-0 break-words">
-              <div className="font-bold mb-xs">File: {bankResult.fileName || '—'} — {bankResult.status}</div>
-              {bankResult.summary && <div className="mb-xs text-on-surface-variant">new {bankResult.summary.created} • reconciled {bankResult.summary.reconciled} • pending {bankResult.summary.pendingReview} • deduped {bankResult.summary.deduped} • failed {bankResult.summary.failed}</div>}
-              <pre className="whitespace-pre-wrap">{JSON.stringify(bankResult, null, 2)}</pre>
-            </div>
-          )}
+      <div className="led-grid-2">
+        <div className="led-card led-upload-card">
+          <div>
+            <div className="led-upload-title"><Icon name="description" /> Bank Statement</div>
+            <p className="led-page-sub" style={{ marginTop: 8 }}>
+              CSV or Excel (.xlsx). Header row must contain date, description, amount (Kotak-style: “Transaction Date”, “Description”, “Amount”, “Dr / Cr”).
+            </p>
+          </div>
+          <div>
+            <label className={`led-file-btn${busy === 'bank' || hasNoFamily ? ' led-file-btn-disabled' : ''}`}>
+              {hasNoFamily ? 'Create a family first' : busy === 'bank' ? 'Importing…' : 'Choose File'}
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={onBank}
+                className="hidden"
+                disabled={busy !== null || hasNoFamily}
+              />
+            </label>
+            {bankResult && (
+              <div>
+                <div className="led-result-head">
+                  File: {bankResult.fileName || '—'} <span className={statusClass(bankResult.status)}>{bankResult.status.replace('_', ' ')}</span>
+                </div>
+                {bankResult.summary && (
+                  <div className="led-tiny" style={{ marginBottom: 4 }}>
+                    new {bankResult.summary.created} • reconciled {bankResult.summary.reconciled} • pending {bankResult.summary.pendingReview} • deduped {bankResult.summary.deduped} • failed {bankResult.summary.failed}
+                  </div>
+                )}
+                <pre className="led-json">{JSON.stringify(bankResult, null, 2)}</pre>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="brutal bg-white p-md flex flex-col gap-sm min-w-0 max-w-full">
-          <h3 className="font-bold uppercase flex items-center gap-sm"><Icon name="image" /> UPI Screenshot</h3>
-          <p className="text-sm text-on-surface-variant">Upload a payment screenshot; Gemini extracts amount/date/UPI.</p>
-          <label className={`brutal-thin bg-white border-on-surface px-md py-sm font-bold uppercase text-sm text-center cursor-pointer ${busy === 'shot' || hasNoFamily ? 'opacity-60 pointer-events-none' : ''}`}>
-            {hasNoFamily ? 'Create a family first' : busy === 'shot' ? 'Extracting…' : 'Choose Image'}
-            <input type="file" accept="image/*" onChange={onShot} className="hidden" disabled={busy !== null || hasNoFamily} />
-          </label>
-          {shotResult && <pre className="brutal-thin bg-surface-container-low p-sm text-xs overflow-auto max-h-64 min-w-0 max-w-full break-words whitespace-pre-wrap">{JSON.stringify(shotResult, null, 2)}</pre>}
+
+        <div className="led-card led-upload-card">
+          <div>
+            <div className="led-upload-title"><Icon name="image" /> UPI Screenshot</div>
+            <p className="led-page-sub" style={{ marginTop: 8 }}>
+              Upload a payment screenshot; Gemini extracts amount/date/UPI.
+            </p>
+          </div>
+          <div>
+            <label className={`led-file-btn led-file-btn-white${busy === 'shot' || hasNoFamily ? ' led-file-btn-disabled' : ''}`}>
+              {hasNoFamily ? 'Create a family first' : busy === 'shot' ? 'Extracting…' : 'Choose Image'}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={onShot}
+                className="hidden"
+                disabled={busy !== null || hasNoFamily}
+              />
+            </label>
+            {shotResult && (
+              <div>
+                <div className="led-result-head">
+                  {shotResult.fileName || 'Screenshot'} <span className={statusClass(shotResult.status)}>{shotResult.status.replace('_', ' ')}</span>
+                </div>
+                <pre className="led-json">{JSON.stringify(shotResult, null, 2)}</pre>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="mt-xl">
-        <h3 className="font-bold uppercase tracking-tight mb-sm flex items-center gap-sm"><Icon name="history" /> Import History</h3>
+      <div className="led-stack">
+        <h2 className="led-h3"><Icon name="history" /> Import History</h2>
         {history.length === 0 ? (
-          <div className="brutal bg-white p-md text-sm text-on-surface-variant">No imports yet. Upload a statement above.</div>
+          <LedgerEmpty title="No imports yet">Upload a statement above to see the history here.</LedgerEmpty>
         ) : (
-          <div className="brutal bg-white overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-sm">
-                <thead className="bg-on-surface text-white">
-                  <tr><th className="text-left px-sm py-xs whitespace-nowrap">Date</th><th className="text-left px-sm py-xs whitespace-nowrap">File</th><th className="text-left px-sm py-xs whitespace-nowrap">Source</th><th className="text-right px-sm py-xs whitespace-nowrap">Rows</th><th className="text-left px-sm py-xs whitespace-nowrap">Result</th><th className="text-left px-sm py-xs whitespace-nowrap">By</th></tr>
+          <div className="led-table-card">
+            <div className="led-table-scroll">
+              <table className="led-table compact">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>File</th>
+                    <th>Source</th>
+                    <th>Rows</th>
+                    <th>Result</th>
+                    <th>By</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {history.map((h) => (
-                    <tr key={h.batchId} className="border-t-2 border-on-surface/20">
-                      <td className="px-sm py-xs whitespace-nowrap">{new Date(h.createdAt).toLocaleString('en-IN')}</td>
-                      <td className="px-sm py-xs truncate max-w-[220px] whitespace-nowrap">{h.fileName || h.batchId.slice(0, 8)}</td>
-                      <td className="px-sm py-xs whitespace-nowrap">{h.source === 'BANK_STATEMENT' ? 'Bank' : 'Screenshot'}</td>
-                      <td className="text-right px-sm py-xs whitespace-nowrap">{h.total}</td>
-                      <td className="px-sm py-xs">
-                        <span className={`brutal-thin px-xs py-0.5 text-xs font-bold uppercase ${h.status === 'success' ? 'bg-brand-yellow' : h.status === 'partial' ? 'bg-surface-container-low' : 'bg-error-container text-on-error-container'}`}>{h.status}</span>
-                        <span className="ml-xs text-xs text-on-surface-variant">+{h.created} new • {h.deduped} dup</span>
+                    <tr key={h.batchId}>
+                      <td className="led-mono led-nowrap" style={{ fontSize: 12 }}>{new Date(h.createdAt).toLocaleString('en-IN')}</td>
+                      <td className="led-mono led-strong" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.fileName || h.batchId.slice(0, 8)}</td>
+                      <td>{h.source === 'BANK_STATEMENT' ? 'Bank' : 'Screenshot'}</td>
+                      <td className="led-num">{h.total}</td>
+                      <td>
+                        <span className={statusClass(h.status)}>{h.status}</span>
+                        <span className="led-mono" style={{ marginLeft: 6, fontSize: 11.5, color: 'var(--text-secondary)' }}>+{h.created} new • {h.deduped} dup</span>
                       </td>
-                      <td className="px-sm py-xs text-xs whitespace-nowrap">{h.createdBy?.name || '—'}</td>
+                      <td style={{ fontSize: 12 }}>{h.createdBy?.name || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -150,7 +208,12 @@ export function ImportPage() {
         )}
       </div>
 
-      <SuccessOverlay show={!!success} summary={success?.msg} onClose={() => { setSuccess(null); nav('/transactions') }} />
-    </div>
+      <SuccessOverlay
+        show={!!success}
+        summary={success?.msg}
+        onClose={() => setSuccess(null)}
+        onView={() => { setSuccess(null); nav('/transactions') }}
+      />
+    </LedgerPage>
   )
 }

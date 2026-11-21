@@ -10,8 +10,8 @@ type BadgeColor =
   | 'green'
 
 const colorClasses: Record<BadgeColor, string> = {
-  yellow: 'bg-brand-yellow text-on-surface',
-  cyan: 'bg-tertiary-container text-on-surface',
+  yellow: 'fin-color-yellow',
+  cyan: 'fin-color-cyan',
   white: 'bg-white text-on-surface',
   error: 'bg-error-container text-on-error-container',
   surface: 'bg-surface-container-high text-on-surface',
@@ -30,7 +30,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold border-2 border-on-surface nb-badge-pop',
+        'inline-flex items-center gap-1 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wide border border-token-border',
         colorClasses[color],
         className,
       )}

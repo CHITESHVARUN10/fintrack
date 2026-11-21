@@ -12,20 +12,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   block?: boolean
 }
 
-const variantClasses: Record<Variant, string> = {
-  primary:
-    'bg-on-surface text-white hover:bg-brand-yellow hover:text-on-surface',
-  yellow: 'bg-brand-yellow text-on-surface hover:bg-on-surface hover:text-white',
-  white: 'bg-white text-on-surface hover:bg-on-surface hover:text-white',
-  cyan: 'bg-tertiary-container text-on-surface hover:bg-on-surface hover:text-white',
-  error:
-    'bg-error-container text-on-error-container hover:bg-on-surface hover:text-white',
-}
-
 const sizeClasses: Record<Size, string> = {
-  sm: 'px-3 py-1 text-sm',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-6 py-3 text-base',
+  sm: 'min-h-8 px-3 py-1.5 text-[11.5px]',
+  md: 'min-h-10 px-4 py-2 text-[12.5px]',
+  lg: 'min-h-12 px-6 py-3 text-sm',
 }
 
 export function Button({
@@ -41,12 +31,12 @@ export function Button({
   return (
     <button
       className={cn(
-        'brutal-sm inline-flex items-center justify-center gap-2 rounded-none font-bold uppercase tracking-[0.05em] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none active:translate-x-[3px] active:translate-y-[3px] active:shadow-none disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm disabled:active:translate-x-0 disabled:active:translate-y-0 disabled:active:shadow-brutal-sm disabled:opacity-50 disabled:cursor-not-allowed',
-        variantClasses[variant],
+        'fin-button font-display inline-flex items-center justify-center gap-2 font-bold uppercase tracking-[0.05em]',
         sizeClasses[size],
         block && 'w-full',
         className,
       )}
+      data-variant={variant}
       {...props}
     >
       {icon}

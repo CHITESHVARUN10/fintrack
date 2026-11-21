@@ -3,13 +3,15 @@ import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
-import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
-import { Button } from '../components/ui/Button'
 import { Icon } from '../components/ui/Icon'
-import { Badge } from '../components/ui/Badge'
-import { Modal } from '../components/ui/Modal'
-import { Field, Input, Select, Textarea } from '../components/ui/Field'
 import { formatCurrency, formatDay } from '../lib/format'
+import {
+  PaymentsEmpty,
+  PaymentsLoading,
+  PaymentsModal,
+  PaymentsNotice,
+  PaymentsPage,
+} from '../components/payments/PaymentsKit'
 import type {
   Subscription,
   SubscriptionCategory,
@@ -61,13 +63,31 @@ function normalizeSubscription(raw: Record<string, unknown>): Subscription {
   }
 }
 
-interface SubscriptionFormProps {
-  initial?: Subscription | null
-  onSaved: () => void
-  onCancel: () => void
+function toDateInput(value: string): string {
+  return value ? String(value).slice(0, 10) : ''
 }
 
-function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps) {
+function statusTagClass(status: SubscriptionStatus): string {
+  if (status === 'Active') return 'pmt-tag pmt-tag-cyan'
+  if (status === 'Paused') return 'pmt-tag pmt-tag-warm'
+  return 'pmt-tag pmt-tag-red'
+}
+
+interface SubscriptionFormProps {
+  formId: string
+  initial?: Subscription | null
+  defaultFrequency: Freq
+  onSaved: (savedFrequency: SubscriptionFrequency) => void
+  onBusyChange: (busy: boolean) => void
+}
+
+function SubscriptionForm({
+  formId,
+  initial,
+  defaultFrequency,
+  onSaved,
+  onBusyChange,
+}: SubscriptionFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [category, setCategory] = useState<SubscriptionCategory>(
     initial?.category ?? 'Entertainment',
@@ -77,9 +97,9 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
     initial ? String(initial.billingDate) : '1',
   )
   const [frequency, setFrequency] = useState<SubscriptionFrequency>(
-    initial?.frequency ?? 'monthly',
+    initial?.frequency ?? defaultFrequency,
   )
-  const [startDate, setStartDate] = useState(initial?.startDate ?? '')
+  const [startDate, setStartDate] = useState(toDateInput(initial?.startDate ?? ''))
   const [renewalReminderDays, setRenewalReminderDays] = useState(
     initial ? String(initial.renewalReminderDays) : '3',
   )
@@ -91,13 +111,12 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
     initial?.status ?? 'Active',
   )
   const [notes, setNotes] = useState(initial?.notes ?? '')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setLoading(true)
+    onBusyChange(true)
     const payload = {
       name,
       category,
@@ -117,144 +136,164 @@ function SubscriptionForm({ initial, onSaved, onCancel }: SubscriptionFormProps)
       } else {
         await apiClient.post('/subscriptions', payload)
       }
-      onSaved()
+      onSaved(frequency)
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not save subscription.'
       setError(msg)
     } finally {
-      setLoading(false)
+      onBusyChange(false)
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-lg">
-      {error && (
-        <div className="border-[3px] border-on-surface bg-red-100 px-sm py-2 font-bold text-sm">
-          {error}
-        </div>
-      )}
-      <Field label="Name">
-        <Input
+    <form id={formId} onSubmit={onSubmit} className="pmt-stack">
+      {error && <PaymentsNotice tone="error">{error}</PaymentsNotice>}
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="sub-name">Name</label>
+        <input
+          id="sub-name"
+          className="pmt-input"
           placeholder="e.g. Netflix"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
-      </Field>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-        <Field label="Category">
-          <Select
+      </div>
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-cat">Category</label>
+          <select
+            id="sub-cat"
+            className="pmt-select"
             value={category}
             onChange={(e) => setCategory(e.target.value as SubscriptionCategory)}
           >
             {CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
             ))}
-          </Select>
-        </Field>
-        <Field label="Status">
-          <Select
+          </select>
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-status">Status</label>
+          <select
+            id="sub-status"
+            className="pmt-select"
             value={status}
             onChange={(e) => setStatus(e.target.value as SubscriptionStatus)}
           >
             {STATUSES.map((s) => (
               <option key={s}>{s}</option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-        <Field label="Amount">
-          <div className="flex min-w-0">
-            <span className="bg-surface-container-high border-[4px] border-r-0 border-on-surface px-3 flex items-center font-bold">
-              ₹
-            </span>
-            <Input
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-amount">Amount</label>
+          <div className="pmt-rupee">
+            <span className="pmt-rupee-prefix">₹</span>
+            <input
+              id="sub-amount"
               type="number"
+              min={1}
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="border-l-0"
               required
             />
           </div>
-        </Field>
-        <Field label="Billing Date (Day of Month)">
-          <Input
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-day">Billing date (day of month)</label>
+          <input
+            id="sub-day"
+            className="pmt-input pmt-mono"
             type="number"
             min={1}
             max={31}
             value={billingDate}
             onChange={(e) => setBillingDate(e.target.value)}
-            className="w-24 text-center"
             required
           />
-        </Field>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-        <Field label="Frequency">
-          <Select
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-freq">Frequency</label>
+          <select
+            id="sub-freq"
+            className="pmt-select"
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as SubscriptionFrequency)}
           >
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
-          </Select>
-        </Field>
-        <Field label="Payment Method">
-          <Select
+          </select>
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-method">Payment method</label>
+          <select
+            id="sub-method"
+            className="pmt-select"
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value)}
           >
             {PAYMENT_METHODS.map((p) => (
               <option key={p}>{p}</option>
             ))}
-          </Select>
-        </Field>
+          </select>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-lg items-end">
-        <Field label="Start Date">
-          <Input
+
+      <div className="pmt-form-grid">
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-start">Start date</label>
+          <input
+            id="sub-start"
+            className="pmt-input pmt-mono"
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
           />
-        </Field>
-        <Field label="Renewal Reminder (Days)">
-          <Input
+        </div>
+        <div className="pmt-field">
+          <label className="pmt-label" htmlFor="sub-rem">Renewal reminder (days)</label>
+          <input
+            id="sub-rem"
+            className="pmt-input pmt-mono"
             type="number"
             min={0}
             value={renewalReminderDays}
             onChange={(e) => setRenewalReminderDays(e.target.value)}
-            className="w-24 text-center"
           />
-        </Field>
+        </div>
       </div>
-      <Field label="Auto Renew?">
-        <label className="flex items-center gap-sm cursor-pointer w-fit">
+
+      <div className="pmt-field">
+        <span className="pmt-label">Auto renew?</span>
+        <label className="pmt-check">
           <input
             type="checkbox"
             checked={autoRenew}
             onChange={(e) => setAutoRenew(e.target.checked)}
-            className="w-5 h-5 accent-brand-yellow"
           />
-          <span className="font-bold">{autoRenew ? 'Yes' : 'No'}</span>
+          <span>{autoRenew ? 'Yes' : 'No'}</span>
         </label>
-      </Field>
-      <Field label="Notes">
-        <Textarea
+      </div>
+
+      <div className="pmt-field">
+        <label className="pmt-label" htmlFor="sub-notes">Notes</label>
+        <textarea
+          id="sub-notes"
+          className="pmt-textarea"
           placeholder="Additional details…"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-      </Field>
-      <div className="flex flex-wrap justify-end gap-sm pt-sm">
-        <Button variant="white" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="yellow" type="submit" disabled={loading}>
-          {loading ? 'Saving…' : initial ? 'Update' : 'Save'}
-        </Button>
       </div>
     </form>
   )
@@ -268,15 +307,15 @@ export function Subscriptions() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Subscription | null>(null)
+  const [saving, setSaving] = useState(false)
   const [suggestions, setSuggestions] = useState<PaymentSuggestion[]>([])
-  const [suggLoading, setSuggLoading] = useState(false)
 
   const load = useCallback(() => Promise.resolve().then(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/subscriptions', {
-        params: { frequency: freq },
-      })
+      // Fetch every subscription so both tab counts and the tab total are
+      // real, instead of counting only the currently selected cadence.
+      const res = await apiClient.get('/subscriptions')
       setError(null)
       setItems(((res.data ?? []) as Record<string, unknown>[]).map(normalizeSubscription))
     } catch (err: unknown) {
@@ -285,7 +324,7 @@ export function Subscriptions() {
     } finally {
       setLoading(false)
     }
-  }), [freq])
+  }), [])
 
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {
@@ -304,7 +343,6 @@ export function Subscriptions() {
         setSuggestions(r.data?.suggestions || [])
       })
       .catch(() => {})
-      .finally(() => setSuggLoading(false))
   }, [])
 
   const visibleSuggestions = useMemo(
@@ -354,172 +392,229 @@ export function Subscriptions() {
     }
   }
 
-  if (loading) return <LoadingBlock label="Loading subscriptions…" />
-  if (error)
+  const monthly = useMemo(() => items.filter((s) => s.frequency === 'monthly'), [items])
+  const yearly = useMemo(() => items.filter((s) => s.frequency === 'yearly'), [items])
+  const visible = freq === 'monthly' ? monthly : yearly
+  const suffix = freq === 'monthly' ? '/mo' : '/yr'
+  const activeTotal = visible
+    .filter((s) => s.status !== 'Cancelled')
+    .reduce((sum, s) => sum + s.amount, 0)
+
+  const modalOpen = open || !!editing
+  const formId = 'pmt-subscription-form'
+  const closeModal = () => {
+    setOpen(false)
+    setEditing(null)
+  }
+
+  if (loading) {
     return (
-      <div className="border-[3px] border-on-surface bg-red-100 p-md font-bold">
-        {error}
+      <div className="pmt-page">
+        <PaymentsLoading />
       </div>
     )
+  }
 
-  const total = items
-    .filter((s) => s.status === 'Active')
-    .reduce((s, x) => s + x.amount, 0)
-  const cadence = freq === 'monthly' ? 'mo' : 'yr'
+  if (error) {
+    return (
+      <div className="pmt-page">
+        <PaymentsNotice tone="error">{error}</PaymentsNotice>
+        <button type="button" className="pmt-btn pmt-btn-white pmt-btn-sm" onClick={load}>
+          Retry
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div>
-      <PageHeader
+    <>
+      <PaymentsPage
         title="Subscriptions"
         subtitle="Monthly and yearly subscription services & billing records."
         action={
-          <Button variant="yellow" onClick={() => setOpen(true)}>
-            <Icon name="add" className="text-xl" />
+          <button type="button" className="pmt-btn" onClick={() => setOpen(true)}>
+            <Icon name="add" className="text-lg" />
             Add Subscription
-          </Button>
-        }
-      />
-
-      <div className="flex flex-wrap gap-sm mb-lg border-b-[3px] border-on-surface pb-md">
-        {(['monthly', 'yearly'] as Freq[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFreq(f)}
-            className={`brutal-sm px-4 py-2 font-bold uppercase active:translate-x-[2px] active:translate-y-[2px] active:shadow-none ${
-              freq === f
-                 ? 'bg-brand-yellow text-on-surface'
-                : 'bg-white text-on-surface hover:bg-surface-container-high'
-            }`}
-          >
-            {f === 'monthly' ? 'Monthly' : 'Yearly'}
           </button>
-        ))}
-      </div>
+        }
+      >
+        <div className="pmt-tabs" role="tablist" aria-label="Billing frequency">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={freq === 'monthly'}
+            className={`pmt-tab${freq === 'monthly' ? ' is-active' : ''}`}
+            onClick={() => setFreq('monthly')}
+          >
+            Monthly
+            <span className="pmt-tab-count">{monthly.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={freq === 'yearly'}
+            className={`pmt-tab${freq === 'yearly' ? ' is-active' : ''}`}
+            onClick={() => setFreq('yearly')}
+          >
+            Yearly
+            <span className="pmt-tab-count">{yearly.length}</span>
+          </button>
+        </div>
 
-      {visibleSuggestions.length>0 && (
-        <div className="brutal bg-brand-yellow p-md mb-md">
-          <h3 className="font-bold uppercase mb-sm flex items-center gap-sm"><Icon name="lightbulb" /> Ledger Link — Suggestions from Transactions {suggLoading && <span className="text-xs opacity-60">(checking...)</span>}</h3>
-          <div className="text-xs opacity-80 mb-sm">We detected payments matching your subscriptions. Accept to update your billing schedule and automatically link matching transactions to subscription payment history.</div>
-          <div className="flex flex-col gap-sm">
-            {visibleSuggestions.map((s)=> (
-              <div key={s.id} className="brutal-thin bg-white p-sm flex flex-col gap-xs min-w-0">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs min-w-0">
-                  <span className="font-bold break-words min-w-0">{s.name}</span>
-                  <span className="text-xs brutal-thin px-xs py-0.5 bg-surface-container-low">confidence {s.confidence}%</span>
-                </div>
-                <div className="text-xs break-words min-w-0">Current: {formatCurrency(s.current.amount)} on day {s.current.billingDate} → Suggested: {s.suggested ? `${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}` : 'Link matching payments'} {s.suggested && s.amountDriftPct>0.05 && <span className="opacity-60">({(s.amountDriftPct*100).toFixed(0)}% drift)</span>}</div>
-                <div className="text-xs opacity-60 break-words min-w-0">Matched {s.matchedCount} transaction(s) {s.sample?.[0] && `e.g. ${new Date(s.sample[0].date).toLocaleDateString('en-IN')} ${formatCurrency(s.sample[0].amount)} ${String(s.sample[0].recipient||'').slice(0,30)}`}</div>
-                <div className="flex flex-col sm:flex-row gap-sm mt-1">
-                  <button onClick={() => handleAcceptSuggestion(s)} className="brutal bg-brand-yellow px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Accept</button>
-                  <button onClick={() => handleDismissSuggestion(s)} className="brutal bg-white px-sm py-xs text-xs font-bold uppercase hover:bg-surface-container-high">Dismiss</button>
-                </div>
+        {visibleSuggestions.length > 0 && (
+          <section className="pmt-suggest" aria-label="Suggested subscription matches">
+            <div className="pmt-suggest-head">
+              <Icon name="lightbulb" className="text-base" />
+              Ledger link — suggestions from transactions
+            </div>
+            <p className="pmt-tiny">
+              We detected payments matching your subscriptions. Accept to update the billing
+              schedule and link the matching ledger transactions.
+            </p>
+            {visibleSuggestions.map((s) => (
+              <div key={s.id} className="pmt-suggest-row">
+                <span>
+                  <strong>{s.name}</strong>
+                  {' · '}
+                  {formatCurrency(s.current.amount)} on day {s.current.billingDate}
+                  {s.suggested
+                    ? ` → ${formatCurrency(s.suggested.amount)} on day ${s.suggested.billingDate}`
+                    : ' → link matching payments'}
+                  {s.matchedCount > 0 ? ` · ${s.matchedCount} matched` : ''}
+                </span>
+                <span className="pmt-row" style={{ gap: 8 }}>
+                  <button
+                    type="button"
+                    className="pmt-btn pmt-btn-sm"
+                    onClick={() => handleAcceptSuggestion(s)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="pmt-btn pmt-btn-white pmt-btn-sm"
+                    onClick={() => handleDismissSuggestion(s)}
+                  >
+                    Dismiss
+                  </button>
+                </span>
               </div>
             ))}
-          </div>
-        </div>
-      )}
+          </section>
+        )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md mb-8 min-w-0">
-        {items.map((sub: Subscription) => (
-          <div key={sub.id} className="bg-white brutal p-md flex flex-col gap-3 min-w-0 nb-card-enter nb-card-hover">
-            <div className="flex gap-sm justify-between items-start min-w-0">
-              <button
-                type="button"
-                onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                className="flex items-center gap-xs text-left min-w-0 flex-1 hover:text-primary transition-colors"
-              >
-                <div className="w-10 h-10 shrink-0 bg-surface-variant brutal-thin flex items-center justify-center">
-                  <Icon name="subscriptions" />
+        <div className="pmt-grid-3">
+          {visible.map((sub) => (
+            <article key={sub.id} className="pmt-item-card">
+              <div className="pmt-card-top">
+                <div className="pmt-row" style={{ gap: 10, minWidth: 0 }}>
+                  <span className="pmt-entity-icon">
+                    <Icon name="subscriptions" className="text-base" />
+                  </span>
+                  <button
+                    type="button"
+                    className="pmt-name-link break-all-safe"
+                    onClick={() => navigate(`/subscriptions/${sub.id}`)}
+                  >
+                    {sub.name}
+                  </button>
                 </div>
-                <span className="font-bold underline decoration-2 break-words min-w-0">{sub.name}</span>
-              </button>
-              <Badge color={sub.status === 'Active' ? 'cyan' : 'surface'}>
-                {sub.status}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
-              <span className="font-bold text-2xl">
-                {formatCurrency(sub.amount)}
-                <span className="text-sm font-normal">/{cadence}</span>
-              </span>
-              <Badge color="yellow">{sub.category}</Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 font-bold text-xs text-on-surface-variant break-words min-w-0">
-              <Icon name="event_repeat" className="text-sm" />
-              Billing on {formatDay(sub.billingDate)} · {sub.paymentMethod}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-on-surface/20">
-              <button
-                type="button"
-                onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                className="bg-brand-yellow px-sm py-1.5 brutal-thin text-xs font-bold uppercase hover:bg-white active:translate-x-[1px] active:translate-y-[1px] flex items-center gap-1"
-                title="View subscription history & linked transactions"
-              >
-                <Icon name="visibility" className="text-sm" />
-                History &amp; Detail
-              </button>
-              <div className="flex gap-1">
+                <span className={statusTagClass(sub.status)}>{sub.status}</span>
+              </div>
+
+              <div className="pmt-row-between">
+                <div className="pmt-mono" style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.03em' }}>
+                  {formatCurrency(sub.amount)}
+                  <span className="pmt-amount-unit">{suffix}</span>
+                </div>
+                <span className="pmt-tag pmt-tag-yellow">{sub.category}</span>
+              </div>
+
+              <div className="pmt-card-meta">
+                <Icon name="event_repeat" className="text-sm" />
+                <span>
+                  Billing on {formatDay(sub.billingDate)}
+                  {sub.paymentMethod ? ` · ${sub.paymentMethod}` : ''}
+                </span>
+              </div>
+
+              <div className="pmt-card-actions">
                 <button
                   type="button"
-                  onClick={() => setEditing(sub)}
-                  className="bg-white p-1.5 brutal-thin hover:bg-surface-container-high active:translate-x-[1px] active:translate-y-[1px]"
-                  title="Edit"
+                  className="pmt-btn pmt-btn-sm pmt-btn-grow"
+                  onClick={() => navigate(`/subscriptions/${sub.id}`)}
                 >
-                  <Icon name="edit" className="text-sm" />
+                  <Icon name="visibility" className="text-sm" />
+                  History &amp; Detail
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(sub)}
-                  className="bg-error-container text-on-error-container p-1.5 brutal-thin hover:bg-error hover:text-on-error active:translate-x-[1px] active:translate-y-[1px]"
-                  title="Delete"
+                  className="pmt-icon-btn"
+                  onClick={() => setEditing(sub)}
+                  title="Edit subscription"
+                  aria-label={`Edit ${sub.name}`}
                 >
-                  <Icon name="delete" className="text-sm" />
+                  <Icon name="edit" className="text-base" />
+                </button>
+                <button
+                  type="button"
+                  className="pmt-icon-btn pmt-icon-btn-danger"
+                  onClick={() => handleDelete(sub)}
+                  title="Delete subscription"
+                  aria-label={`Delete ${sub.name}`}
+                >
+                  <Icon name="delete" className="text-base" />
                 </button>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            </article>
+          ))}
 
-      {items.length === 0 && (
-        <p className="font-bold text-on-surface-variant mb-8">
-          No {freq} subscriptions yet. Click “Add Subscription” to create one.
-        </p>
-      )}
+          {visible.length === 0 && (
+            <PaymentsEmpty title={`No ${freq} subscriptions yet`}>
+              Add one to start tracking its billing schedule and payment history.
+            </PaymentsEmpty>
+          )}
+        </div>
 
-      <div className="w-full bg-on-surface text-white py-6 px-6 brutal">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-          <span className="text-lg font-bold uppercase tracking-wider">
-            Total {freq} Spending
+        <div className="pmt-summary">
+          <span className="pmt-summary-label">
+            Total {freq} spending
           </span>
-          <span className="text-3xl md:text-4xl font-bold text-brand-yellow">
-            {formatCurrency(total)}
-            <span className="text-base font-normal">/{cadence}</span>
+          <span className="pmt-summary-value">
+            {formatCurrency(activeTotal)}
+            {suffix}
           </span>
         </div>
-      </div>
+      </PaymentsPage>
 
-      <Modal
-        open={open || !!editing}
-        onClose={() => {
-          setOpen(false)
-          setEditing(null)
-        }}
-        title={editing ? 'Edit Subscription' : 'Add Subscription'}
+      <PaymentsModal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editing ? 'Edit subscription' : 'Add subscription'}
+        footer={
+          <>
+            <button type="button" className="pmt-btn pmt-btn-white" onClick={closeModal}>
+              Cancel
+            </button>
+            <button type="submit" form={formId} className="pmt-btn" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Update' : 'Save'}
+            </button>
+          </>
+        }
       >
         <SubscriptionForm
+          key={editing?.id ?? 'new'}
+          formId={formId}
           initial={editing}
-          onSaved={() => {
-            setOpen(false)
-            setEditing(null)
+          defaultFrequency={freq}
+          onBusyChange={setSaving}
+          onSaved={(savedFrequency) => {
+            closeModal()
+            setFreq(savedFrequency === 'yearly' ? 'yearly' : 'monthly')
             load()
           }}
-          onCancel={() => {
-            setOpen(false)
-            setEditing(null)
-          }}
         />
-      </Modal>
-    </div>
+      </PaymentsModal>
+    </>
   )
 }

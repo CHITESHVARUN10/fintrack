@@ -15,9 +15,9 @@ interface StatCardProps {
 }
 
 const colorClasses = {
-  yellow: 'bg-brand-yellow',
+  yellow: 'fin-color-yellow',
   white: 'bg-white',
-  cyan: 'bg-tertiary-container',
+  cyan: 'fin-color-cyan',
 }
 
 export function StatCard({
@@ -33,20 +33,20 @@ export function StatCard({
     <motion.div
       variants={staggerItem}
       className={cn(
-        'brutal p-md flex flex-col gap-sm nb-card-hover',
+        'brutal p-5 min-w-0 flex flex-col gap-3 justify-between',
         colorClasses[color],
       )}
     >
       <div className="flex justify-between items-start">
-        <h3 className="font-bold text-xs uppercase tracking-wider text-on-surface">
+        <h3 className="font-mono font-bold text-[11px] uppercase tracking-wider">
           {label}
         </h3>
         {icon && <Icon name={icon} className="text-2xl" />}
       </div>
       {valueNumber !== undefined ? (
-        <CountUp value={valueNumber} format={formatCurrency} className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-bold tabular-nums text-on-surface whitespace-nowrap" />
+        <CountUp value={valueNumber} format={formatCurrency} className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-mono font-bold tabular-nums break-words" />
       ) : (
-        <div className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-bold tabular-nums text-on-surface whitespace-nowrap">{value}</div>
+        <div className="text-[clamp(0.95rem,4vw,1.875rem)] leading-tight font-mono font-bold tabular-nums break-words">{value}</div>
       )}
       {delta !== undefined && (
         <motion.div
