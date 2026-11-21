@@ -70,3 +70,14 @@ String inrPaise(num paise) {
   final coins = abs % 100;
   return "${total < 0 ? '-' : ''}${inr(abs ~/ 100)}${coins == 0 ? '' : '.${coins.toString().padLeft(2, '0')}'}";
 }
+
+/// Parse a typed rupee amount without rounding away fractional paise.
+int? parseRupeesToPaise(String value) {
+  final text = value.trim().replaceAll(',', '').replaceAll('₹', '');
+  final match = RegExp(r'^(\d{1,12})(?:\.(\d{0,2}))?$').firstMatch(text);
+  if (match == null) return null;
+  final rupees = int.parse(match.group(1)!);
+  final fraction = (match.group(2) ?? '').padRight(2, '0');
+  final paise = rupees * 100 + int.parse(fraction);
+  return paise > 0 ? paise : null;
+}

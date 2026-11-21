@@ -251,12 +251,13 @@ router.get('/investment-suggestions', async (req, res, next) => {
           : null,
       ]);
       const offset = offsets.get(String(tx._id));
-      let counterEntry;
+      let counterEntries = [];
       if (offset && canModify) {
-        const other = offset.transactionIds.find(id => String(id) !== String(tx._id));
-        counterEntry = await Transaction.findOne({ _id: other, familyId: tx.familyId, createdBy: req.user._id })
+        const others = offset.transactionIds.filter(id => String(id) !== String(tx._id));
+        const rows = await Transaction.find({ _id: { $in: others }, familyId: tx.familyId, createdBy: req.user._id })
           .select('type amountPaise occurredAt sender recipient mode recipientVendorRef')
-          .populate('recipientVendorRef', 'label upiId').lean();
+          .populate('recipientVendorRef', 'label upiId').sort({ occurredAt: 1, _id: 1 }).lean();
+        counterEntries = rows.map(row => ({ ...row, counterpartyName: transactionCounterparty(row) }));
       }
       let candidateOfTx = null;
       if (tx.candidateOf) {
@@ -267,9 +268,10 @@ router.get('/investment-suggestions', async (req, res, next) => {
         sources, candidateOfTx, canModify,
         ...(financeRecord ? { financeRecordName: financeRecord.stockName || financeRecord.assetName ||
           financeRecord.fundName || financeRecord.title || financeRecord.ticker } : {}),
-        ...(offset && counterEntry ? { offset: { purpose: offset.purpose, transaction: {
-          ...counterEntry, counterpartyName: transactionCounterparty(counterEntry),
-        } } } : {}),
+        ...(offset && counterEntries.length ? { offset: {
+          purpose: offset.purpose, kind: offset.kind || 'general',
+          transaction: counterEntries[0], transactions: counterEntries,
+        } } : {}),
       });
     } catch (err) { next(err); }
   });
@@ -434,7 +436,7 @@ router.post('/bulk-categorize', async (req, res, next) => {
       }
       if (Object.hasOwn(req.body, 'type') && req.body.type !== tx.type) {
         const offsets = await activeOffsets(tx.familyId, req.user._id);
-        if (offsets.has(String(tx._id))) return res.status(409).json({ error: 'Remove the offset pair before changing the transaction type' });
+        if (offsets.has(String(tx._id))) return res.status(409).json({ error: 'Remove the offset before changing the transaction type' });
       }
       // Validate subscriptionRef belongs to same family if provided
       if (req.body.subscriptionRef) {
@@ -539,7 +541,7 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
     if (error) return res.status(400).json({ error: error.message });
     const offsets = await activeOffsets(req.user.familyAccountId, req.user._id);
     if (value.ids.some(id => offsets.has(id))) {
-      return res.status(409).json({ error: 'Remove the offset pair before merging one of its transactions' });
+      return res.status(409).json({ error: 'Remove the offset before merging one of its transactions' });
     }
     const docs = await Transaction.find({
       _id: { $in: value.ids },

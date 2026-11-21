@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
-import '../theme/finstack_theme.dart';
+import '../core/vendor_name.dart';
 import '../widgets/confirm_action.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
+import 'vendor_detail_page.dart';
 
-const _modes = ['UPI', 'BANK', 'CASH', 'CARD', 'OTHER'];
+const _modes = ['', 'UPI', 'BANK', 'CASH', 'CARD', 'OTHER'];
 
 /// Mirrors website Vendors.tsx: GET/POST/PUT/DELETE /recipients
 /// with ?q= search, plus POST /recipients/backfill.
@@ -89,38 +90,49 @@ class _VendorsPageState extends State<VendorsPage> {
     }
   }
 
-  Future<void> remove(Map item) async {
+  Future<bool> remove(Map item) async {
     final ok = await confirmAction(
       context,
       title: 'Archive vendor?',
       message:
-          'Archive "${item['label']}"? Its transactions will stay in Activity.',
+          'Archive "${vendorName(item)}"? Its transactions will stay in Activity.',
       action: 'Archive',
     );
-    if (!ok || !mounted) return;
+    if (!ok || !mounted) return false;
     try {
       await ApiClient.dio.delete("/recipients/${item['_id'] ?? item['id']}");
       if (mounted) await load(q: searchCtrl.text);
+      return true;
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not archive vendor.')),
         );
       }
+      return false;
     }
   }
 
-  void openForm({Map? initial}) {
-    showModalBottomSheet(
+  Future<bool> openForm({Map? initial}) async {
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _VendorForm(
-        initial: initial,
-        onSaved: () {
-          Navigator.pop(context);
-          load(q: searchCtrl.text);
-        },
+      builder: (_) => _VendorForm(initial: initial),
+    );
+    if (saved == true && mounted) await load(q: searchCtrl.text);
+    return saved == true;
+  }
+
+  Future<void> _openDetails(Map<String, dynamic> item) async {
+    dismissKeyboard(context);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => VendorDetailPage(
+          initial: item,
+          onEdit: (vendor) => openForm(initial: vendor),
+          onArchive: remove,
+        ),
       ),
     );
   }
@@ -201,73 +213,27 @@ class _VendorsPageState extends State<VendorsPage> {
           ),
   );
 
-  Widget _vendorCard(Map<String, dynamic> item) {
-    final contact = item['contact'];
-    final preferredMode = contact is Map
-        ? '${contact['preferredMode'] ?? ''}'
-        : '';
-    final upi = '${item['upiId'] ?? ''}';
-    final key = '${item['vendorKey'] ?? ''}';
-    final lastSeen = DateTime.tryParse('${item['lastSeen'] ?? ''}');
-    final description = '${item['description'] ?? ''}';
-    return BrutalCard(
-      child: Column(
-        spacing: 8,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${item['label'] ?? ''}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (upi.isNotEmpty || key.isNotEmpty)
-                      Text(
-                        upi.isEmpty ? key : upi,
-                        style: FinStackType.caption,
-                      ),
-                  ],
-                ),
-              ),
-              WorkspaceItemActions(
-                onEdit: () => openForm(initial: item),
-                onRemove: () => remove(item),
-                removeLabel: 'Archive',
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 6,
-            runSpacing: 5,
-            children: [
-              BrutalTag(
-                label: _categoryOf(item),
-                color: FinStackColors.surfaceContainer,
-              ),
-              if (preferredMode.isNotEmpty)
-                BrutalTag(label: preferredMode, color: Colors.white),
-            ],
-          ),
-          Text(
-            'Hits ${item['hits'] ?? 0}${lastSeen == null ? '' : ' · Last seen ${MaterialLocalizations.of(context).formatShortDate(lastSeen.toLocal())}'}',
-            style: FinStackType.caption,
-          ),
-          if (description.isNotEmpty) Text(description),
-        ],
+  Widget _vendorCard(Map<String, dynamic> item) => BrutalCard(
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          vendorName(item),
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        subtitle: Text(_categoryOf(item)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _openDetails(item),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _VendorForm extends StatefulWidget {
   final Map? initial;
-  final VoidCallback onSaved;
-  const _VendorForm({this.initial, required this.onSaved});
+  const _VendorForm({this.initial});
   @override
   State<_VendorForm> createState() => _VendorFormState();
 }
@@ -278,8 +244,11 @@ class _VendorFormState extends State<_VendorForm> {
       categoryCtrl,
       descCtrl,
       notesCtrl,
-      phoneCtrl;
-  String mode = 'UPI';
+      phoneCtrl,
+      emailCtrl,
+      addressCtrl,
+      aliasesCtrl;
+  String mode = '';
   bool busy = false;
   String? error;
 
@@ -287,28 +256,51 @@ class _VendorFormState extends State<_VendorForm> {
   void initState() {
     super.initState();
     final i = widget.initial;
-    labelCtrl = TextEditingController(text: '${i?['label'] ?? ''}');
+    labelCtrl = TextEditingController(text: i == null ? '' : vendorName(i));
     upiCtrl = TextEditingController(text: '${i?['upiId'] ?? ''}');
-    String cat = '';
-    final off = i?['offerings'] as List?;
-    if (off != null && off.isNotEmpty && off.first is Map) {
-      cat = '${off.first['category'] ?? ''}';
-    } else {
-      cat = '${i?['primaryCategory'] ?? i?['category'] ?? ''}';
-    }
-    categoryCtrl = TextEditingController(text: cat);
+    final knownCategories = ((i?['offerings'] as List?) ?? [])
+        .whereType<Map>()
+        .map((offering) => offering['category'])
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty);
+    categoryCtrl = TextEditingController(
+      text: knownCategories.isNotEmpty
+          ? knownCategories.join(', ')
+          : '${i?['primaryCategory'] ?? i?['category'] ?? ''}',
+    );
     descCtrl = TextEditingController(text: '${i?['description'] ?? ''}');
     notesCtrl = TextEditingController(text: '${i?['notes'] ?? ''}');
-    phoneCtrl = TextEditingController(
-      text: i?['contact'] is Map ? '${i?['contact']['phone'] ?? ''}' : '',
+    final contact = i?['contact'] as Map?;
+    phoneCtrl = TextEditingController(text: '${contact?['phone'] ?? ''}');
+    emailCtrl = TextEditingController(text: '${contact?['email'] ?? ''}');
+    addressCtrl = TextEditingController(text: '${contact?['address'] ?? ''}');
+    aliasesCtrl = TextEditingController(
+      text: ((i?['aliases'] as List?) ?? []).join(', '),
     );
-    final m = i?['contact'] is Map
-        ? '${i?['contact']['preferredMode'] ?? ''}'
-        : '';
-    if (m.isNotEmpty && _modes.contains(m)) mode = m;
+    final savedMode = '${contact?['preferredMode'] ?? ''}';
+    if (_modes.contains(savedMode)) mode = savedMode;
+  }
+
+  @override
+  void dispose() {
+    for (final controller in [
+      labelCtrl,
+      upiCtrl,
+      categoryCtrl,
+      descCtrl,
+      notesCtrl,
+      phoneCtrl,
+      emailCtrl,
+      addressCtrl,
+      aliasesCtrl,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> save() async {
+    if (busy) return;
     final cats = categoryCtrl.text
         .split(',')
         .map((c) => c.trim())
@@ -327,36 +319,39 @@ class _VendorFormState extends State<_VendorForm> {
       error = null;
     });
     try {
+      final body = {
+        'label': labelCtrl.text.trim(),
+        'upiId': upiCtrl.text.trim(),
+        'categories': cats,
+        'description': descCtrl.text.trim(),
+        'notes': notesCtrl.text.trim(),
+        'aliases': aliasesCtrl.text
+            .split(',')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(),
+        'contact': {
+          'phone': phoneCtrl.text.trim(),
+          'email': emailCtrl.text.trim(),
+          'address': addressCtrl.text.trim(),
+          'preferredMode': mode,
+        },
+      };
       if (widget.initial != null) {
         await ApiClient.dio.put(
           "/recipients/${widget.initial!['_id'] ?? widget.initial!['id']}",
-          data: {
-            'label': labelCtrl.text.trim(),
-            if (upiCtrl.text.trim().isNotEmpty) 'upiId': upiCtrl.text.trim(),
-            'categories': cats,
-            'description': descCtrl.text.trim(),
-            'notes': notesCtrl.text.trim(),
-            'contact': {
-              if (phoneCtrl.text.trim().isNotEmpty)
-                'phone': phoneCtrl.text.trim(),
-              'preferredMode': mode,
-            },
-          },
+          data: body,
         );
       } else {
-        await ApiClient.dio.post(
-          '/recipients',
-          data: {
-            'label': labelCtrl.text.trim(),
-            if (upiCtrl.text.trim().isNotEmpty) 'upiId': upiCtrl.text.trim(),
-            'preferredMode': mode,
-            'categories': cats,
-          },
+        await ApiClient.dio.post('/recipients', data: body);
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (err) {
+      if (mounted) {
+        setState(
+          () => error = ApiClient.errorMessage(err, 'Could not save vendor.'),
         );
       }
-      widget.onSaved();
-    } catch (e) {
-      setState(() => error = 'Could not save vendor.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -375,10 +370,10 @@ class _VendorFormState extends State<_VendorForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              widget.initial != null ? 'EDIT VENDOR' : 'NEW VENDOR',
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            WorkspaceSheetTitle(
+              widget.initial != null ? 'Edit vendor' : 'New vendor',
             ),
+            const SizedBox(height: 8),
             if (error != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -387,7 +382,7 @@ class _VendorFormState extends State<_VendorForm> {
               ),
             ],
             BrutalField(
-              label: 'Label',
+              label: 'Vendor name',
               controller: labelCtrl,
               hint: 'e.g. Dairy Guy',
             ),
@@ -416,7 +411,14 @@ class _VendorFormState extends State<_VendorForm> {
                         isExpanded: true,
                         items: _modes
                             .map(
-                              (m) => DropdownMenuItem(value: m, child: Text(m)),
+                              (m) => DropdownMenuItem(
+                                value: m,
+                                child: Text(
+                                  m.isEmpty
+                                      ? 'Not set'
+                                      : transactionModeLabel(m),
+                                ),
+                              ),
                             )
                             .toList(),
                         onChanged: (v) => setState(() => mode = v!),
@@ -427,7 +429,7 @@ class _VendorFormState extends State<_VendorForm> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: BrutalField(
-                    label: 'Category',
+                    label: 'Categories',
                     controller: categoryCtrl,
                     hint: 'Groceries',
                   ),
@@ -444,13 +446,27 @@ class _VendorFormState extends State<_VendorForm> {
             BrutalField(
               label: 'Notes',
               controller: notesCtrl,
-              hint: 'Private notes…',
+              hint: 'Optional',
             ),
             const SizedBox(height: 8),
             BrutalField(
               label: 'Phone',
               controller: phoneCtrl,
               hint: 'Contact phone',
+            ),
+            const SizedBox(height: 8),
+            BrutalField(
+              label: 'Email',
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 8),
+            BrutalField(label: 'Address', controller: addressCtrl),
+            const SizedBox(height: 8),
+            BrutalField(
+              label: 'Aliases',
+              controller: aliasesCtrl,
+              hint: 'Comma-separated names',
             ),
             const SizedBox(height: 12),
             BrutalButton(

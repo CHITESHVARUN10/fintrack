@@ -532,20 +532,13 @@ class _TransactionsPageState extends State<TransactionsPage> {
     }
   }
 
-  Future<void> _showDetail(Map<String, dynamic> txn) async {
-    dismissKeyboard(context);
-    final id = '${txn['_id'] ?? txn['id']}';
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _TxDetailSheet(
-        id: id,
-        onChanged: load,
-        categories: categories,
-        onCreated: _addCategory,
-      ),
-    );
-  }
+  Future<void> _showDetail(Map<String, dynamic> txn) => showActivityTransaction(
+    context,
+    id: '${txn['_id'] ?? txn['id']}',
+    onChanged: load,
+    categories: categories,
+    onCategoryCreated: _addCategory,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1028,7 +1021,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final creator = (t['createdBy'] as Map?)?['name'];
     final meta = [
       if (categoryLabel.isNotEmpty) categoryLabel,
-      if (offset) 'Offset pair',
+      if (offset) 'Offset',
       if ('${t['visibility'] ?? ''}' == 'PRIVATE') 'PRIVATE',
       if (familyView && creator != null) 'by $creator',
     ].join(' · ');
@@ -1046,7 +1039,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
         shadow: 3,
         padding: const EdgeInsets.all(12),
         semanticLabel:
-            '$vendor, $mode, $amount, ${offset ? 'Offset pair' : statusLabel}',
+            '$vendor, $mode, $amount, ${offset ? 'Offset' : statusLabel}',
         child: Row(
           children: [
             Container(
@@ -1499,15 +1492,12 @@ class _SheetHeader extends StatelessWidget {
 
 class _SheetSelect extends StatelessWidget {
   const _SheetSelect({
-    super.key,
     required this.label,
     required this.initialValue,
     required this.options,
     required this.onChanged,
-    this.enabled = true,
   });
 
-  final bool enabled;
   final String label;
   final String initialValue;
   final Map<String, String> options;
@@ -1539,13 +1529,168 @@ class _SheetSelect extends StatelessWidget {
                 child: Text(entry.value, overflow: TextOverflow.ellipsis),
               ),
           ],
-          onChanged: !enabled
-              ? null
-              : (value) {
-                  if (value != null) onChanged(value);
-                },
+          onChanged: (value) {
+            if (value != null) onChanged(value);
+          },
         ),
       ],
+    );
+  }
+}
+
+class _CategoryChoice extends StatelessWidget {
+  const _CategoryChoice({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onSelected,
+    this.enabled = true,
+  });
+
+  final String label;
+  final String value;
+  final Map<String, String> options;
+  final ValueChanged<String> onSelected;
+  final bool enabled;
+
+  Future<void> _choose(BuildContext context) async {
+    final selection = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) =>
+          _CategoryPicker(label: label, selected: value, options: options),
+    );
+    if (context.mounted && selection != null && selection != value) {
+      onSelected(selection);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        label.toUpperCase(),
+        style: _labelStyle(size: 10, letterSpacing: 0.7),
+      ),
+      const SizedBox(height: 6),
+      OutlinedButton(
+        onPressed: enabled ? () => _choose(context) : null,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(options[value] ?? value, textAlign: TextAlign.left),
+            ),
+            const Icon(Icons.expand_more, size: 20),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _CategoryPicker extends StatefulWidget {
+  const _CategoryPicker({
+    required this.label,
+    required this.selected,
+    required this.options,
+  });
+
+  final String label;
+  final String selected;
+  final Map<String, String> options;
+
+  @override
+  State<_CategoryPicker> createState() => _CategoryPickerState();
+}
+
+class _CategoryPickerState extends State<_CategoryPicker> {
+  String query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final rows =
+        widget.options.entries
+            .where((entry) => entry.value.toLowerCase().contains(query))
+            .toList()
+          ..sort((a, b) {
+            if (a.key == widget.selected) return -1;
+            if (b.key == widget.selected) return 1;
+            return a.value.toLowerCase().compareTo(b.value.toLowerCase());
+          });
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: .78,
+          minChildSize: .5,
+          maxChildSize: .96,
+          builder: (_, scroll) => Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Column(
+                  children: [
+                    _SheetHeader(
+                      title: 'Choose ${widget.label.toLowerCase()}',
+                      closeLabel: 'Close category picker',
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      decoration: InputDecoration(
+                        labelText: 'Search ${widget.label.toLowerCase()}',
+                        prefixIcon: const Icon(Icons.search),
+                      ),
+                      onChanged: (text) =>
+                          setState(() => query = text.trim().toLowerCase()),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.separated(
+                  controller: scroll,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                  itemCount: rows.isEmpty ? 1 : rows.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    if (rows.isEmpty) {
+                      return const ListTile(
+                        title: Text('No matching categories'),
+                      );
+                    }
+                    final row = rows[index];
+                    final selected = row.key == widget.selected;
+                    return ListTile(
+                      selected: selected,
+                      selectedColor: FinStackColors.onSurface,
+                      selectedTileColor: FinStackColors.surfaceLow,
+                      title: Text(row.value),
+                      trailing: selected
+                          ? const Icon(Icons.check, size: 20)
+                          : null,
+                      onTap: () => Navigator.of(context).pop(row.key),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1573,22 +1718,20 @@ class _CategoryFields extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SheetSelect(
-          key: ValueKey(category),
+        _CategoryChoice(
           label: 'Category',
-          initialValue: category,
+          value: category,
           options: {
             for (final name in {...categories, category}) name: name,
           },
-          onChanged: (value) => onChanged(value, ''),
+          onSelected: (value) => onChanged(value, ''),
           enabled: enabled,
         ),
         if (subcategories.isNotEmpty || subcategory.isNotEmpty) ...[
           const SizedBox(height: 8),
-          _SheetSelect(
-            key: ValueKey((category, subcategory)),
+          _CategoryChoice(
             label: 'Subcategory',
-            initialValue: subcategory,
+            value: subcategory,
             options: {
               '': 'None',
               for (final item in {
@@ -1597,7 +1740,7 @@ class _CategoryFields extends StatelessWidget {
               })
                 item: item,
             },
-            onChanged: (value) => onChanged(category, value),
+            onSelected: (value) => onChanged(category, value),
             enabled: enabled,
           ),
         ],
@@ -1864,14 +2007,14 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 onChanged: (value) => setState(() => status = value),
               ),
               const SizedBox(height: 13),
-              _SheetSelect(
+              _CategoryChoice(
                 label: 'Category',
-                initialValue: category,
+                value: category,
                 options: {
                   '': 'Any category',
                   for (final name in widget.categories) name: name,
                 },
-                onChanged: (value) => setState(() => category = value),
+                onSelected: (value) => setState(() => category = value),
               ),
               const SizedBox(height: 13),
               BrutalField(
@@ -2092,6 +2235,37 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
 
 /// Detail sheet mirrors website drawer: GET /transactions/:id,
 /// editable category, visibility toggle, resolve actions.
+Future<void> showActivityTransaction(
+  BuildContext context, {
+  required String id,
+  required VoidCallback onChanged,
+  Set<String>? categories,
+  ValueChanged<String>? onCategoryCreated,
+}) async {
+  dismissKeyboard(context);
+  final available = categories ?? <String>{..._allCategories};
+  if (categories == null) {
+    try {
+      final response = await ApiClient.dio.get<Map>('/recipients/categories');
+      final remote = response.data?['categories'];
+      if (remote is List) available.addAll(remote.whereType<String>());
+    } catch (_) {
+      // Built-in and existing row categories remain available.
+    }
+  }
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => _TxDetailSheet(
+      id: id,
+      onChanged: onChanged,
+      categories: available,
+      onCreated: onCategoryCreated ?? available.add,
+    ),
+  );
+}
+
 class _TxDetailSheet extends StatefulWidget {
   final String id;
   final VoidCallback onChanged;
@@ -2200,7 +2374,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              ApiClient.errorMessage(err, 'Could not remove the offset pair.'),
+              ApiClient.errorMessage(err, 'Could not remove the offset.'),
             ),
           ),
         );
@@ -2326,7 +2500,14 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
           _ => null,
         };
         final offset = detail?['offset'] as Map?;
-        final counterEntry = offset?['transaction'] as Map?;
+        final counterEntries =
+            (offset?['transactions'] as List?)?.whereType<Map>() ??
+            [if (offset?['transaction'] is Map) offset!['transaction'] as Map];
+        final offsetType = switch (offset?['kind']) {
+          'purchase_on_behalf' => 'Paid for someone',
+          'loan_repayment' => 'Loan repayment',
+          _ => 'Offset',
+        };
         final canEdit = detail?['canModify'] != false;
         final canOffset =
             canEdit &&
@@ -2520,20 +2701,19 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                     spacing: 8,
                     children: [
                       Text(
-                        offset != null
-                            ? 'Offset pair'
-                            : 'Offset this transaction',
+                        offset != null ? offsetType : 'Offset this transaction',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
-                      if (offset != null) Text('${offset['purpose']}'),
-                      if (counterEntry != null)
+                      if (offset != null && offset['purpose'] != offsetType)
+                        Text('${offset['purpose']}'),
+                      for (final counterEntry in counterEntries)
                         Text(
-                          "${counterEntry['type'] == 'INCOME' ? 'Incoming' : 'Outgoing'} · ${transactionDisplayName(counterEntry)} · ${_fmtDate('${counterEntry['occurredAt']}')}",
+                          "${counterEntry['type'] == 'INCOME' ? 'Incoming' : 'Outgoing'} · ${transactionDisplayName(counterEntry)} · ${inrPaise((counterEntry['amountPaise'] as num?) ?? 0)} · ${_fmtDate('${counterEntry['occurredAt']}')}",
                           style: FinStackType.caption,
                         ),
                       if (canOffset) ...[
                         const Text(
-                          'Match an incoming and outgoing entry with the same amount.',
+                          'Group incoming and outgoing entries that add up to the same amount.',
                         ),
                         _SheetButton(
                           label: 'Find matching transaction',
@@ -2543,7 +2723,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                       ] else if (canEdit && offset != null)
                         TextButton(
                           onPressed: busy ? null : _removeOffset,
-                          child: const Text('Remove offset pair'),
+                          child: const Text('Remove offset'),
                         ),
                     ],
                   ),

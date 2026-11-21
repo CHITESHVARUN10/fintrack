@@ -350,16 +350,41 @@ class ActivityOffsetSheet extends StatefulWidget {
 }
 
 class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
+  static const kinds = {
+    'general': 'General offset',
+    'purchase_on_behalf': 'Paid for someone',
+    'loan_repayment': 'Loan repayment',
+  };
+
   final purpose = TextEditingController();
+  final search = TextEditingController();
+  final selected = <String, Map>{};
   List<Map> items = [];
-  Map? selected;
+  late String side = isIncoming(widget.transaction) ? 'outgoing' : 'incoming';
+  String kind = 'general';
+  String query = '';
   int page = 1;
+  int request = 0;
   bool more = false;
   bool loading = true;
   bool saving = false;
-  String? error;
+  String? loadError;
+  String? saveError;
 
   String get base => "/transactions/${widget.transaction['_id']}";
+  Iterable<Map> get entries => [widget.transaction, ...selected.values];
+  int get incoming => sumSide(true);
+  int get outgoing => sumSide(false);
+  int get balance => incoming - outgoing;
+
+  static bool isIncoming(Map row) => row['type'] == 'INCOME';
+
+  int sumSide(bool credit) => entries
+      .where((row) => isIncoming(row) == credit)
+      .fold(
+        0,
+        (total, row) => total + ((row['amountPaise'] as num?)?.toInt() ?? 0),
+      );
 
   @override
   void initState() {
@@ -370,20 +395,27 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
   @override
   void dispose() {
     purpose.dispose();
+    search.dispose();
     super.dispose();
   }
 
   Future<void> load() async {
+    final revision = ++request;
     setState(() {
       loading = true;
-      error = null;
+      loadError = null;
     });
     try {
       final response = await ApiClient.dio.get<Map>(
         '$base/offset-candidates',
-        queryParameters: {'page': page},
+        queryParameters: {
+          'group': true,
+          'page': page,
+          if (side.isNotEmpty) 'side': side,
+          if (query.isNotEmpty) 'q': query,
+        },
       );
-      if (!mounted) return;
+      if (!mounted || revision != request) return;
       setState(() {
         items = ((response.data?['items'] as List?) ?? [])
             .whereType<Map>()
@@ -391,41 +423,61 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
         more = response.data?['hasMore'] == true;
       });
     } catch (err) {
-      if (mounted) {
+      if (mounted && revision == request) {
         setState(
-          () => error = ApiClient.errorMessage(
+          () => loadError = ApiClient.errorMessage(
             err,
-            'Could not find matching transactions.',
+            'Could not find transactions.',
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && revision == request) setState(() => loading = false);
     }
   }
 
+  void toggle(Map row) {
+    final id = '${row['_id']}';
+    setState(() {
+      if (selected.containsKey(id)) {
+        selected.remove(id);
+      } else if (selected.length < 29) {
+        selected[id] = row;
+      }
+      saveError = null;
+    });
+  }
+
   Future<void> _save() async {
+    if (selected.isEmpty || balance != 0 || saving) return;
     final text = purpose.text.trim();
-    if (text.isEmpty || text.length > 120) {
-      setState(() => error = 'Enter a purpose of 1 to 120 characters.');
+    if (text.length > 120 || text.isEmpty) {
+      setState(() => saveError = 'Enter a purpose of 1 to 120 characters.');
       return;
     }
     setState(() {
       saving = true;
-      error = null;
+      saveError = null;
     });
     try {
       await ApiClient.dio.put(
         '$base/offset',
-        data: {'transactionId': selected!['_id'], 'purpose': text},
+        data: {
+          if (selected.length == 1)
+            'transactionId': selected.keys.single
+          else
+            'transactionIds': selected.keys.toList(),
+          'purpose': text,
+          if (kind != 'general') 'kind': kind,
+        },
       );
       if (mounted) Navigator.pop(context, true);
     } catch (err) {
       if (mounted) {
         setState(
-          () => error = ApiClient.errorMessage(
+          () => saveError = ApiClient.errorMessage(
             err,
-            'Could not save the offset pair.',
+            'Could not save the offset.',
           ),
         );
       }
@@ -434,120 +486,231 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
     }
   }
 
+  Widget _amount(String title, int paise) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title),
+        Text(inrPaise(paise), style: FinStackType.amount),
+      ],
+    ),
+  );
+
+  Widget _row(Map row, {bool fixed = false}) {
+    final id = '${row['_id']}';
+    final checked = selected.containsKey(id);
+    return CheckboxListTile(
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      value: fixed || checked,
+      title: Text(transactionDisplayName(row)),
+      subtitle: Text(
+        "${isIncoming(row) ? 'Incoming' : 'Outgoing'} · ${_rowSubtitle(row)}",
+      ),
+      onChanged: fixed || saving || (!checked && selected.length == 29)
+          ? null
+          : (_) => toggle(row),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => DraggableScrollableSheet(
     expand: false,
-    initialChildSize: .86,
-    minChildSize: .52,
+    initialChildSize: .90,
+    minChildSize: .60,
     maxChildSize: .98,
     builder: (_, scroll) => SafeArea(
       top: false,
-      child: ListView(
-        controller: scroll,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: EdgeInsets.fromLTRB(
-          16,
-          16,
-          16,
-          28 + MediaQuery.viewInsetsOf(context).bottom,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        children: [
-          const WorkspaceSheetTitle('Offset transaction'),
-          Text(
-            transactionDisplayName(widget.transaction),
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          Text(_rowSubtitle(widget.transaction), style: FinStackType.caption),
-          const SizedBox(height: 12),
-          Text(
-            widget.transaction['type'] == 'INCOME'
-                ? 'Choose the outgoing payment that this credit covered.'
-                : 'Choose the incoming payment that covered this debit.',
-          ),
-          const SizedBox(height: 12),
-          if (loading)
-            const LinearProgressIndicator(
-              semanticsLabel: 'Finding matching entries',
-            )
-          else if (items.isEmpty)
-            BrutalEmpty(
-              message:
-                  error ??
-                  'No settled transaction with the same amount was found.',
-              action: error == null
-                  ? null
-                  : OutlinedButton(onPressed: load, child: const Text('Retry')),
-            )
-          else ...[
-            for (final row in items)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                selected: row['_id'] == selected?['_id'],
-                title: Text(transactionDisplayName(row)),
-                subtitle: Text(_rowSubtitle(row)),
-                leading: Icon(
-                  row['_id'] == selected?['_id']
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                onTap: saving
-                    ? null
-                    : () => setState(() {
-                        selected = row;
-                        error = null;
-                      }),
-              ),
-            if (page > 1 || more)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                controller: scroll,
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                 children: [
-                  TextButton(
-                    onPressed: saving || page == 1
-                        ? null
-                        : () {
-                            page--;
-                            selected = null;
-                            load();
-                          },
-                    child: const Text('Previous'),
+                  const WorkspaceSheetTitle('Offset transactions'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Group payments that balance to zero. Every entry stays in Activity.',
                   ),
-                  Text('Page $page'),
-                  TextButton(
-                    onPressed: saving || !more
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      for (final option in kinds.entries)
+                        ChoiceChip(
+                          label: Text(option.value),
+                          selected: kind == option.key,
+                          onSelected: saving
+                              ? null
+                              : (_) => setState(() {
+                                  if (purpose.text.isEmpty ||
+                                      purpose.text == kinds[kind]) {
+                                    purpose.text = option.key == 'general'
+                                        ? ''
+                                        : option.value;
+                                  }
+                                  kind = option.key;
+                                }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  BrutalField(
+                    label: 'Purpose',
+                    controller: purpose,
+                    hint: 'e.g. Dinner reimbursement',
+                    enabled: !saving,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Selected entries',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  _row(widget.transaction, fixed: true),
+                  for (final row in selected.values) _row(row),
+                  const Divider(),
+                  Text(
+                    'Find transactions',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: '', label: Text('All')),
+                      ButtonSegment(value: 'incoming', label: Text('Incoming')),
+                      ButtonSegment(value: 'outgoing', label: Text('Outgoing')),
+                    ],
+                    selected: {side},
+                    showSelectedIcon: false,
+                    onSelectionChanged: saving
                         ? null
-                        : () {
-                            page++;
-                            selected = null;
+                        : (value) {
+                            side = value.first;
+                            page = 1;
                             load();
                           },
-                    child: const Text('Next'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: search,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (value) {
+                      query = value.trim();
+                      page = 1;
+                      load();
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Name or amount',
+                      hintText: 'e.g. 1499',
+                      suffixIcon: IconButton(
+                        tooltip: 'Search transactions',
+                        icon: const Icon(Icons.search),
+                        onPressed: saving
+                            ? null
+                            : () {
+                                query = search.text.trim();
+                                page = 1;
+                                load();
+                              },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (loading)
+                    const LinearProgressIndicator(
+                      semanticsLabel: 'Finding transactions',
+                    )
+                  else if (loadError != null)
+                    BrutalEmpty(
+                      message: loadError!,
+                      action: TextButton(
+                        onPressed: load,
+                        child: const Text('Retry'),
+                      ),
+                    )
+                  else if (items.isEmpty)
+                    const ListTile(title: Text('No matching transactions'))
+                  else
+                    for (final row in items)
+                      if (!selected.containsKey('${row['_id']}')) _row(row),
+                  if (page > 1 || more)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: saving || loading || page == 1
+                              ? null
+                              : () {
+                                  page--;
+                                  load();
+                                },
+                          child: const Text('Previous'),
+                        ),
+                        Text('Page $page'),
+                        TextButton(
+                          onPressed: saving || loading || !more
+                              ? null
+                              : () {
+                                  page++;
+                                  load();
+                                },
+                          child: const Text('Next'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: 6,
+                children: [
+                  const Divider(height: 1),
+                  Row(
+                    children: [
+                      _amount('Incoming', incoming),
+                      _amount('Outgoing', outgoing),
+                    ],
+                  ),
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      saveError ??
+                          (balance == 0
+                              ? 'Balanced · ${selected.length + 1} entries'
+                              : '${inrPaise(balance.abs())} more ${balance > 0 ? 'outgoing' : 'incoming'} needed'),
+                      style: TextStyle(
+                        color: saveError == null
+                            ? FinStackColors.onSurface
+                            : FinStackColors.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                  BrutalButton(
+                    label: saving
+                        ? 'Saving…'
+                        : selected.length > 1
+                        ? 'Save offset group'
+                        : 'Save offset pair',
+                    onPressed: saving || balance != 0 || selected.isEmpty
+                        ? null
+                        : _save,
                   ),
                 ],
               ),
-            if (selected != null) ...[
-              BrutalField(
-                label: 'Purpose',
-                controller: purpose,
-                hint: 'e.g. Dinner reimbursement',
-                enabled: !saving,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Both entries stay in Activity. Spending and income totals exclude the pair.',
-              ),
-              if (error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Semantics(liveRegion: true, child: Text(error!)),
-                ),
-              const SizedBox(height: 12),
-              BrutalButton(
-                label: saving ? 'Saving…' : 'Save offset pair',
-                onPressed: saving ? null : _save,
-              ),
-            ],
+            ),
           ],
-        ],
+        ),
       ),
     ),
   );

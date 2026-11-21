@@ -1,10 +1,19 @@
 // Extract readable names from bank statement UPI descriptions.
 String readableVendorName(String original) {
+  original = original.trim();
   if (!RegExp(r'^upi\s*/', caseSensitive: false).hasMatch(original)) {
     return original;
   }
   final parts = original.split('/').skip(1).map((part) => part.trim()).toList();
-  if (const ['dr', 'cr', 'p2p', 'p2m'].contains(parts.first.toLowerCase())) {
+  while (parts.isNotEmpty &&
+      const [
+        '',
+        'upi',
+        'dr',
+        'cr',
+        'p2p',
+        'p2m',
+      ].contains(parts.first.toLowerCase())) {
     parts.removeAt(0);
   }
   final hasReference =

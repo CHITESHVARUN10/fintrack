@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fintrack_flutter/core/api_client.dart';
 import 'package:fintrack_flutter/core/upi.dart';
+import 'package:fintrack_flutter/features/activity_review.dart';
 import 'package:fintrack_flutter/features/income_page.dart';
 import 'package:fintrack_flutter/features/transactions_page.dart';
 import 'package:fintrack_flutter/features/upi_pay_page.dart';
@@ -9,6 +10,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+Future<void> revealOffset(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 100,
+}) async {
+  if (target.evaluate().isNotEmpty) {
+    await tester.ensureVisible(target);
+  } else {
+    final scrollable = find
+        .descendant(
+          of: find.byType(ActivityOffsetSheet),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(target, delta, scrollable: scrollable);
+  }
+  await tester.pumpAndSettle();
+}
 
 void main() {
   List<RequestOptions> mockApi(Object Function(RequestOptions) respond) {
@@ -366,6 +386,16 @@ void main() {
       await tester.tap(find.text('Maya'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Other'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Search category'),
+        'Inco',
+      );
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Other'), findsNothing);
+      await tester.tap(find.text('Income'));
+      await tester.pumpAndSettle();
       final saveCategory = find.text('Save category');
       await tester.ensureVisible(saveCategory);
       await tester.tap(saveCategory);
@@ -378,12 +408,15 @@ void main() {
       await tester.ensureVisible(findMatch);
       await tester.tap(findMatch);
       await tester.pumpAndSettle();
+      await revealOffset(tester, find.text('Dinner House'));
       await tester.tap(find.text('Dinner House'));
       await tester.pumpAndSettle();
-      await tester.enterText(
-        find.widgetWithText(TextField, 'e.g. Dinner reimbursement'),
-        'Tuesday dinner',
+      final purpose = find.widgetWithText(
+        TextField,
+        'e.g. Dinner reimbursement',
       );
+      await revealOffset(tester, purpose, delta: -100);
+      await tester.enterText(purpose, 'Tuesday dinner');
       final saveOffset = find.text('SAVE OFFSET PAIR');
       await tester.ensureVisible(saveOffset);
       await tester.tap(saveOffset);
@@ -396,6 +429,78 @@ void main() {
       expect(find.text('Tuesday dinner'), findsOneWidget);
     },
   );
+
+  testWidgets('offset waits for the purchase and returned change', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final credit = {
+      '_id': 'credit',
+      'type': 'INCOME',
+      'mode': 'BANK',
+      'amountPaise': 749900,
+      'recipient': {'name': 'Friend'},
+    };
+    final requests = mockApi(
+      (request) => {
+        'items': [
+          {
+            '_id': 'game',
+            'type': 'EXPENSE',
+            'mode': 'UPI',
+            'amountPaise': 600000,
+            'recipient': {'name': 'Game store'},
+          },
+          {
+            '_id': 'change',
+            'type': 'EXPENSE',
+            'mode': 'UPI',
+            'amountPaise': 149900,
+            'recipient': {'name': 'Returned change'},
+          },
+        ],
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: finStackTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showModalBottomSheet<bool>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => ActivityOffsetSheet(transaction: credit),
+              ),
+              child: const Text('Offset this entry'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Offset this entry'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Paid for someone'));
+    await revealOffset(tester, find.text('Game store'));
+    await tester.tap(find.text('Game store'));
+    await tester.pumpAndSettle();
+    expect(find.text('₹1,499 more outgoing needed'), findsOneWidget);
+    expect(requests.where((request) => request.method == 'PUT'), isEmpty);
+    await revealOffset(tester, find.text('Returned change'));
+    await tester.tap(find.text('Returned change'));
+    await tester.pumpAndSettle();
+    expect(find.text('Balanced · 3 entries'), findsOneWidget);
+    await tester.tap(find.text('SAVE OFFSET GROUP'));
+    await tester.pumpAndSettle();
+    expect(requests.singleWhere((r) => r.method == 'PUT').data, {
+      'transactionIds': ['game', 'change'],
+      'purpose': 'Paid for someone',
+      'kind': 'purchase_on_behalf',
+    });
+  });
 
   testWidgets('Payment feedback runs once and details update the saved entry', (
     tester,

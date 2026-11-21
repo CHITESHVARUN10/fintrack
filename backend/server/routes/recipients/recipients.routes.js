@@ -123,6 +123,8 @@ router.post('/', async (req,res,next)=>{
         // fallback directly to existing if upsert returned null
         return res.status(409).json({ error:'Vendor conflict — found existing by UPI, please retry' });
       }
+      // Direct directory edits can rename a vendor. New ledger rows preserve the saved name.
+      if (typeof label === 'string' && label.trim()) res2.label = label.trim().slice(0, 80);
       // apply extra fields
       if (description !== undefined) res2.description = description;
       if (aliases !== undefined) res2.aliases = Array.isArray(aliases) ? aliases.filter(Boolean).map(s=> String(s).trim().toLowerCase().slice(0,50)) : [];
@@ -324,13 +326,19 @@ router.put('/:id/products/:prodId', async (req,res,next)=>{
     if(subcategory !== undefined) prod.subcategory = String(subcategory).trim().slice(0,40) || '';
     if(unit !== undefined) prod.unit = String(unit).trim().slice(0,20);
     if(typicalAmountPaise !== undefined || amountPaise !== undefined){
-      const amt = typicalAmountPaise!==undefined ? Number(typicalAmountPaise) : (amountPaise!==undefined ? Number(amountPaise) : null);
+      const supplied = typicalAmountPaise !== undefined ? typicalAmountPaise : amountPaise;
+      const amt = supplied === null || supplied === '' ? null : Number(supplied);
+      if (amt !== null && (!Number.isSafeInteger(amt) || amt < 0)) {
+        return res.status(400).json({ error: 'Enter a valid typical price' });
+      }
       prod.typicalAmountPaise = amt;
       // sync priceMap
       if (amt){
         let pm = doc.priceMap.find(p=> String(p.productRef)===String(prod._id));
         if(pm){ pm.amountPaise=amt; pm.lastSeen=new Date(); }
         else doc.priceMap.push({ amountPaise: amt, productRef: prod._id, hits: prod.hits||1, lastSeen:new Date() });
+      } else {
+        doc.priceMap = doc.priceMap.filter(p => String(p.productRef) !== String(prod._id));
       }
     }
     prod.lastSeen=new Date();

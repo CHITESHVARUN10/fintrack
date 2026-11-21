@@ -8,6 +8,7 @@ test('prefers the saved vendor label over a statement narration', () => {
 
 test('extracts the merchant from UPI narrations with or without a debit/reference prefix', () => {
   assert.equal(vendorDisplayName({ name: 'UPI/Ravi Kumar/HDFC/123456789' }), 'Ravi Kumar');
+  assert.equal(vendorDisplayName({ name: 'UPI/UPI/UPI/Corner Dairy/HDFC/HDFC/123456789' }), 'Corner Dairy');
   assert.equal(vendorDisplayName({ name: 'UPI/DR/123456789/Corner Café/ICICI/store@upi' }), 'Corner Café');
   assert.equal(vendorDisplayName({ name: 'UPI/DR/123456789/24Seven/ICICI' }, 'store@upi'), '24Seven');
 });

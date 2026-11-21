@@ -7,7 +7,7 @@ const bank = /^(?:[a-z]{4}0[a-z\d]{6}|(?:axis|hdfc|icici|idbi|kotak|sbi|pnb|bob|
 function upiName(label) {
   if (!upiPrefix.test(label)) return null;
   const parts = label.split('/').slice(1).map(part => part.trim());
-  if (direction.test(parts[0])) parts.shift();
+  while (/^upi$/i.test(parts[0]) || direction.test(parts[0]) || parts[0] === '') parts.shift();
   if (reference.test(parts[0])) parts.shift();
   const candidate = parts[0] || '';
   return /\p{L}{2}/u.test(candidate) && !paymentId.test(candidate) && !bank.test(candidate)

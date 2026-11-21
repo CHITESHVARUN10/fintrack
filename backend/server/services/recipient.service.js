@@ -147,7 +147,7 @@ async function upsertFromCategory({ familyId, createdBy, vendorKey, upiId, label
     try{
       return await RecipientDirectory.findOneAndUpdate(
         { familyId, vendorKey: vk || String(upiId).toLowerCase() },
-        { $inc: { hits: 1 }, $set: { lastSeen: new Date(), label: label||vk||String(upiId), ...(upiId?{ upiId: String(upiId).toLowerCase()}: {}), ...(createdBy?{createdBy}:{}) }, $setOnInsert: { familyId, vendorKey: vk || String(upiId).toLowerCase() } },
+        { $inc: { hits: 1 }, $set: { lastSeen: new Date(), ...(upiId?{ upiId: String(upiId).toLowerCase()}: {}), ...(createdBy?{createdBy}:{}) }, $setOnInsert: { familyId, vendorKey: vk || String(upiId).toLowerCase(), label: label || vk || String(upiId) } },
         { upsert:true, new:true, setDefaultsOnInsert:true }
       );
     } catch(e){
@@ -156,7 +156,7 @@ async function upsertFromCategory({ familyId, createdBy, vendorKey, upiId, label
       if (upiId) {
         const byUpi = await RecipientDirectory.findOne({ familyId, upiId: String(upiId).toLowerCase() });
         if (byUpi) {
-          byUpi.hits=(byUpi.hits||0)+1; byUpi.lastSeen=new Date(); if(label) byUpi.label=label; await byUpi.save().catch(()=>{});
+          byUpi.hits=(byUpi.hits||0)+1; byUpi.lastSeen=new Date(); await byUpi.save().catch(()=>{});
           return byUpi;
         }
       }
@@ -191,7 +191,6 @@ async function upsertFromCategory({ familyId, createdBy, vendorKey, upiId, label
   }
   doc.hits = (doc.hits||0)+1;
   doc.lastSeen = new Date();
-  if (label) doc.label = label;
   if (upiId && !doc.upiId) doc.upiId = String(upiId).toLowerCase();
   // keep alternate vendorKey as alias for future matching (handles "amazon pay" vs "amazon paygro" drift)
   if (vk && vk.toLowerCase() !== String(doc.vendorKey).toLowerCase()) {

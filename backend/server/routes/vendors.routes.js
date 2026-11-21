@@ -2,6 +2,8 @@ const express = require('express');
 const { isAuthenticated } = require('../middleware/auth.middleware');
 const RecipientDirectory = require('../models/recipientdirectory.model');
 const Transaction = require('../models/transaction.model');
+const { activeOffsets } = require('../services/transactionOffsets');
+const { vendorDisplayName } = require('../utils/vendorDisplayName');
 const { normalizeVendorKey } = require('../services/recipient.service');
 const router = express.Router();
 router.use(isAuthenticated);
@@ -16,7 +18,12 @@ router.get('/:id/transactions', async (req,res,next)=>{
     const vk = String(vendor.vendorKey||'').toLowerCase();
     const upi = String(vendor.upiId||'').toLowerCase();
     // optional filters
-    const { from, to, memberId, category, productName, limit, skip } = req.query;
+    const { from, to, memberId, category, productName, limit, skip, amountPaise } = req.query;
+    if (amountPaise !== undefined &&
+        (typeof amountPaise !== 'string' || !/^\d+$/.test(amountPaise) ||
+          !Number.isSafeInteger(Number(amountPaise)) || Number(amountPaise) <= 0)) {
+      return res.status(400).json({ error: 'Enter a valid amount' });
+    }
     const filterDate = {};
     if (from) filterDate.$gte = new Date(from);
     if (to){
@@ -29,7 +36,7 @@ router.get('/:id/transactions', async (req,res,next)=>{
     const sk = Math.max(0, parseInt(String(skip||0),10)||0);
 
     // Fetch transactions family-scoped; PRIVATE is invisible to others even in vendor aggregates
-    const baseFilter = { familyId: req.user.familyAccountId, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
+    const baseFilter = { familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
     if (hasDate) baseFilter.occurredAt = filterDate;
     if (memberId) {
       if (String(memberId) !== String(req.user._id) && req.user.role !== 'admin') {
@@ -40,26 +47,38 @@ router.get('/:id/transactions', async (req,res,next)=>{
       // baseFilter already has $or, but if memberId is other user's, their PRIVATE will be excluded via $or (since createdBy != requester)
     }
     if (category) baseFilter.category = category;
-    if (productName) baseFilter.productName = { $regex: String(productName).trim(), $options:'i' };
+    if (amountPaise !== undefined) baseFilter.amountPaise = Number(amountPaise);
+    if (productName) baseFilter.productName = {
+      $regex: String(productName).trim().slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i',
+    };
 
     // First try direct ref match + fallback to name/upi fuzzy
-    let candidates = await Transaction.find(baseFilter).sort({ occurredAt:-1 }).populate('createdBy','name email').populate('recipientVendorRef').populate('subscriptionRef').lean();
+    const [candidates, offsets] = await Promise.all([
+      Transaction.find(baseFilter).sort({ occurredAt: -1, _id: -1 }).populate('createdBy', 'name email')
+        .populate('recipientVendorRef', 'label upiId').populate('subscriptionRef').lean(),
+      activeOffsets(req.user.familyAccountId, memberId),
+    ]);
     // If we have many, we already filtered by family+date/member etc. Now narrow to this vendor
     const matched = [];
     let totalPaise=0;
-    const byCategory={};
-    const bySubcategory={};
-    const byProduct={};
+    const byCategory = Object.create(null);
+    const bySubcategory = Object.create(null);
+    const byProduct = Object.create(null);
+    const productCounts = new Map();
     const byMember={}; // memberId -> {name, paise, count}
     const monthlyBucketsMap={}; // YYYY-MM -> paise
     for(const t of candidates){
       // quick ref hit check
       let hit=false;
-      if (String(t.recipientVendorRef?._id || t.recipientVendorRef || '') === String(vendor._id)) hit=true;
+      const reference = t.recipientVendorRef?._id || t.recipientVendorRef;
+      if (reference) hit = String(reference) === String(vendor._id);
       else {
         const tVk = normalizeVendorKey(t.recipient?.name||'', t.upiId||t.recipient?.upiId||'');
         const tUpi = String(t.upiId||t.recipient?.upiId||'').toLowerCase();
-        hit = (vk && tVk===vk) || (upi && tUpi===upi);
+        const knownName = vendorDisplayName({ name: vendor.label, upiId: vendor.upiId }).toLowerCase();
+        const observedName = vendorDisplayName(t.recipient).toLowerCase();
+        hit = (vk && vk !== 'upi' && tVk === vk) || (upi && tUpi === upi) ||
+          (knownName !== 'unknown' && knownName === observedName);
         // also check aliases
         if(!hit && vendor.aliases && vendor.aliases.length){
           const nameLow = String(t.recipient?.name||'').toLowerCase();
@@ -67,19 +86,29 @@ router.get('/:id/transactions', async (req,res,next)=>{
         }
       }
       if(!hit) continue;
-      matched.push(t);
+      matched.push(offsets.has(String(t._id)) ? { ...t, isOffset: true } : t);
     }
-    // sort matched already by occurredAt desc due to query, but ensure
-    matched.sort((a,b)=> new Date(b.occurredAt)-new Date(a.occurredAt));
     const paged = matched.slice(sk, sk+lim);
     for(const t of matched){
-      if(t.type==='EXPENSE' || t.type==='CASH_EXPENSE'){
+      if (!t.isOffset && (t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE')) {
         const amt=t.amountPaise||0;
         totalPaise += amt;
         const c=t.category||'Other'; byCategory[c]=(byCategory[c]||0)+amt;
         if(t.subcategory){ bySubcategory[t.subcategory]=(bySubcategory[t.subcategory]||0)+amt; }
         const pname = t.productName || (t.lineItems&&t.lineItems[0]?.productName) || '';
         if(pname){ byProduct[pname]=(byProduct[pname]||0)+amt; }
+        if (amountPaise !== undefined) {
+          const seen = new Set();
+          for (const label of [t.productName, ...(t.lineItems || []).map(row => row.productName)]) {
+            const name = label?.trim();
+            const key = name?.toLowerCase();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            const product = productCounts.get(key) || { name, count: 0 };
+            product.count++;
+            productCounts.set(key, product);
+          }
+        }
         const mid = String(t.createdBy?._id || t.createdBy || 'unknown');
         const mname = t.createdBy?.name || (typeof t.createdBy==='string'? t.createdBy.slice(0,8): 'Unknown');
         if(!byMember[mid]) byMember[mid]={ name:mname, paise:0, count:0 };
@@ -108,6 +137,7 @@ router.get('/:id/transactions', async (req,res,next)=>{
       byCategory,
       bySubcategory,
       byProduct,
+      ...(amountPaise !== undefined ? { productsAtAmount: [...productCounts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)) } : {}),
       byMember: byMemberArr,
       monthlyBuckets,
       linkedSubscriptions,

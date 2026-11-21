@@ -62,7 +62,8 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
   String? feedback;
 
   bool get linked => view == 'linked';
-  bool get filtered => query.isNotEmpty || from != null || to != null || amountPaise != null;
+  bool get filtered =>
+      query.isNotEmpty || from != null || to != null || amountPaise != null;
   bool get canFilter => !linked && !busy;
   Map<String, String> get roles => _purposes[widget.kind]!;
   String get path =>
@@ -124,18 +125,6 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
 
-  /// Rupees typed by the reader, stored as exact integer paise so the match is
-  /// never off by a paisa through floating-point rounding.
-  int? parsePaise(String value) {
-    final text = value.trim().replaceAll(',', '').replaceAll('₹', '');
-    final match = RegExp(r'^(\d{1,12})(?:\.(\d{0,2}))?$').firstMatch(text);
-    if (match == null) return null;
-    final rupees = int.parse(match.group(1)!);
-    final fraction = (match.group(2) ?? '').padRight(2, '0');
-    final paise = rupees * 100 + int.parse(fraction);
-    return paise > 0 ? paise : null;
-  }
-
   void updateSearch(String value) {
     FocusScope.of(context).unfocus();
     query = value.trim();
@@ -144,7 +133,7 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
   }
 
   void applyAmount(String value) {
-    final parsed = parsePaise(value);
+    final parsed = parseRupeesToPaise(value);
     final blank = value.trim().isEmpty;
     if (!blank && parsed == null) return;
     amountPaise = parsed;
@@ -232,17 +221,18 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
     final incoming = item['type'] == 'INCOME';
     final party = item[incoming ? 'sender' : 'recipient'] as Map?;
     final other = item[incoming ? 'recipient' : 'sender'] as Map?;
-    final names = [
-      party?['name'],
-      party?['upiId'],
-      other?['name'],
-      other?['upiId'],
-      item['productName'],
-    ]
-        .whereType<String>()
-        .map((value) => readableVendorName(value).trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
+    final names =
+        [
+              party?['name'],
+              party?['upiId'],
+              other?['name'],
+              other?['upiId'],
+              item['productName'],
+            ]
+            .whereType<String>()
+            .map((value) => readableVendorName(value).trim())
+            .where((value) => value.isNotEmpty)
+            .toList();
     final label = names.isEmpty ? 'Ledger entry' : names.first;
     final rawDate = '${item['occurredAt'] ?? ''}'.split('T').first;
     final amount = inr(((item['amountPaise'] as num?) ?? 0) / 100);
@@ -394,7 +384,8 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                   tooltip: 'Search by amount',
                 ),
               ),
-              if (amount.text.trim().isNotEmpty && parsePaise(amount.text) == null)
+              if (amount.text.trim().isNotEmpty &&
+                  parseRupeesToPaise(amount.text) == null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
