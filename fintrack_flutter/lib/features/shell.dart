@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/bank_import.dart';
+import '../core/auth_state.dart';
+import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/workspace.dart';
 import 'dashboard_page.dart';
 import 'family_page.dart';
+import 'income_page.dart';
+import 'investments_page.dart';
 import 'profile_hub_page.dart';
+import 'profile_page.dart';
 import 'scan_pay_page.dart';
 import 'statistics_page.dart';
 import 'transactions_page.dart';
@@ -22,6 +28,7 @@ class _ShellState extends ConsumerState<Shell> {
   _Tab _tab = _Tab.home;
   int _activityRefresh = 0;
   int _statisticsRefresh = 0;
+  int _familyRefresh = 0;
   final _visited = {_Tab.home};
   final _profileNavigator = GlobalKey<NavigatorState>();
   late final _bankImport = BankImport(
@@ -48,8 +55,8 @@ class _ShellState extends ConsumerState<Shell> {
 
   static const _items = [
     BrutalNavItem('Home', Icons.home_outlined),
-    BrutalNavItem('Activity', Icons.receipt_long_outlined),
-    BrutalNavItem('Scan', Icons.qr_code_scanner),
+    BrutalNavItem('Activity', Icons.receipt_outlined),
+    BrutalNavItem('Scan', Icons.qr_code_2),
     BrutalNavItem('Stats', Icons.bar_chart_outlined),
     BrutalNavItem('Family', Icons.group_outlined),
     BrutalNavItem('Profile', Icons.person_outline),
@@ -82,6 +89,7 @@ class _ShellState extends ConsumerState<Shell> {
       if (_tab != next && _visited.contains(next)) {
         if (next == _Tab.activity) _activityRefresh++;
         if (next == _Tab.statistics) _statisticsRefresh++;
+        if (next == _Tab.family) _familyRefresh++;
       }
       _tab = next;
       _visited.add(next);
@@ -91,13 +99,25 @@ class _ShellState extends ConsumerState<Shell> {
   Widget _pageFor(_Tab tab) {
     switch (tab) {
       case _Tab.home:
-        return const DashboardPage();
+        return DashboardPage(
+          onIncome: () => _openWorkspace(const IncomePage()),
+          onActivity: () => _onTab(_Tab.activity.index),
+          onInvestments: () => _openWorkspace(const InvestmentsPage()),
+        );
       case _Tab.activity:
-        return TransactionsPage(refresh: _activityRefresh);
+        return TransactionsPage(refresh: _activityRefresh, showHeader: true);
       case _Tab.statistics:
         return StatisticsPage(refresh: _statisticsRefresh);
       case _Tab.family:
-        return const FamilyPage();
+        final user = ref.watch(authProvider).user;
+        return FamilyPage(
+          showHeader: true,
+          refresh: _familyRefresh,
+          userId: (user?['_id'] ?? user?['id'])?.toString(),
+          onSetup: () => _openWorkspace(
+            const WorkspaceScaffold(title: 'Family setup', body: ProfilePage()),
+          ),
+        );
       case _Tab.profile:
         return NavigatorPopHandler<Object?>(
           enabled: _tab == _Tab.profile,
@@ -123,46 +143,56 @@ class _ShellState extends ConsumerState<Shell> {
     }
   }
 
+  void _openWorkspace(Widget page) {
+    _onTab(_Tab.profile.index);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tab == _Tab.profile) {
+        _profileNavigator.currentState?.push(
+          MaterialPageRoute<void>(builder: (_) => page),
+        );
+      }
+    });
+  }
+
   PreferredSizeWidget _tabHeader(_Tab tab) => AppBar(
-    title: Row(
-      children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: FinStackColors.brandYellow,
-            border: Border.all(color: FinStackColors.onSurface, width: 2),
-          ),
-          alignment: Alignment.center,
-          child: const Text(
-            'F',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            (tab == _Tab.statistics ? 'Statistics' : _items[tab.index].label)
-                .toUpperCase(),
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-            ),
-          ),
-        ),
-      ],
+    title: FinStackTitle(
+      tab == _Tab.statistics ? 'Statistics' : _items[tab.index].label,
     ),
+    actions: [
+      if (tab == _Tab.home)
+        const Padding(
+          padding: EdgeInsets.only(right: 14),
+          child: BrutalTag(
+            label: 'Individual',
+            color: FinStackColors.surfaceContainer,
+          ),
+        ),
+      if (tab == _Tab.statistics)
+        Padding(
+          padding: const EdgeInsets.only(right: 14),
+          child: BrutalTag(
+            label: monthYearLabel(DateTime.now()),
+            color: FinStackColors.surfaceContainer,
+          ),
+        ),
+      if (tab == _Tab.profile)
+        const Padding(
+          padding: EdgeInsets.only(right: 14),
+          child: BrutalTag(
+            label: 'Live',
+            color: FinStackColors.surfaceContainer,
+          ),
+        ),
+    ],
   );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _tab == _Tab.profile ? null : _tabHeader(_tab),
+      appBar:
+          _tab == _Tab.profile || _tab == _Tab.activity || _tab == _Tab.family
+          ? null
+          : _tabHeader(_tab),
       body: BrutalGrid(
         child: IndexedStack(
           index: _tab.index,

@@ -1,11 +1,19 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+
 import '../core/upi.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import 'upi_pay_page.dart';
+
+const _monoFallback = <String>[FinStackType.body];
+
+const _cameraBg = Color(0xFF252624);
+const _cameraPillBg = Color(0xFF181816);
+const _cameraText = Color(0xFFEAE5D6);
 
 class ScanPayPage extends StatefulWidget {
   const ScanPayPage({super.key});
@@ -35,8 +43,20 @@ class _ScanPayPageState extends State<ScanPayPage>
     );
     _scanLine = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
+      duration: const Duration(milliseconds: 1050),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scanLine
+        ..stop()
+        ..value = .5;
+    } else if (!_scanLine.isAnimating) {
+      _scanLine.repeat(reverse: true);
+    }
   }
 
   @override
@@ -63,7 +83,8 @@ class _ScanPayPageState extends State<ScanPayPage>
     if (parsed == null) {
       setState(() {
         _handled = true;
-        _scanError = 'That QR is not a UPI payment code. Try a payment QR, or enter the UPI ID manually.';
+        _scanError =
+            'That QR is not a UPI payment code. Try a payment QR, or enter the UPI ID manually.';
       });
       await _stopCamera();
       return;
@@ -86,9 +107,9 @@ class _ScanPayPageState extends State<ScanPayPage>
     setState(() => _openingReview = true);
     await _stopCamera();
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => UpiPayPage(request: request)),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => UpiPayPage(request: request)));
     if (!mounted) return;
     setState(() {
       _openingReview = false;
@@ -129,9 +150,9 @@ class _ScanPayPageState extends State<ScanPayPage>
 
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _enterManually() async {
@@ -140,18 +161,16 @@ class _ScanPayPageState extends State<ScanPayPage>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-        side: BorderSide(color: FinStackColors.onSurface, width: 3),
-      ),
+      useSafeArea: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (context, setSheetState) {
           void submit() {
             final parsed = parseUpiQr(_manualCtrl.text);
             if (parsed == null) {
-              setSheetState(() =>
-                  error = 'Enter a valid UPI ID, for example merchant@okhdfcbank.');
+              setSheetState(
+                () => error =
+                    'Enter a valid UPI ID, for example merchant@okhdfcbank.',
+              );
               return;
             }
             Navigator.of(sheetContext).pop();
@@ -160,27 +179,39 @@ class _ScanPayPageState extends State<ScanPayPage>
 
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
             ),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: BrutalTag(label: 'No camera? No problem'),
+                    child: BrutalTag(
+                      label: 'No camera? No problem',
+                      color: FinStackColors.brandYellow,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   const Text(
                     'ENTER A UPI ID',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      fontFamily: FinStackType.display,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   const Text(
                     'Use the merchant UPI ID when the QR is damaged or the camera is unavailable.',
-                    style: TextStyle(color: FinStackColors.onSurfaceVariant, fontSize: 12),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: FinStackColors.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   BrutalField(
@@ -226,7 +257,7 @@ class _ScanPayPageState extends State<ScanPayPage>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: _cameraBg,
         resizeToAvoidBottomInset: false,
         body: Stack(
           fit: StackFit.expand,
@@ -245,148 +276,73 @@ class _ScanPayPageState extends State<ScanPayPage>
             ),
             Positioned.fill(
               child: IgnorePointer(
-                child: AnimatedBuilder(
-                  animation: _scanLine,
-                  builder: (context, _) => CustomPaint(
-                    painter: _ScanOverlayPainter(progress: _scanLine.value),
-                  ),
-                ),
+                child: ColoredBox(color: Colors.black.withValues(alpha: .18)),
               ),
             ),
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(children: [
-                      BrutalIconButton(
-                        icon: Icons.close,
-                        tooltip: 'Close',
-                        color: Colors.white,
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.72),
-                          border: Border.all(color: FinStackColors.brandYellow, width: 2),
-                        ),
-                        child: const Row(children: [
-                          Text(
-                            'SCAN & PAY',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          BrutalTag(label: 'UPI'),
-                        ]),
-                      ),
-                      const Spacer(),
-                      BrutalIconButton(
-                        icon: _torchOn ? Icons.flash_on : Icons.flash_off,
-                        tooltip: 'Torch',
-                        color: _torchOn ? FinStackColors.brandYellow : Colors.white,
-                        onPressed: _toggleTorch,
-                      ),
-                      const SizedBox(width: 8),
-                      BrutalIconButton(
-                        icon: Icons.cameraswitch,
-                        tooltip: 'Switch camera',
-                        color: Colors.white,
-                        onPressed: _switchCamera,
-                      ),
-                    ]),
-                    const Spacer(),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        'ALIGN THE QR INSIDE THE FRAME',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                          shadows: const [
-                            Shadow(color: Colors.black, blurRadius: 6),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    BrutalCard(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Row(children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: FinStackColors.brandYellow,
-                              border: Border.all(color: FinStackColors.onSurface, width: 2),
-                            ),
-                            child: const Icon(Icons.qr_code_scanner, size: 22),
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(
-                                'POINT AT A UPI QR',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-                              ),
-                              Text(
-                                'Payee, UPI ID and amount are read automatically.',
-                                style: TextStyle(fontSize: 10),
-                              ),
-                            ]),
-                          ),
-                        ]),
-                        if (_scanError != null) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: FinStackColors.errorContainer,
-                              border: Border.all(color: FinStackColors.onSurface, width: 2),
-                            ),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(
-                                _scanError!,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: FinStackColors.onErrorContainer,
+                    _topBar(),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final side = math.min(
+                            248.0,
+                            math.max(150.0, constraints.maxHeight - 52),
+                          );
+                          return Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Semantics(
+                                  label:
+                                      'Camera preview. Point the camera at a UPI QR code.',
+                                  child: SizedBox(
+                                    width: side,
+                                    height: side,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        ColoredBox(
+                                          color: Colors.white.withValues(
+                                            alpha: .14,
+                                          ),
+                                        ),
+                                        AnimatedBuilder(
+                                          animation: _scanLine,
+                                          builder: (context, _) => CustomPaint(
+                                            painter: _ViewfinderPainter(
+                                              progress: _scanLine.value,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              BrutalButton(
-                                label: 'Scan again',
-                                icon: Icons.refresh,
-                                onPressed: _resumeScan,
-                              ),
-                            ]),
-                          ),
-                        ],
-                        if (_openingReview) ...[
-                          const SizedBox(height: 10),
-                          const LinearProgressIndicator(minHeight: 4),
-                        ],
-                        const SizedBox(height: 10),
-                        BrutalButton(
-                          block: true,
-                          color: FinStackColors.surfaceContainer,
-                          label: 'Enter UPI ID instead',
-                          icon: Icons.keyboard,
-                          onPressed: _openingReview ? null : _enterManually,
-                        ),
-                      ]),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'ALIGN THE QR INSIDE THE FRAME',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: FinStackType.mono,
+                                    fontFamilyFallback: _monoFallback,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: .8,
+                                    color: _cameraText,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
+                    _bottomCard(),
                   ],
                 ),
               ),
@@ -397,177 +353,387 @@ class _ScanPayPageState extends State<ScanPayPage>
     );
   }
 
+  Widget _topBar() {
+    return SizedBox(
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: BrutalIconButton(
+              icon: Icons.close,
+              tooltip: 'Close',
+              color: Colors.white,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _cameraPillBg,
+              border: Border.all(color: FinStackColors.brandYellow, width: 2.5),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'SCAN & PAY',
+                  style: TextStyle(
+                    fontFamily: FinStackType.display,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .4,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 8),
+                BrutalTag(label: 'UPI'),
+              ],
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BrutalIconButton(
+                  icon: _torchOn ? Icons.flash_on : Icons.flash_off,
+                  tooltip: 'Torch',
+                  color: _torchOn ? FinStackColors.brandYellow : Colors.white,
+                  onPressed: _toggleTorch,
+                ),
+                const SizedBox(width: 8),
+                BrutalIconButton(
+                  icon: Icons.cameraswitch,
+                  tooltip: 'Switch camera',
+                  color: Colors.white,
+                  onPressed: _switchCamera,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bottomCard() {
+    return BrutalCard(
+      padding: const EdgeInsets.all(14),
+      shadow: 5,
+      shadowColor: Colors.black,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: FinStackColors.brandYellow,
+                  border: Border.all(
+                    color: FinStackColors.onSurface,
+                    width: 2.5,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: FinStackColors.onSurface,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.qr_code_2, size: 22),
+              ),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'POINT AT A UPI QR',
+                      style: TextStyle(
+                        fontFamily: FinStackType.display,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Payee, UPI ID and amount are read automatically.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.35,
+                        color: FinStackColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_scanError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: FinStackColors.errorContainer,
+                border: Border.all(color: FinStackColors.onSurface, width: 2),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _scanError!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        fontWeight: FontWeight.w700,
+                        color: FinStackColors.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  BrutalButton(
+                    label: 'Scan again',
+                    icon: Icons.refresh,
+                    fontSize: 11,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 8,
+                    ),
+                    onPressed: _resumeScan,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_openingReview) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(
+              minHeight: 4,
+              semanticsLabel: 'Opening payment review',
+            ),
+          ],
+          const SizedBox(height: 12),
+          BrutalButton(
+            block: true,
+            color: FinStackColors.surfaceContainer,
+            label: 'Enter UPI ID instead',
+            icon: Icons.keyboard,
+            onPressed: _openingReview ? null : _enterManually,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _cameraErrorPage(MobileScannerException error) {
     final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
     final unsupported = error.errorCode == MobileScannerErrorCode.unsupported;
     final title = denied
         ? 'CAMERA ACCESS IS OFF'
         : unsupported
-            ? 'CAMERA NOT AVAILABLE'
-            : 'CAMERA COULD NOT START';
+        ? 'CAMERA NOT AVAILABLE'
+        : 'CAMERA COULD NOT START';
+    final tag = denied
+        ? 'No access'
+        : unsupported
+        ? 'Unavailable'
+        : 'Camera error';
     final message = denied
         ? 'Enable camera access for FinStack in Settings, then retry — or enter the UPI ID manually.'
         : unsupported
-            ? 'This device cannot run the camera scanner. Enter the UPI ID manually instead.'
-            : 'Something stopped the camera. Retry, or enter the UPI ID manually.';
+        ? 'This device cannot run the camera scanner. Enter the UPI ID manually instead.'
+        : 'Something stopped the camera. Retry, or enter the UPI ID manually.';
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
-        appBar: AppBar(title: const Text('SCAN & PAY')),
-        body: BrutalGrid(
-          child: ListView(padding: const EdgeInsets.all(16), children: [
-            BrutalCard(
-              color: denied ? FinStackColors.errorContainer : Colors.white,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: FinStackColors.brandYellow,
-                      border: Border.all(color: FinStackColors.onSurface, width: 2),
-                    ),
-                    child: const Icon(Icons.no_photography_outlined, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Text(message, style: const TextStyle(fontSize: 12, height: 1.4)),
-                const SizedBox(height: 14),
-                BrutalButton(
-                  block: true,
-                  label: 'Retry camera',
-                  icon: Icons.refresh,
-                  onPressed: () async {
-                    setState(() => _cameraException = null);
-                    try {
-                      await _scanner.start();
-                    } catch (_) {
-                      _snack('Camera still unavailable. Use manual entry.');
-                    }
-                  },
+        appBar: AppBar(
+          title: const Text('SCAN & PAY'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(
+                child: BrutalTag(
+                  label: tag,
+                  color: FinStackColors.errorContainer,
+                  textColor: FinStackColors.onErrorContainer,
                 ),
-                const SizedBox(height: 8),
-                BrutalButton(
-                  block: true,
-                  color: Colors.white,
-                  label: 'Enter UPI ID manually',
-                  icon: Icons.keyboard,
-                  onPressed: _enterManually,
-                ),
-              ]),
-            ),
-            const SizedBox(height: 12),
-            const BrutalCard(
-              color: FinStackColors.surfaceContainer,
-              child: Text(
-                'Why scan? The payee name, UPI ID and amount are read from the code, then you confirm the payment in your UPI app. FinStack only records the transaction after you confirm it succeeded.',
-                style: TextStyle(fontSize: 11, height: 1.4),
               ),
             ),
-          ]),
+          ],
+        ),
+        body: BrutalGrid(
+          child: ListView(
+            padding: const EdgeInsets.all(14),
+            children: [
+              BrutalCard(
+                color: FinStackColors.errorContainer,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: FinStackColors.brandYellow,
+                            border: Border.all(
+                              color: FinStackColors.onSurface,
+                              width: 2.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: FinStackColors.onSurface,
+                                offset: Offset(2.5, 2.5),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.no_photography_outlined,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 11),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontFamily: FinStackType.display,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              height: 1.15,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    BrutalButton(
+                      block: true,
+                      label: 'Retry camera',
+                      icon: Icons.refresh,
+                      onPressed: () async {
+                        setState(() => _cameraException = null);
+                        try {
+                          await _scanner.start();
+                        } catch (_) {
+                          _snack('Camera still unavailable. Use manual entry.');
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    BrutalButton(
+                      block: true,
+                      color: Colors.white,
+                      label: 'Enter UPI ID manually',
+                      icon: Icons.keyboard,
+                      onPressed: _enterManually,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const BrutalCard(
+                color: FinStackColors.surfaceContainer,
+                padding: EdgeInsets.all(14),
+                child: Text(
+                  'Why scan? The payee name, UPI ID and amount are read from the code, then you confirm the payment in your UPI app. FinStack only records the transaction after you confirm it succeeded.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ScanOverlayPainter extends CustomPainter {
+class _ViewfinderPainter extends CustomPainter {
+  const _ViewfinderPainter({required this.progress});
+
   final double progress;
-  const _ScanOverlayPainter({required this.progress});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final side = math.min(size.width * 0.72, 300.0);
-    final rect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.42),
-      width: side,
-      height: side,
-    );
-
-    final shade = Path.combine(
-      PathOperation.difference,
-      Path()..addRect(Offset.zero & size),
-      Path()..addRect(rect),
-    );
-    canvas.drawPath(shade, Paint()..color = Colors.black.withValues(alpha: 0.52));
-
-    final black = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 7
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.square;
-    final yellow = Paint()
-      ..color = FinStackColors.brandYellow
-      ..strokeWidth = 3.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.square;
-
     const arm = 28.0;
-    void corners(Paint paint) {
-      // top-left
+    final bracket = Paint()
+      ..color = FinStackColors.brandYellow
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt;
+
+    void corners(Rect rect) {
+      final left = rect.left;
+      final top = rect.top;
+      final right = rect.right;
+      final bottom = rect.bottom;
       canvas.drawPath(
         Path()
-          ..moveTo(rect.left, rect.top + arm)
-          ..lineTo(rect.left, rect.top)
-          ..lineTo(rect.left + arm, rect.top),
-        paint,
+          ..moveTo(left, top + arm)
+          ..lineTo(left, top)
+          ..lineTo(left + arm, top),
+        bracket,
       );
-      // top-right
       canvas.drawPath(
         Path()
-          ..moveTo(rect.right - arm, rect.top)
-          ..lineTo(rect.right, rect.top)
-          ..lineTo(rect.right, rect.top + arm),
-        paint,
+          ..moveTo(right - arm, top)
+          ..lineTo(right, top)
+          ..lineTo(right, top + arm),
+        bracket,
       );
-      // bottom-left
       canvas.drawPath(
         Path()
-          ..moveTo(rect.left, rect.bottom - arm)
-          ..lineTo(rect.left, rect.bottom)
-          ..lineTo(rect.left + arm, rect.bottom),
-        paint,
+          ..moveTo(left, bottom - arm)
+          ..lineTo(left, bottom)
+          ..lineTo(left + arm, bottom),
+        bracket,
       );
-      // bottom-right
       canvas.drawPath(
         Path()
-          ..moveTo(rect.right - arm, rect.bottom)
-          ..lineTo(rect.right, rect.bottom)
-          ..lineTo(rect.right, rect.bottom - arm),
-        paint,
+          ..moveTo(right - arm, bottom)
+          ..lineTo(right, bottom)
+          ..lineTo(right, bottom - arm),
+        bracket,
       );
     }
 
-    corners(black);
-    corners(yellow);
+    corners(Offset.zero & size);
 
-    final lineY = rect.top + 8 + (rect.height - 16) * progress;
-    final lineRect = Rect.fromLTWH(rect.left + 10, lineY, rect.width - 20, 3);
+    final y = 18 + (size.height - 39) * progress;
+    final laser = Rect.fromLTWH(10, y, size.width - 20, 3.5);
     canvas.drawRect(
-      lineRect.inflate(2),
-      Paint()..color = FinStackColors.brandYellow.withValues(alpha: 0.18),
+      laser.inflate(2),
+      Paint()
+        ..color = FinStackColors.brandYellow.withValues(alpha: .5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
-    canvas.drawRect(lineRect, Paint()..color = FinStackColors.brandYellow);
-
-    // Small corner ticks for a scan-registration feel.
-    final tick = Paint()
-      ..color = Colors.white.withValues(alpha: 0.55)
-      ..strokeWidth = 1.5;
-    for (var i = 1; i < 5; i++) {
-      final x = rect.left + (rect.width / 5) * i;
-      canvas.drawLine(Offset(x, rect.top - 7), Offset(x, rect.top - 3), tick);
-      canvas.drawLine(Offset(x, rect.bottom + 3), Offset(x, rect.bottom + 7), tick);
-    }
+    canvas.drawRect(laser, Paint()..color = FinStackColors.brandYellow);
   }
 
   @override
-  bool shouldRepaint(covariant _ScanOverlayPainter oldDelegate) =>
+  bool shouldRepaint(covariant _ViewfinderPainter oldDelegate) =>
       oldDelegate.progress != progress;
 }

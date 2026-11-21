@@ -21,16 +21,40 @@ String inr(num value) {
 String compactInr(num value) {
   final n = value.abs();
   final sign = value < 0 ? '-' : '';
-  if (n >= 10000000) return '$sign₹${(n / 10000000).toStringAsFixed(n >= 100000000 ? 0 : 1)}Cr';
-  if (n >= 100000) return '$sign₹${(n / 100000).toStringAsFixed(n >= 1000000 ? 0 : 1)}L';
-  if (n >= 1000) return '$sign₹${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}k';
+  if (n >= 10000000) {
+    return '$sign₹${(n / 10000000).toStringAsFixed(n >= 100000000 ? 0 : 1)}Cr';
+  }
+  if (n >= 100000) {
+    return '$sign₹${(n / 100000).toStringAsFixed(n >= 1000000 ? 0 : 1)}L';
+  }
+  if (n >= 1000) {
+    return '$sign₹${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}k';
+  }
   return '$sign₹${n.round()}';
 }
 
-const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /// 20 Nov
-String shortDateLabel(DateTime date) => '${date.day} ${_months[date.month - 1]}';
+String shortDateLabel(DateTime date) =>
+    '${date.day} ${_months[date.month - 1]}';
 
 /// 20 Nov 2026
 String dateLabel(DateTime date) => '${shortDateLabel(date)} ${date.year}';
+
+/// Nov 2026
+String monthYearLabel(DateTime date) =>
+    '${_months[date.month - 1]} ${date.year}';

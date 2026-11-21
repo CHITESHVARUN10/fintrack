@@ -12,20 +12,29 @@ import '../widgets/spending_breakdown.dart';
 import 'scan_pay_page.dart';
 
 const _burnColors = [
-  0xFFFFE500,
-  0xFF2EC4B6,
-  0xFFE8487F,
-  0xFF7B61FF,
-  0xFFFF7A45,
-  0xFFFFB347,
-  0xFF6BCB77,
-  0xFF4D96FF,
+  FinStackColors.brandYellow,
+  FinStackColors.accentTeal,
+  FinStackColors.accentPink,
+  FinStackColors.accentPurple,
+  FinStackColors.accentOrange,
+  FinStackColors.accentBlue,
+  FinStackColors.accentGreen,
 ];
 
 /// Mirrors website Dashboard.tsx: individual snapshot from GET /dashboard.
 /// Stat cards + monthly spend bars + normalized category/vendor rows + upcoming.
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({
+    super.key,
+    this.onIncome,
+    this.onActivity,
+    this.onInvestments,
+  });
+
+  final VoidCallback? onIncome;
+  final VoidCallback? onActivity;
+  final VoidCallback? onInvestments;
+
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
@@ -48,9 +57,8 @@ List<({String label, double value})> _chartEntries(
       value: (current?.value ?? 0) + value,
     );
   }
-  final entries = [
-    ...grouped.values,
-  ]..sort((a, b) => b.value.compareTo(a.value));
+  final entries = [...grouped.values]
+    ..sort((a, b) => b.value.compareTo(a.value));
   if (entries.length <= 8) return entries;
   return [
     ...entries.take(7),
@@ -242,224 +250,315 @@ class _DashboardPageState extends State<DashboardPage> {
       return '$hour:$min ${t.hour >= 12 ? 'PM' : 'AM'}';
     }
 
+    final now = loadedAt ?? DateTime.now();
+    final month = monthYearLabel(now);
+
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        padding: const EdgeInsets.fromLTRB(14, 14, 17, 28),
         children: [
-          Row(children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: FinStackColors.chartTeal,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x330E8F8B),
-                    blurRadius: 0,
-                    spreadRadius: 3,
-                  )
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'UPDATED ${timeStamp(loadedAt)}',
-              style: const TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.9,
-                color: FinStackColors.onSurfaceVariant,
-              ),
-            ),
-            const Spacer(),
-            const BrutalTag(label: 'Individual', color: Colors.white),
-          ]),
-          const SizedBox(height: 12),
-          // Stat card grid — cell width derived from actual constraints.
-          Builder(builder: (context) {
-            final cw = MediaQuery.sizeOf(context).width - 32;
-            final cell = ((cw - 8) / 2).clamp(120.0, 280.0).toDouble();
-            return Wrap(spacing: 8, runSpacing: 8, children: [
-              SizedBox(
-                width: cell,
-                child: _Stat(
-                  label: 'Monthly Income',
-                  value: money(_asNum(d['monthlyIncome'])),
-                  icon: Icons.account_balance_wallet,
-                  color: FinStackColors.brandYellow,
-                ),
-              ),
-              SizedBox(
-                width: cell,
-                child: _Stat(
-                  label: 'Monthly Outflow',
-                  value: money(_asNum(d['monthlyObligations'])),
-                  icon: Icons.shopping_cart_outlined,
-                ),
-              ),
-              SizedBox(
-                width: cell,
-                child: _Stat(
-                  label: 'Investments Worth',
-                  value: money(
-                      _asNum(d['investmentPortfolioValue']?['totalCurrentValue'])),
-                  icon: Icons.show_chart,
-                  color: FinStackColors.tertiary,
-                ),
-              ),
-              SizedBox(
-                width: cell,
-                child: _Stat(
-                  label: 'Net Monthly Savings',
-                  value: money(_asNum(d['netMonthlyFlow'])),
-                  icon: Icons.savings_outlined,
-                ),
-              ),
-            ]);
-          }),
-          const SizedBox(height: 12),
-          BrutalCard(
-            color: FinStackColors.onSurface,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: FinStackColors.brandYellow,
-                    border: Border.all(color: Colors.white, width: 2),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: FinStackColors.accentTeal,
+                  shape: BoxShape.circle,
+                  border: Border.fromBorderSide(
+                    BorderSide(color: FinStackColors.onSurface),
                   ),
-                  child: const Icon(Icons.qr_code_scanner, size: 24),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text(
-                        'SCAN & PAY',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(width: 6),
-                      BrutalTag(label: 'New', color: FinStackColors.brandYellow),
-                    ]),
-                    Text(
-                      'Scan a UPI QR. Confirm. FinStack logs the vendor and payment.',
-                      style: TextStyle(color: Color(0xFFCFC9B2), fontSize: 10, height: 1.35),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x330E8F8B),
+                      blurRadius: 0,
+                      spreadRadius: 3,
                     ),
-                  ]),
+                  ],
                 ),
-              ]),
-              const SizedBox(height: 10),
-              BrutalButton(
-                block: true,
-                label: 'Open scanner',
-                icon: Icons.qr_code_2,
-                onPressed: _openScanner,
               ),
-            ]),
+              const SizedBox(width: 8),
+              Text(
+                'UPDATED ${timeStamp(loadedAt)}',
+                style: FinStackType.caption,
+              ),
+              const Spacer(),
+              BrutalTag(label: month, color: Colors.white),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _Stat(
+                  label: 'Monthly income',
+                  value: money(_asNum(d['monthlyIncome'])),
+                  color: FinStackColors.brandYellow,
+                  onTap: widget.onIncome,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Stat(
+                  label: 'Monthly outflow',
+                  value: money(_asNum(d['monthlyObligations'])),
+                  onTap: widget.onActivity,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _Stat(
+                  label: 'Investments worth',
+                  value: money(
+                    _asNum(d['investmentPortfolioValue']?['totalCurrentValue']),
+                  ),
+                  color: FinStackColors.accentCyan,
+                  onTap: widget.onInvestments,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Stat(
+                  label: 'Net monthly savings',
+                  value: money(_asNum(d['netMonthlyFlow'])),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           BrutalCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              BrutalSectionTitle(
-                title: 'Monthly spend breakdown',
-                subtitle: 'From your transactions this month (individual)',
-                trailing: const BrutalTag(
-                  label: 'Top 5',
-                  color: FinStackColors.surfaceContainer,
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (burnEntries.isEmpty)
-                const Text('No transactions this month — import or add one.')
-              else
-                ...burnEntries.take(5).toList().asMap().entries.map((entry) {
-                  final i = entry.key;
-                  final e = entry.value;
-                  final pct =
-                      maxBurn == 0 ? 0.0 : (e['value'] as double) / maxBurn;
-                  final color = Color(_burnColors[i % _burnColors.length]);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Column(children: [
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        Expanded(
-                          child: Row(children: [
-                            Container(width: 9, height: 9, color: color),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                '${e['label']}'.toUpperCase(),
-                                style: const TextStyle(
-                                    fontSize: 11, fontWeight: FontWeight.w800),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ]),
-                        ),
-                        Text(money(e['value'] as num),
-                            style: const TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w800)),
-                      ]),
-                      const SizedBox(height: 4),
-                      Container(
-                        height: 12,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: FinStackColors.onSurface, width: 2),
-                          color: FinStackColors.surfaceVariant,
-                        ),
-                        child: LayoutBuilder(builder: (ctx, constraints) {
-                          return Stack(children: [
-                            TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0, end: pct.clamp(0.0, 1.0)),
-                              duration: const Duration(milliseconds: 500),
-                              curve: Curves.easeOutCubic,
-                              builder: (ctx, value, _) => FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: value,
-                                child: Container(color: color),
-                              ),
-                            ),
-                          ]);
-                        }),
+            color: FinStackColors.onSurface,
+            shadowColor: FinStackColors.brandYellow,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: FinStackColors.brandYellow,
+                        border: Border.all(color: Colors.white, width: 2),
                       ),
-                    ]),
-                  );
-                }),
-              if (burnEntries.length > 5)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text('+${burnEntries.length - 5} more categories',
-                      style: const TextStyle(
-                          fontSize: 10, fontWeight: FontWeight.w700)),
+                      child: const Icon(Icons.qr_code_2, size: 25),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'SCAN & PAY',
+                                  style: TextStyle(
+                                    fontFamily: FinStackType.display,
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              BrutalTag(
+                                label: 'New',
+                                color: FinStackColors.brandYellow,
+                              ),
+                            ],
+                          ),
+                          Text(
+                            'Scan a UPI QR. Confirm. FinStack logs the vendor and payment.',
+                            style: TextStyle(
+                              color: Color(0xFFCFC9B2),
+                              fontSize: 11.5,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              const Divider(),
-              Row(children: [
-                const BrutalTag(label: 'Actual spend', color: FinStackColors.brandYellow),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${money(d['transactionSpendThisMonth'] ?? d['adHocSpendThisMonth'] ?? 0)} · ${d['transactionCountThisMonth'] ?? 0} txns',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 10),
+                BrutalButton(
+                  block: true,
+                  label: 'Open scanner',
+                  shadow: 0,
+                  onPressed: _openScanner,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          BrutalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                BrutalSectionTitle(
+                  title: 'Monthly spend breakdown',
+                  subtitle: 'From your transactions this month (individual)',
+                  trailing: const BrutalTag(
+                    label: 'Top 5',
+                    color: FinStackColors.surfaceContainer,
                   ),
                 ),
-              ]),
-              const SizedBox(height: 6),
-              Text(
-                'Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · Recurring ${money(burnMap['Recurring'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
-                style: const TextStyle(fontSize: 10),
-              ),
-            ]),
+                const SizedBox(height: 12),
+                if (burnEntries.isEmpty)
+                  const Text('No transactions this month — import or add one.')
+                else
+                  ...burnEntries.take(5).toList().asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final e = entry.value;
+                    final pct = maxBurn == 0
+                        ? 0.0
+                        : (e['value'] as double) / maxBurn;
+                    final color = _burnColors[i % _burnColors.length];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: brutal(
+                                        color: color,
+                                        border: 1,
+                                        shadow: 0,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        '${e['label']}'.toUpperCase(),
+                                        style: FinStackType.caption.copyWith(
+                                          fontSize: 11.5,
+                                          color: FinStackColors.onSurface,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                money(e['value'] as num),
+                                style: FinStackType.amount.copyWith(
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            height: 12,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: FinStackColors.onSurface,
+                                width: 2,
+                              ),
+                              color: FinStackColors.surfaceVariant,
+                            ),
+                            child: LayoutBuilder(
+                              builder: (ctx, constraints) {
+                                return Stack(
+                                  children: [
+                                    TweenAnimationBuilder<double>(
+                                      tween: Tween(
+                                        begin: 0,
+                                        end: pct.clamp(0.0, 1.0),
+                                      ),
+                                      duration:
+                                          MediaQuery.disableAnimationsOf(
+                                            context,
+                                          )
+                                          ? Duration.zero
+                                          : const Duration(milliseconds: 500),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (ctx, value, _) =>
+                                          FractionallySizedBox(
+                                            alignment: Alignment.centerLeft,
+                                            widthFactor: value,
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                color: color,
+                                                border: value > 0 && value < 1
+                                                    ? const Border(
+                                                        right: BorderSide(
+                                                          color: FinStackColors
+                                                              .onSurface,
+                                                          width: 2,
+                                                        ),
+                                                      )
+                                                    : null,
+                                              ),
+                                              child: const SizedBox.expand(),
+                                            ),
+                                          ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                if (burnEntries.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '+${burnEntries.length - 5} more categories',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                const Divider(),
+                Row(
+                  children: [
+                    const BrutalTag(
+                      label: 'Actual spend',
+                      color: FinStackColors.brandYellow,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${money(d['transactionSpendThisMonth'] ?? d['adHocSpendThisMonth'] ?? 0)} · ${d['transactionCountThisMonth'] ?? 0} txns',
+                        style: FinStackType.amount.copyWith(fontSize: 12),
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Subscriptions ${money(burnMap['Subscriptions'] ?? 0)}/mo · Recurring ${money(burnMap['Recurring'] ?? 0)}/mo · SIP ${money(burnMap['Investments'] ?? 0)}/mo',
+                  style: FinStackType.caption.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           SpendingBreakdown(
@@ -527,26 +626,20 @@ class _DashboardPageState extends State<DashboardPage> {
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
+                  width: 40,
+                  height: 40,
+                  decoration: brutal(
                     color: leaving
                         ? FinStackColors.accentGreen
                         : FinStackColors.brandYellow,
-                    border: Border.all(
-                      color: FinStackColors.onSurface,
-                      width: 2,
-                    ),
+                    shadow: 2,
                   ),
                   alignment: Alignment.center,
                   child: leaving
                       ? const Icon(Icons.check)
                       : Text(
                           due == null ? '—' : '${due.day}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: FinStackType.amount.copyWith(fontSize: 16),
                         ),
                 ),
                 const SizedBox(width: 9),
@@ -565,7 +658,9 @@ class _DashboardPageState extends State<DashboardPage> {
                         due == null
                             ? 'Due date unavailable'
                             : 'Due ${dateLabel(due)}',
-                        style: const TextStyle(fontSize: 12),
+                        style: FinStackType.caption.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -579,16 +674,17 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            const Divider(
+              height: 18,
+              thickness: 1,
+              color: FinStackColors.outlineVariant,
+            ),
             Row(
               children: [
                 Expanded(
                   child: Text(
                     inr(_asNum(payment['amount'])),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    style: FinStackType.amount,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -701,52 +797,53 @@ class _PaidStrike extends CustomPainter {
 }
 
 class _Stat extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final IconData icon;
   const _Stat({
     required this.label,
     required this.value,
-    required this.icon,
     this.color = Colors.white,
+    this.onTap,
   });
 
+  final String label;
+  final String value;
+  final Color color;
+  final VoidCallback? onTap;
+
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: FinStackColors.onSurface, width: 3),
-          boxShadow: const [
-            BoxShadow(
-              color: FinStackColors.onSurface,
-              offset: Offset(3, 3),
-              blurRadius: 0,
-            )
+  Widget build(BuildContext context) {
+    final card = BrutalCard(
+      color: color,
+      shadow: 3,
+      padding: const EdgeInsets.all(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 59),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: FinStackType.caption.copyWith(
+                color: FinStackColors.onSurface,
+              ),
+            ),
+            const SizedBox(height: 7),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: FinStackType.amount),
+            ),
           ],
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Text(label.toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
-            ),
-            Icon(icon, size: 16),
-          ]),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(value,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          ),
-        ]),
-      );
+      ),
+    );
+    if (onTap == null) return card;
+    return Semantics(
+      button: true,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(onTap: onTap, child: card),
+      ),
+    );
+  }
 }

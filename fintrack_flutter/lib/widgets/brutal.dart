@@ -14,19 +14,76 @@ class BrutalCard extends StatelessWidget {
   final EdgeInsets padding;
   final double shadow;
   final double border;
+  final Color shadowColor;
   const BrutalCard({
     super.key,
     required this.child,
     this.color = Colors.white,
-    this.padding = const EdgeInsets.all(16),
-    this.shadow = 4,
-    this.border = 3,
+    this.padding = const EdgeInsets.all(14),
+    this.shadow = 5,
+    this.border = 2.5,
+    this.shadowColor = FinStackColors.onSurface,
   });
   @override
   Widget build(BuildContext context) => Container(
-    decoration: brutal(color: color, border: border, shadow: shadow),
+    decoration: brutal(
+      color: color,
+      border: border,
+      shadow: shadow,
+      shadowColor: shadowColor,
+    ),
     padding: padding,
     child: child,
+  );
+}
+
+class FinStackMark extends StatelessWidget {
+  const FinStackMark({super.key, this.size = 34});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: brutal(
+        color: FinStackColors.brandYellow,
+        shadow: size >= 70 ? 7 : 2.5,
+      ),
+      child: Text(
+        'F',
+        style: TextStyle(
+          fontFamily: FinStackType.display,
+          fontSize: size * .56,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
+      ),
+    ),
+  );
+}
+
+class FinStackTitle extends StatelessWidget {
+  const FinStackTitle(this.title, {super.key});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const FinStackMark(),
+      const SizedBox(width: 10),
+      Flexible(
+        child: Text(
+          title.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).appBarTheme.titleTextStyle,
+        ),
+      ),
+    ],
   );
 }
 
@@ -61,6 +118,7 @@ class BrutalButton extends StatefulWidget {
 
 class _BrutalButtonState extends State<BrutalButton> {
   bool _down = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -72,23 +130,34 @@ class _BrutalButtonState extends State<BrutalButton> {
       button: true,
       enabled: enabled,
       label: widget.label,
-      onTap: widget.onPressed,
-      child: MouseRegion(
-        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: enabled ? (_) => setState(() => _down = true) : null,
-          onTapUp: enabled ? (_) => setState(() => _down = false) : null,
-          onTapCancel: enabled ? () => setState(() => _down = false) : null,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          mouseCursor: enabled
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
           onTap: widget.onPressed,
+          onHighlightChanged: enabled
+              ? (down) => setState(() => _down = down)
+              : null,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
+          onFocusChange: (focused) => setState(() => _focused = focused),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 90),
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 90),
             curve: Curves.easeOut,
             transform: Matrix4.translationValues(shift, shift, 0),
             padding: widget.padding,
             decoration: BoxDecoration(
               color: enabled ? bg : bg.withValues(alpha: 0.45),
-              border: Border.all(color: FinStackColors.onSurface, width: 2),
+              border: Border.all(
+                color: _focused
+                    ? FinStackColors.accentBlue
+                    : FinStackColors.onSurface,
+                width: 2.5,
+              ),
               boxShadow: enabled && !_down
                   ? [
                       BoxShadow(
@@ -110,11 +179,13 @@ class _BrutalButtonState extends State<BrutalButton> {
                 Flexible(
                   child: Text(
                     widget.label.toUpperCase(),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
+                      fontFamily: FinStackType.display,
                       fontSize: widget.fontSize,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
+                      height: 1.18,
                       letterSpacing: 0.5,
                       color: fg,
                     ),
@@ -147,31 +218,23 @@ class BrutalIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Semantics(
-        button: true,
-        label: tooltip,
-        onTap: onPressed,
-        child: GestureDetector(
-          onTap: onPressed,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: color,
-              border: Border.all(color: FinStackColors.onSurface, width: 2),
-              boxShadow: const [
-                BoxShadow(
-                  color: FinStackColors.onSurface,
-                  offset: Offset(2, 2),
-                  blurRadius: 0,
-                ),
-              ],
-            ),
-            child: Icon(icon, size: size * 0.5),
-          ),
-        ),
+    final background = onPressed == null
+        ? FinStackColors.surfaceContainer
+        : color;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints(
+        minWidth: size < 44 ? 44 : size,
+        minHeight: size < 44 ? 44 : size,
+      ),
+      icon: Container(
+        width: size,
+        height: size,
+        decoration: brutal(color: background, border: 2, shadow: 2),
+        alignment: Alignment.center,
+        child: Icon(icon, size: size * .5),
       ),
     );
   }
@@ -220,15 +283,7 @@ class BrutalField extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.1,
-          color: FinStackColors.onSurfaceVariant,
-        ),
-      ),
+      Text(label.toUpperCase(), style: FinStackType.caption),
       const SizedBox(height: 6),
       TextField(
         controller: controller,
@@ -286,13 +341,18 @@ class BrutalTag extends StatelessWidget {
           Icon(icon, size: 11, color: textColor),
           const SizedBox(width: 4),
         ],
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.7,
-            color: textColor,
+        Flexible(
+          child: Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.45,
+              color: textColor,
+            ),
           ),
         ),
       ],
@@ -319,16 +379,22 @@ class BrutalSectionTitle extends StatelessWidget {
     children: [
       Row(
         children: [
-          Container(width: 8, height: 18, color: accent),
+          Container(
+            width: 6,
+            height: 17,
+            decoration: brutal(color: accent, border: 1, shadow: 0),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               title.toUpperCase(),
               style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.1,
+                fontFamily: FinStackType.display,
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
               ),
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -337,15 +403,12 @@ class BrutalSectionTitle extends StatelessWidget {
       ),
       if (subtitle != null) ...[
         const SizedBox(height: 3),
-        Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: Text(
-            subtitle!,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: FinStackColors.onSurfaceVariant,
-            ),
+        Text(
+          subtitle!,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: FinStackColors.onSurfaceVariant,
           ),
         ),
       ],
@@ -424,14 +487,19 @@ class BrutalBottomNav extends StatelessWidget {
           top: BorderSide(color: FinStackColors.onSurface, width: 3),
         ),
       ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++) Expanded(child: _item(i)),
-            ],
+      child: Material(
+        color: Colors.transparent,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 3, 4, 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < items.length; i++)
+                  Expanded(child: _item(i)),
+              ],
+            ),
           ),
         ),
       ),
@@ -450,45 +518,62 @@ class BrutalBottomNav extends StatelessWidget {
         onTap: () => onTap(i),
         splashColor: FinStackColors.brandYellow.withValues(alpha: 0.35),
         highlightColor: Colors.transparent,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (isAction)
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: FinStackColors.brandYellow,
-                  border: Border.all(color: FinStackColors.onSurface, width: 2),
-                  boxShadow: const [
-                    BoxShadow(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (isAction)
+                Container(
+                  width: 40,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: FinStackColors.brandYellow,
+                    border: Border.all(
                       color: FinStackColors.onSurface,
-                      offset: Offset(2, 2),
-                      blurRadius: 0,
+                      width: 2,
                     ),
-                  ],
+                    boxShadow: const [
+                      BoxShadow(
+                        color: FinStackColors.onSurface,
+                        offset: Offset(3, 3),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                  child: Icon(item.icon, size: 21),
+                )
+              else
+                Container(
+                  width: 34,
+                  height: 28,
+                  decoration: active
+                      ? brutal(
+                          color: FinStackColors.brandYellow,
+                          border: 2,
+                          shadow: 2,
+                        )
+                      : null,
+                  child: Icon(item.icon, size: 19),
                 ),
-                child: Icon(item.icon, size: 21),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                color: active ? FinStackColors.brandYellow : Colors.transparent,
-                child: Icon(item.icon, size: 21),
+              const SizedBox(height: 3),
+              Text(
+                item.label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: FinStackType.mono,
+                  fontSize: 8.5,
+                  fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: active
+                      ? FinStackColors.onSurface
+                      : FinStackColors.onSurfaceVariant,
+                ),
               ),
-            const SizedBox(height: 3),
-            Text(
-              item.label.toUpperCase(),
-              style: TextStyle(
-                fontSize: 8.5,
-                fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                letterSpacing: 0.3,
-                color: active
-                    ? FinStackColors.onSurface
-                    : FinStackColors.onSurfaceVariant,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

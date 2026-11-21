@@ -13,6 +13,8 @@ import '../core/upi.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
+const _monoFallback = <String>[FinStackType.body];
+
 const _fallbackCategories = [
   'Groceries',
   'Food',
@@ -329,7 +331,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       ),
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -345,16 +347,18 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               Text(
                 firstTime ? 'WHICH UPI APP DO YOU USE?' : 'OPEN WITH',
                 style: const TextStyle(
+                  fontFamily: FinStackType.display,
                   fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   height: 1.1,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               const Text(
                 'FinStack remembers this choice, so the next payment goes straight to it.',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
+                  height: 1.4,
                   color: FinStackColors.onSurfaceVariant,
                 ),
               ),
@@ -415,8 +419,9 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const Text(
                 'DID THE PAYMENT GO THROUGH?',
                 style: TextStyle(
+                  fontFamily: FinStackType.display,
                   fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   height: 1.1,
                 ),
               ),
@@ -424,6 +429,9 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               Text(
                 '${inr((paise ?? widget.request.amountPaise ?? 0) / 100)} to $_payeeName',
                 style: const TextStyle(
+                  fontFamily: FinStackType.mono,
+                  fontFamilyFallback: _monoFallback,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: FinStackColors.onSurfaceVariant,
                 ),
@@ -441,7 +449,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const Text(
                 'Check your UPI app’s transaction history. Save only if it shows success. If the payment is pending or your account was debited, check its status before paying again.',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 11.5,
+                  height: 1.45,
                   color: FinStackColors.onSurfaceVariant,
                 ),
               ),
@@ -511,15 +520,20 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const Text(
                 'SAVE WITHOUT OPENING A UPI APP?',
                 style: TextStyle(
+                  fontFamily: FinStackType.display,
                   fontSize: 20,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   height: 1.1,
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Only use this if you paid in another app. It records the transaction in FinStack now.',
-                style: TextStyle(color: FinStackColors.onSurfaceVariant),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: FinStackColors.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               BrutalButton(
@@ -657,14 +671,14 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         child: BrutalGrid(
           child: ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
             children: [
               _payeeCard(paise),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _amountCard(paise),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _detailsCard(),
-              if (_error != null) ...[const SizedBox(height: 12), _errorCard()],
+              if (_error != null) ...[const SizedBox(height: 14), _errorCard()],
             ],
           ),
         ),
@@ -683,23 +697,24 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(color: FinStackColors.onSurface, width: 2),
                 ),
-                child: const Icon(Icons.qr_code_2, size: 22),
+                child: const Icon(Icons.qr_code_2, size: 19),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  widget.request.payeeName,
+                  _payeeName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
+                    fontFamily: FinStackType.display,
                     fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                     height: 1.05,
                   ),
                 ),
@@ -712,12 +727,13 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           SelectableText(
             widget.request.payeeVpa,
             style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 11,
+              fontFamily: FinStackType.mono,
+              fontFamilyFallback: _monoFallback,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -747,9 +763,11 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 child: Text(
                   'AMOUNT TO PAY',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                    fontFamily: FinStackType.mono,
+                    fontFamilyFallback: _monoFallback,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .7,
                   ),
                 ),
               ),
@@ -772,39 +790,58 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Padding(
-                padding: EdgeInsets.only(bottom: 6, right: 4),
+                padding: EdgeInsets.only(right: 8),
                 child: Text(
                   '₹',
                   style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
+                    fontFamily: FinStackType.mono,
+                    fontFamilyFallback: _monoFallback,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
                     height: 1,
                   ),
                 ),
               ),
               Expanded(
-                child: TextField(
-                  controller: _amountCtrl,
-                  readOnly: widget.request.isSigned && widget.request.hasAmount,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(
+                      color: FinStackColors.onSurface,
+                      width: 2.5,
+                    ),
                   ),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => dismissKeyboard(context),
-                  onChanged: (_) => setState(() => _error = null),
-                  style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                  decoration: const InputDecoration(
-                    hintText: '0',
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
+                  child: TextField(
+                    controller: _amountCtrl,
+                    readOnly:
+                        widget.request.isSigned && widget.request.hasAmount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => dismissKeyboard(context),
+                    onChanged: (_) => setState(() => _error = null),
+                    style: const TextStyle(
+                      fontFamily: FinStackType.mono,
+                      fontFamilyFallback: _monoFallback,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '0',
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ),
@@ -818,21 +855,28 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               ),
             ],
           ),
+          if (paise != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              inr(paise / 100),
+              style: const TextStyle(
+                fontFamily: FinStackType.mono,
+                fontFamilyFallback: _monoFallback,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: FinStackColors.onSurfaceVariant,
+              ),
+            ),
+          ],
           if (widget.request.isSigned) ...[
             const SizedBox(height: 8),
             Text(
               widget.request.hasAmount
                   ? 'The merchant set the amount on this QR.'
                   : 'Enter the same amount in your UPI app when it opens.',
-            ),
-          ],
-          if (paise != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              inr(paise / 100),
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                height: 1.4,
                 color: FinStackColors.onSurfaceVariant,
               ),
             ),
@@ -857,16 +901,20 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   child: Text(
                     'CATEGORY & NOTE',
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
+                      fontFamily: FinStackType.mono,
+                      fontFamilyFallback: _monoFallback,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .7,
                     ),
                   ),
                 ),
                 Text(
                   _selectedCategory.toUpperCase(),
                   style: const TextStyle(
-                    fontSize: 10,
+                    fontFamily: FinStackType.mono,
+                    fontFamilyFallback: _monoFallback,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -875,7 +923,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   _detailsOpen
                       ? Icons.keyboard_arrow_up
                       : Icons.keyboard_arrow_down,
-                  size: 20,
+                  size: 18,
                 ),
               ],
             ),
@@ -883,8 +931,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           if (_detailsOpen) ...[
             const SizedBox(height: 10),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 7,
+              runSpacing: 7,
               children: [
                 for (final c in _visibleCategories())
                   _CategoryPill(
@@ -932,12 +980,16 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _error!,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: FinStackColors.onErrorContainer,
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _error!,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
+                color: FinStackColors.onErrorContainer,
+              ),
             ),
           ),
           if (_needsFamily) ...[
@@ -957,13 +1009,13 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(
-          top: BorderSide(color: FinStackColors.onSurface, width: 3),
+          top: BorderSide(color: FinStackColors.onSurface, width: 2.5),
         ),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -975,50 +1027,67 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                       const Text(
                         'YOU PAY',
                         style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.1,
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .8,
                           color: FinStackColors.onSurfaceVariant,
                         ),
                       ),
                       Text(
                         inr((paise ?? 0) / 100),
                         style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
                           height: 1.1,
                         ),
                       ),
                     ],
                   ),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: _appPrefLoaded ? () => _chooseApp() : null,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: FinStackColors.surfaceContainer,
-                        border: Border.all(
-                          color: FinStackColors.onSurface,
-                          width: 2,
+                  Semantics(
+                    button: true,
+                    label: 'Choose payment app',
+                    child: GestureDetector(
+                      onTap: _appPrefLoaded ? () => _chooseApp() : null,
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 40),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _preferredAppId == null ? 'Choose app' : appLabel,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
+                        decoration: BoxDecoration(
+                          color: FinStackColors.surfaceContainer,
+                          border: Border.all(
+                            color: FinStackColors.onSurface,
+                            width: 2,
                           ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.swap_horiz, size: 14),
-                        ],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: FinStackColors.onSurface,
+                              offset: Offset(2, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _preferredAppId == null ? 'Choose app' : appLabel,
+                              style: const TextStyle(
+                                fontFamily: FinStackType.display,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.swap_horiz, size: 14),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1043,17 +1112,24 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                     ? 'Saving payment…'
                     : paise == null
                     ? 'Enter an amount'
-                    : 'Pay ${inr(paise / 100)} with $appLabel',
+                    : 'Pay ${inr(paise / 100)} with UPI app',
                 icon: Icons.open_in_new,
                 fontSize: 13,
                 onPressed: _opening || _saving ? null : _openUpiApp,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               TextButton(
                 onPressed: _saving ? null : _confirmDirectSave,
                 child: const Text(
                   'ALREADY PAID? SAVE IT',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    fontFamily: FinStackType.mono,
+                    fontFamilyFallback: _monoFallback,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .4,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
             ],
@@ -1152,16 +1228,28 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         appBar: AppBar(
           title: const Text('PAYMENT SAVED'),
           automaticallyImplyLeading: false,
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 14),
+              child: Center(
+                child: BrutalTag(
+                  label: 'Recorded',
+                  color: FinStackColors.tertiary,
+                ),
+              ),
+            ),
+          ],
         ),
         body: SafeArea(
           top: false,
           child: BrutalGrid(
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
               children: [
                 BrutalCard(
-                  color: FinStackColors.surfaceLow,
+                  color: FinStackColors.surfaceContainer,
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1169,7 +1257,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const _PaymentCheck(),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Semantics(
                               header: true,
@@ -1180,16 +1268,20 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                                   const Text(
                                     'Payment recorded',
                                     style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: FinStackColors.onSurfaceVariant,
                                     ),
                                   ),
                                   Text(
                                     inr(paise / 100),
                                     style: const TextStyle(
-                                      fontSize: 36,
-                                      fontWeight: FontWeight.w900,
+                                      fontFamily: FinStackType.mono,
+                                      fontFamilyFallback: _monoFallback,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w800,
                                       height: 1.1,
+                                      letterSpacing: -.6,
                                     ),
                                   ),
                                 ],
@@ -1198,23 +1290,30 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Text(
                         _payeeName,
                         style: const TextStyle(
-                          fontSize: 16,
+                          fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
                         widget.request.payeeVpa,
                         style: const TextStyle(
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 12,
                           color: FinStackColors.onSurfaceVariant,
                         ),
                       ),
                       if (_utrCtrl.text.trim().isNotEmpty) ...[
                         const SizedBox(height: 6),
-                        Text('UPI reference: ${_utrCtrl.text.trim()}'),
+                        Text(
+                          'UPI reference: ${_utrCtrl.text.trim()}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
                       ],
                       if (needsReview || matched) ...[
                         const SizedBox(height: 12),
@@ -1222,14 +1321,18 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                           needsReview
                               ? 'A similar entry exists. This payment is saved for review.'
                               : 'Linked to an existing bank transaction.',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
                         ),
                       ],
                     ],
                   ),
                 ),
                 if (canEdit) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   _purchaseDetailsCard(),
                 ],
                 const SizedBox(height: 20),
@@ -1237,6 +1340,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   block: true,
                   label: 'Done',
                   icon: Icons.check,
+                  fontSize: 13,
                   padding: const EdgeInsets.all(15),
                   onPressed: _savingDetails
                       ? null
@@ -1248,6 +1352,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   color: Colors.white,
                   label: 'Scan another QR',
                   icon: Icons.qr_code_scanner,
+                  fontSize: 13,
                   padding: const EdgeInsets.all(15),
                   onPressed: _savingDetails
                       ? null
@@ -1262,6 +1367,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   }
 
   Widget _purchaseDetailsCard() => BrutalCard(
+    padding: const EdgeInsets.all(14),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1269,20 +1375,37 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           header: true,
           child: const Text(
             'Purchase details',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              fontFamily: FinStackType.display,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         const Text(
           'Optional. Add details to help FinStack categorize future payments.',
-          style: TextStyle(color: FinStackColors.onSurfaceVariant),
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.4,
+            color: FinStackColors.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           key: ValueKey(_savedCategory),
           isExpanded: true,
           initialValue: _selectedCategory,
-          decoration: const InputDecoration(labelText: 'Category'),
+          decoration: const InputDecoration(
+            labelText: 'Category',
+            labelStyle: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontFamilyFallback: _monoFallback,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .6,
+            ),
+          ),
           items: [
             for (final category in {..._categories, _selectedCategory})
               DropdownMenuItem(value: category, child: Text(category)),
@@ -1304,6 +1427,13 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           decoration: const InputDecoration(
             labelText: 'What did you buy?',
             hintText: 'e.g. Coffee, groceries, bus ticket',
+            labelStyle: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontFamilyFallback: _monoFallback,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .6,
+            ),
           ),
           onChanged: (_) => _editPurchaseDetails(() {}),
           onSubmitted: (_) => _savePurchaseDetails(),
@@ -1311,8 +1441,18 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         const SizedBox(height: 14),
         OutlinedButton(
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(48, 48),
+            minimumSize: const Size(double.infinity, 48),
             backgroundColor: FinStackColors.surfaceContainer,
+            textStyle: const TextStyle(
+              fontFamily: FinStackType.display,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .4,
+            ),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            side: const BorderSide(color: FinStackColors.onSurface, width: 2),
           ),
           onPressed: _detailsChanged && !_savingDetails
               ? _savePurchaseDetails
@@ -1327,9 +1467,11 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               _detailsError ?? 'Purchase details saved.',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
+                fontSize: 12,
+                height: 1.4,
                 color: _detailsError != null
                     ? FinStackColors.onErrorContainer
-                    : FinStackColors.onTertiaryContainer,
+                    : FinStackColors.successInk,
               ),
             ),
           ),
@@ -1353,52 +1495,53 @@ class _AppRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? FinStackColors.brandYellow : Colors.white,
-          border: Border.all(color: FinStackColors.onSurface, width: 2),
-          boxShadow: const [
-            BoxShadow(
-              color: FinStackColors.onSurface,
-              offset: Offset(2, 2),
-              blurRadius: 0,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? FinStackColors.brandYellow : Colors.white,
+            border: Border.all(color: FinStackColors.onSurface, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: FinStackColors.onSurface,
+                offset: Offset(2.5, 2.5),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: FinStackType.display,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
+                ),
               ),
-            ),
-            if (selected)
-              const BrutalTag(label: 'Preferred', color: Colors.white)
-            else if (installed)
-              const BrutalTag(
-                label: 'Installed',
-                color: FinStackColors.tertiary,
-              )
-            else
-              const BrutalTag(
-                label: 'Not detected',
-                color: FinStackColors.surfaceContainer,
-              ),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right, size: 18),
-          ],
+              if (selected)
+                const BrutalTag(label: 'Preferred', color: Colors.white)
+              else if (installed)
+                const BrutalTag(
+                  label: 'Installed',
+                  color: FinStackColors.tertiary,
+                )
+              else
+                const BrutalTag(
+                  label: 'Not detected',
+                  color: FinStackColors.surfaceContainer,
+                ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right, size: 18),
+            ],
+          ),
         ),
       ),
     );
@@ -1427,12 +1570,12 @@ class _PaymentCheck extends StatelessWidget {
           return Transform.scale(
             scale: .78 + .22 * arrival,
             child: Container(
-              width: 60,
-              height: 60,
+              width: 52,
+              height: 52,
               decoration: brutal(
                 color: FinStackColors.accentBlue,
-                border: 2,
-                shadow: 4,
+                border: 2.5,
+                shadow: 3,
               ),
               child: CustomPaint(painter: _CheckStroke(stroke)),
             ),
@@ -1459,7 +1602,7 @@ class _CheckStroke extends CustomPainter {
       Paint()
         ..color = FinStackColors.onSurface
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5
+        ..strokeWidth = 4.5
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
@@ -1485,8 +1628,10 @@ class _CategoryPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? FinStackColors.brandYellow : Colors.white,
           border: Border.all(color: FinStackColors.onSurface, width: 2),
@@ -1503,9 +1648,11 @@ class _CategoryPill extends StatelessWidget {
         child: Text(
           label.toUpperCase(),
           style: const TextStyle(
-            fontSize: 10,
+            fontFamily: FinStackType.mono,
+            fontFamilyFallback: _monoFallback,
+            fontSize: 10.5,
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.4,
+            letterSpacing: .4,
           ),
         ),
       ),

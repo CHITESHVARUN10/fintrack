@@ -3,12 +3,15 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../core/format.dart';
 import '../core/spending_statistics.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/spending_breakdown.dart';
-import '../widgets/states.dart';
 import '../widgets/spending_trend.dart';
+import '../widgets/states.dart';
+
+const _monoFallback = <String>[FinStackType.body];
 
 class StatisticsPage extends StatefulWidget {
   const StatisticsPage({super.key, this.refresh = 0});
@@ -125,13 +128,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   Future<void> _pickDates() async {
-    final selected = await showDateRangePicker(
+    final selected = await showModalBottomSheet<DateTimeRange>(
       context: context,
-      firstDate: _firstDate,
-      lastDate: _lastDate,
-      initialDateRange: _custom ?? _ranges.current,
-      helpText: 'Choose spending dates',
-      saveText: 'Apply dates',
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _DateRangeSheet(
+        initial: _custom ?? _ranges.current,
+        firstDate: _firstDate,
+        lastDate: _lastDate,
+      ),
     );
     if (!mounted || selected == null) return;
     setState(() {
@@ -183,227 +188,103 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: LayoutBuilder(
-        builder: (context, constraints) => ListView(
-          padding: EdgeInsets.fromLTRB(
-            math.max(16, (constraints.maxWidth - 720) / 2),
-            16,
-            math.max(20, (constraints.maxWidth - 720) / 2),
-            28,
-          ),
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            BrutalCard(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _choice(
-                        'Today',
-                        _period == SpendingPeriod.today,
-                        () => _selectPeriod(SpendingPeriod.today),
-                      ),
-                      _choice(
-                        'This month',
-                        _period == SpendingPeriod.month &&
-                            _month.month == _now.month &&
-                            _month.year == _now.year,
-                        () => _selectPeriod(SpendingPeriod.month),
-                      ),
-                      _choice(
-                        'Custom dates',
-                        _period == SpendingPeriod.custom,
-                        () => _selectPeriod(SpendingPeriod.custom),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (_period == SpendingPeriod.month)
-                        IconButton(
-                          tooltip: 'Previous month',
-                          onPressed: _month.isAfter(_firstDate)
-                              ? () => _moveMonth(-1)
-                              : null,
-                          icon: const Icon(Icons.chevron_left),
-                        ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(
-                              _period == SpendingPeriod.month
-                                  ? MaterialLocalizations.of(
-                                      context,
-                                    ).formatMonthYear(_month)
-                                  : _period == SpendingPeriod.today
-                                  ? 'Today'
-                                  : 'Custom period',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            Text(
-                              spendingDateRange(ranges.current),
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_period == SpendingPeriod.month)
-                        IconButton(
-                          tooltip: 'Next month',
-                          onPressed:
-                              _month.isBefore(DateTime(_lastDate.year, 12))
-                              ? () => _moveMonth(1)
-                              : null,
-                          icon: const Icon(Icons.chevron_right),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: FinStackColors.outlineVariant,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _filterButton(
-                          'Category',
-                          _category,
-                          () => _pickFilter(byVendor: false),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _filterButton(
-                          'Vendor',
-                          _vendor,
-                          () => _pickFilter(byVendor: true),
-                        ),
-                      ),
-                      if (filterActive)
-                        IconButton(
-                          tooltip: 'Clear filters',
-                          onPressed: _clearFilters,
-                          icon: const Icon(Icons.filter_alt_off_outlined),
-                        ),
-                    ],
+        builder: (context, constraints) {
+          final side = math.max(14.0, (constraints.maxWidth - 720) / 2);
+          return ListView(
+            padding: EdgeInsets.fromLTRB(side, 14, side, 28),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              _filtersCard(ranges.current, filterActive),
+              const SizedBox(height: 14),
+              if (_error case final String message)
+                BrutalEmpty(
+                  icon: Icons.info_outline,
+                  message: message,
+                  action: _action('Retry', _load),
+                )
+              else if (view == null)
+                _loadingCard()
+              else ...[
+                SpendingTrend(
+                  key: ValueKey((
+                    _ranges.current.start,
+                    _ranges.current.end,
+                    _category,
+                    _vendor,
+                  )),
+                  view: view,
+                  previousRange: upcoming ? null : ranges.previous,
+                ),
+                if (view.count == 0) ...[
+                  const SizedBox(height: 14),
+                  BrutalEmpty(
+                    icon: Icons.bar_chart,
+                    message: filterActive
+                        ? 'No spending matches these filters in this period.'
+                        : upcoming
+                        ? 'No spending recorded yet for this upcoming period.'
+                        : 'No spending recorded for this period.',
+                    action: filterActive
+                        ? _action('Clear filters', _clearFilters)
+                        : _period == SpendingPeriod.month &&
+                              _month.isAfter(_firstDate)
+                        ? _action('View previous month', () => _moveMonth(-1))
+                        : null,
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            if (_error case final String message)
-              BrutalEmpty(
-                icon: Icons.info_outline,
-                message: message,
-                action: OutlinedButton(
-                  onPressed: _load,
-                  child: const Text('Retry'),
-                ),
-              )
-            else if (view == null)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(
-                    semanticsLabel: 'Loading spending',
+                if (!upcoming &&
+                    (view.currentPaise > 0 || view.previousPaise > 0)) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SegButton(
+                          label: 'By category',
+                          selected: !_byVendor,
+                          onPressed: () => _selectBreakdown(false),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _SegButton(
+                          label: 'By vendor',
+                          selected: _byVendor,
+                          onPressed: () => _selectBreakdown(true),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              )
-            else ...[
-              SpendingTrend(
-                key: ValueKey((
-                  ranges.current.start,
-                  ranges.current.end,
-                  _category,
-                  _vendor,
-                )),
-                view: view,
-                previousRange: upcoming ? null : ranges.previous,
-              ),
-              if (view.count == 0) ...[
-                const SizedBox(height: 16),
-                BrutalEmpty(
-                  icon: Icons.bar_chart,
-                  message: filterActive
-                      ? 'No spending matches these filters in this period.'
-                      : upcoming
-                      ? 'No spending recorded yet for this upcoming period.'
-                      : 'No spending recorded for this period.',
-                  action: filterActive
-                      ? OutlinedButton(
-                          onPressed: _clearFilters,
-                          child: const Text('Clear filters'),
-                        )
-                      : _period == SpendingPeriod.month &&
-                            _month.isAfter(_firstDate)
-                      ? OutlinedButton(
-                          onPressed: () => _moveMonth(-1),
-                          child: const Text('View previous month'),
-                        )
-                      : null,
-                ),
-              ],
-              if (!upcoming &&
-                  (view.currentPaise > 0 || view.previousPaise > 0)) ...[
-                const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _choice(
-                        'By category',
-                        !_byVendor,
-                        () => _selectBreakdown(false),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _choice(
-                        'By vendor',
-                        _byVendor,
-                        () => _selectBreakdown(true),
-                      ),
+                  if (view.count > 0) ...[
+                    const SizedBox(height: 14),
+                    SpendingBreakdown(
+                      key: ValueKey(_byVendor),
+                      title: _byVendor
+                          ? 'Vendor breakdown'
+                          : 'Category breakdown',
+                      subtitle: 'Share of spending in this period',
+                      formatAmount: (amount) =>
+                          spendingInr((amount * 100).round()),
+                      emptyMessage: 'No spending in this period.',
+                      entries: view.breakdown(byVendor: _byVendor),
+                      accent: _byVendor
+                          ? FinStackColors.accentTeal
+                          : FinStackColors.accentPurple,
                     ),
                   ],
-                ),
-                if (view.count > 0) ...[
-                  const SizedBox(height: 10),
-                  SpendingBreakdown(
-                    key: ValueKey(_byVendor),
-                    title: _byVendor
-                        ? 'Vendor breakdown'
-                        : 'Category breakdown',
-                    subtitle: 'Share of spending in this period',
-                    formatAmount: (amount) =>
-                        spendingInr((amount * 100).round()),
-                    emptyMessage: 'No spending in this period.',
-                    entries: view.breakdown(byVendor: _byVendor),
-                    accent: _byVendor
-                        ? FinStackColors.chartTeal
-                        : FinStackColors.accentPurple,
+                  const SizedBox(height: 14),
+                  _SpendingChanges(
+                    changes: view.changes(byVendor: _byVendor),
+                    byVendor: _byVendor,
+                    previousRange: ranges.previous,
+                    showAll: _showAllChanges,
+                    onToggle: () =>
+                        setState(() => _showAllChanges = !_showAllChanges),
                   ),
                 ],
-                const SizedBox(height: 16),
-                _SpendingChanges(
-                  changes: view.changes(byVendor: _byVendor),
-                  byVendor: _byVendor,
-                  previousRange: ranges.previous,
-                  showAll: _showAllChanges,
-                  onToggle: () =>
-                      setState(() => _showAllChanges = !_showAllChanges),
-                ),
               ],
             ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -415,46 +296,461 @@ class _StatisticsPageState extends State<StatisticsPage> {
     });
   }
 
-  Widget _choice(String label, bool selected, VoidCallback onPressed) =>
-      Semantics(
-        selected: selected,
-        child: OutlinedButton(
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            backgroundColor: selected
-                ? FinStackColors.brandYellow
-                : Colors.white,
+  Widget _filtersCard(DateTimeRange current, bool filterActive) {
+    final monthMode = _period == SpendingPeriod.month;
+    final title = switch (_period) {
+      SpendingPeriod.month => MaterialLocalizations.of(
+        context,
+      ).formatMonthYear(_month),
+      SpendingPeriod.today => 'Today',
+      SpendingPeriod.custom => 'Custom period',
+    };
+    return BrutalCard(
+      padding: const EdgeInsets.all(15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _DurationPill(
+                label: 'Today',
+                selected: _period == SpendingPeriod.today,
+                onPressed: () => _selectPeriod(SpendingPeriod.today),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DurationPill(
+                  label: 'This month',
+                  selected:
+                      _period == SpendingPeriod.month &&
+                      _month.month == _now.month &&
+                      _month.year == _now.year,
+                  onPressed: () => _selectPeriod(SpendingPeriod.month),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _DurationPill(
+                label: 'Custom dates',
+                selected: _period == SpendingPeriod.custom,
+                onPressed: () => _selectPeriod(SpendingPeriod.custom),
+              ),
+            ],
           ),
-          onPressed: onPressed,
-          child: Text(label, textAlign: TextAlign.center),
-        ),
-      );
-
-  Widget _filterButton(String label, String? selected, VoidCallback open) =>
-      TextButton(
-        style: TextButton.styleFrom(
-          minimumSize: const Size(0, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        ),
-        onPressed: _data != null ? open : null,
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                selected ??
-                    'All ${label == 'Category' ? 'categories' : 'vendors'}',
-                semanticsLabel: selected == null
-                    ? null
-                    : '$label filter, $selected',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: FinStackColors.onSurface.withValues(alpha: .16),
+                  width: 1.5,
+                ),
               ),
             ),
-            const Icon(Icons.expand_more, size: 18),
-          ],
+            child: Row(
+              children: [
+                if (monthMode)
+                  _MonthArrow(
+                    tooltip: 'Previous month',
+                    icon: Icons.chevron_left,
+                    onPressed: _month.isAfter(_firstDate)
+                        ? () => _moveMonth(-1)
+                        : null,
+                  )
+                else
+                  const SizedBox(width: 44, height: 44),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: FinStackType.display,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        spendingDateRange(current),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: FinStackColors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (monthMode)
+                  _MonthArrow(
+                    tooltip: 'Next month',
+                    icon: Icons.chevron_right,
+                    onPressed: _month.isBefore(DateTime(_lastDate.year, 12))
+                        ? () => _moveMonth(1)
+                        : null,
+                  )
+                else
+                  const SizedBox(width: 44, height: 44),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _FilterTrigger(
+                  label: _category ?? 'All categories',
+                  semanticsLabel: _category == null
+                      ? 'Category filter, all categories'
+                      : 'Category filter, $_category',
+                  onPressed: _data == null
+                      ? null
+                      : () => _pickFilter(byVendor: false),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _FilterTrigger(
+                  label: _vendor ?? 'All vendors',
+                  semanticsLabel: _vendor == null
+                      ? 'Vendor filter, all vendors'
+                      : 'Vendor filter, $_vendor',
+                  onPressed: _data == null
+                      ? null
+                      : () => _pickFilter(byVendor: true),
+                ),
+              ),
+              if (filterActive) ...[
+                const SizedBox(width: 8),
+                _ClearFilters(onPressed: _clearFilters),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _action(String label, VoidCallback onPressed) => OutlinedButton(
+    onPressed: onPressed,
+    style: OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 44),
+      textStyle: const TextStyle(
+        fontFamily: FinStackType.display,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        letterSpacing: .4,
+      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      side: const BorderSide(color: FinStackColors.onSurface, width: 2),
+      backgroundColor: Colors.white,
+    ),
+    child: Text(label.toUpperCase()),
+  );
+
+  Widget _loadingCard() => const BrutalCard(
+    padding: EdgeInsets.all(15),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            semanticsLabel: 'Loading spending',
+          ),
         ),
-      );
+        SizedBox(width: 10),
+        Text(
+          'LOADING SPENDING',
+          style: TextStyle(
+            fontFamily: FinStackType.mono,
+            fontFamilyFallback: _monoFallback,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: .7,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _DurationPill extends StatelessWidget {
+  const _DurationPill({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? FinStackColors.brandYellow : Colors.white,
+            border: Border.all(color: FinStackColors.onSurface, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: FinStackColors.onSurface,
+                offset: Offset(2, 2),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: FinStackType.display,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: FinStackColors.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthArrow extends StatelessWidget {
+  const _MonthArrow({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: GestureDetector(
+              onTap: onPressed,
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: FinStackColors.surfaceContainer,
+                  border: Border.all(
+                    color: enabled
+                        ? FinStackColors.onSurface
+                        : FinStackColors.onSurface.withValues(alpha: .35),
+                    width: 2,
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: enabled
+                      ? FinStackColors.onSurface
+                      : FinStackColors.onSurface.withValues(alpha: .35),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterTrigger extends StatelessWidget {
+  const _FilterTrigger({
+    required this.label,
+    required this.semanticsLabel,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String semanticsLabel;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticsLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: FinStackColors.surfaceLow,
+            border: Border.all(
+              color: enabled
+                  ? FinStackColors.onSurface
+                  : FinStackColors.onSurface.withValues(alpha: .4),
+              width: 2,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                    color: enabled
+                        ? FinStackColors.onSurface
+                        : FinStackColors.onSurface.withValues(alpha: .45),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.expand_more,
+                size: 16,
+                color: enabled
+                    ? FinStackColors.onSurface
+                    : FinStackColors.onSurface.withValues(alpha: .45),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClearFilters extends StatelessWidget {
+  const _ClearFilters({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Clear filters',
+      child: Semantics(
+        button: true,
+        label: 'Clear filters',
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: GestureDetector(
+              onTap: onPressed,
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: FinStackColors.surfaceContainer,
+                  border: Border.all(color: FinStackColors.onSurface, width: 2),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: FinStackColors.onSurface,
+                      offset: Offset(2, 2),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.filter_alt_off_outlined, size: 17),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SegButton extends StatelessWidget {
+  const _SegButton({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: AnimatedContainer(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? FinStackColors.brandYellow : Colors.white,
+            border: Border.all(color: FinStackColors.onSurface, width: 2.5),
+            boxShadow: const [
+              BoxShadow(
+                color: FinStackColors.onSurface,
+                offset: Offset(3, 3),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: FinStackType.display,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SpendingFilterSheet extends StatefulWidget {
@@ -481,6 +777,9 @@ class _SpendingFilterSheetState extends State<_SpendingFilterSheet> {
         .where((label) => label.toLowerCase().contains(_query))
         .toList();
     final all = widget.title == 'Category' ? 'All categories' : 'All vendors';
+    final search = widget.title == 'Category'
+        ? 'Search categories'
+        : 'Search vendors';
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
@@ -491,19 +790,36 @@ class _SpendingFilterSheetState extends State<_SpendingFilterSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      widget.title,
-                      style: Theme.of(context).textTheme.titleLarge,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            style: const TextStyle(
+                              fontFamily: FinStackType.display,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        BrutalIconButton(
+                          icon: Icons.close,
+                          tooltip: 'Close',
+                          color: Colors.white,
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     TextField(
+                      textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        labelText: 'Search ${all.substring(4)}',
-                        prefixIcon: const Icon(Icons.search),
+                        hintText: search,
+                        prefixIcon: const Icon(Icons.search, size: 18),
                       ),
                       onChanged: (query) =>
                           setState(() => _query = query.trim().toLowerCase()),
@@ -515,28 +831,457 @@ class _SpendingFilterSheetState extends State<_SpendingFilterSheet> {
                 child: ListView.builder(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 18),
                   itemCount: _query.isEmpty
                       ? options.length + 1
                       : math.max(options.length, 1),
                   itemBuilder: (context, index) {
                     if (_query.isNotEmpty && options.isEmpty) {
-                      return const ListTile(title: Text('No matches'));
+                      return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('No matches'),
+                      );
                     }
                     final String? value = _query.isEmpty
                         ? (index == 0 ? null : options[index - 1])
                         : options[index];
                     final selected = value == widget.selected;
-                    return ListTile(
+                    return _PickerRow(
+                      label: value ?? all,
                       selected: selected,
-                      selectedTileColor: FinStackColors.surfaceContainer,
-                      title: Text(value ?? all),
-                      trailing: selected ? const Icon(Icons.check) : null,
                       onTap: () => Navigator.pop(context, (value: value)),
                     );
                   },
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerRow extends StatelessWidget {
+  const _PickerRow({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? FinStackColors.surfaceContainer : null,
+            border: Border(
+              bottom: BorderSide(
+                color: FinStackColors.onSurface.withValues(alpha: .14),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (selected) const Icon(Icons.check, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DateRangeSheet extends StatefulWidget {
+  const _DateRangeSheet({
+    required this.initial,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  final DateTimeRange initial;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_DateRangeSheet> createState() => _DateRangeSheetState();
+}
+
+class _DateRangeSheetState extends State<_DateRangeSheet> {
+  late DateTime _start = DateUtils.dateOnly(widget.initial.start);
+  late DateTime _end = DateUtils.dateOnly(widget.initial.end);
+  late DateTime _view = DateTime(_start.year, _start.month);
+  var _selectingEnd = false;
+
+  bool get _canGoBack => DateTime(
+    _view.year,
+    _view.month,
+  ).isAfter(DateTime(widget.firstDate.year, widget.firstDate.month));
+
+  bool get _canGoForward => DateTime(
+    _view.year,
+    _view.month,
+  ).isBefore(DateTime(widget.lastDate.year, widget.lastDate.month));
+
+  void _select(DateTime day) {
+    final date = DateUtils.dateOnly(day);
+    setState(() {
+      if (!_selectingEnd) {
+        _start = date;
+        _end = date;
+        _selectingEnd = true;
+      } else if (date.isBefore(_start)) {
+        _start = date;
+        _selectingEnd = false;
+      } else {
+        _end = date;
+        _selectingEnd = false;
+      }
+    });
+  }
+
+  void _shiftMonth(int offset) {
+    setState(() => _view = DateTime(_view.year, _view.month + offset));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.sizeOf(context).height * .9,
+      color: FinStackColors.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              decoration: const BoxDecoration(
+                color: FinStackColors.surfaceContainer,
+                border: Border(
+                  bottom: BorderSide(
+                    color: FinStackColors.onSurface,
+                    width: 2.5,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      BrutalIconButton(
+                        icon: Icons.close,
+                        tooltip: 'Close date picker',
+                        color: Colors.white,
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      const Spacer(),
+                      _ApplyDatesButton(
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(DateTimeRange(start: _start, end: _end)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Choose spending dates',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: FinStackColors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${shortDateLabel(_start)} – ${shortDateLabel(_end)}',
+                    style: const TextStyle(
+                      fontFamily: FinStackType.display,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: const BoxDecoration(
+                color: FinStackColors.surfaceLow,
+                border: Border(
+                  bottom: BorderSide(color: FinStackColors.onSurface, width: 2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  for (final day in const ['S', 'M', 'T', 'W', 'T', 'F', 'S'])
+                    Expanded(
+                      child: Text(
+                        day,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: FinStackType.mono,
+                          fontFamilyFallback: _monoFallback,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 32),
+                children: [
+                  Row(
+                    children: [
+                      _CalendarArrow(
+                        icon: Icons.chevron_left,
+                        tooltip: 'Previous calendar month',
+                        onPressed: _canGoBack ? () => _shiftMonth(-1) : null,
+                      ),
+                      Expanded(
+                        child: Text(
+                          MaterialLocalizations.of(
+                            context,
+                          ).formatMonthYear(_view),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: FinStackType.display,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      _CalendarArrow(
+                        icon: Icons.chevron_right,
+                        tooltip: 'Next calendar month',
+                        onPressed: _canGoForward ? () => _shiftMonth(1) : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _MonthGrid(
+                    month: _view,
+                    start: _start,
+                    end: _end,
+                    onSelected: _select,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplyDatesButton extends StatelessWidget {
+  const _ApplyDatesButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Apply dates',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 40),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: FinStackColors.brandYellow,
+            border: Border.all(color: FinStackColors.onSurface, width: 2),
+            boxShadow: const [
+              BoxShadow(
+                color: FinStackColors.onSurface,
+                offset: Offset(2, 2),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          child: const Text(
+            'Apply dates',
+            style: TextStyle(
+              fontFamily: FinStackType.display,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: .4,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarArrow extends StatelessWidget {
+  const _CalendarArrow({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: tooltip,
+        child: IconButton(
+          onPressed: onPressed,
+          iconSize: 18,
+          style: IconButton.styleFrom(
+            backgroundColor: FinStackColors.surfaceLow,
+            side: BorderSide(
+              color: enabled
+                  ? FinStackColors.onSurface
+                  : FinStackColors.onSurface.withValues(alpha: .35),
+              width: 2,
+            ),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            minimumSize: const Size(36, 36),
+            padding: EdgeInsets.zero,
+          ),
+          icon: Icon(icon),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthGrid extends StatelessWidget {
+  const _MonthGrid({
+    required this.month,
+    required this.start,
+    required this.end,
+    required this.onSelected,
+  });
+
+  final DateTime month;
+  final DateTime start;
+  final DateTime end;
+  final ValueChanged<DateTime> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = DateTime(month.year, month.month);
+    final days = DateTime(month.year, month.month + 1, 0).day;
+    final leading = first.weekday % 7;
+    final rows = ((leading + days) / 7).ceil();
+    return Column(
+      children: [
+        for (var row = 0; row < rows; row++)
+          Row(
+            children: [
+              for (var column = 0; column < 7; column++)
+                Expanded(
+                  child: _CalendarDay(
+                    date: row * 7 + column - leading + 1,
+                    month: month,
+                    days: days,
+                    start: start,
+                    end: end,
+                    onSelected: onSelected,
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _CalendarDay extends StatelessWidget {
+  const _CalendarDay({
+    required this.date,
+    required this.month,
+    required this.days,
+    required this.start,
+    required this.end,
+    required this.onSelected,
+  });
+
+  final int date;
+  final DateTime month;
+  final int days;
+  final DateTime start;
+  final DateTime end;
+  final ValueChanged<DateTime> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (date < 1 || date > days) return const SizedBox(height: 38);
+    final day = DateTime(month.year, month.month, date);
+    final inRange = !day.isBefore(start) && !day.isAfter(end);
+    final edge = day == start || day == end;
+    return Semantics(
+      button: true,
+      selected: inRange,
+      label: dateLabel(day),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onSelected(day),
+        child: SizedBox(
+          height: 38,
+          child: Center(
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: edge
+                    ? FinStackColors.onSurface
+                    : inRange
+                    ? FinStackColors.tertiary
+                    : null,
+                shape: edge ? BoxShape.circle : BoxShape.rectangle,
+              ),
+              child: Text(
+                '$date',
+                style: TextStyle(
+                  fontFamily: FinStackType.mono,
+                  fontFamilyFallback: _monoFallback,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: edge ? Colors.white : FinStackColors.onSurface,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -553,7 +1298,7 @@ class _SpendingChanges extends StatelessWidget {
     required this.onToggle,
   });
 
-  static const _previousColor = Color(0xFF8C826A);
+  static const _previousColor = Color(0xFF8D8677);
 
   final List<SpendingChange> changes;
   final bool byVendor;
@@ -567,8 +1312,9 @@ class _SpendingChanges extends StatelessWidget {
       1,
       (max, row) => math.max(max, math.max(row.current, row.previous)),
     );
-    final style = Theme.of(context).textTheme;
+    final visible = showAll ? changes : changes.take(5).toList();
     return BrutalCard(
+      padding: const EdgeInsets.all(15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -578,94 +1324,163 @@ class _SpendingChanges extends StatelessWidget {
             accent: FinStackColors.accentOrange,
           ),
           const SizedBox(height: 12),
-          const Wrap(
-            spacing: 16,
-            runSpacing: 4,
-            children: [
-              SpendingChartKey(
-                color: FinStackColors.accentPurple,
-                label: 'Selected period',
+          Container(
+            padding: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: FinStackColors.onSurface.withValues(alpha: .16),
+                  width: 1.5,
+                ),
               ),
-              SpendingChartKey(
-                color: _previousColor,
-                label: 'Previous period',
-              ),
-            ],
+            ),
+            child: const Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                SpendingChartKey(
+                  color: FinStackColors.accentPurple,
+                  label: 'Selected period',
+                ),
+                SpendingChartKey(
+                  color: _previousColor,
+                  label: 'Previous period',
+                ),
+              ],
+            ),
           ),
-          for (final change in showAll ? changes : changes.take(5)) ...[
-            const Divider(
-              thickness: 1,
-              height: 20,
-              color: FinStackColors.outlineVariant,
-            ),
-            Text(change.label, style: style.titleMedium),
-            const SizedBox(height: 2),
-            Text(
-              spendingDelta(change.current, change.previous),
-              style: style.bodySmall,
-            ),
-            const SizedBox(height: 6),
-            _bar(
-              context,
-              'Selected period',
-              change.current,
-              maxAmount,
-              FinStackColors.accentPurple,
-            ),
-            const SizedBox(height: 4),
-            _bar(
-              context,
-              'Previous period',
-              change.previous,
-              maxAmount,
-              _previousColor,
-            ),
-          ],
-          if (changes.length > 5) ...[
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: onToggle,
-              child: Text(
-                showAll ? 'Show fewer' : 'Show all ${changes.length}',
+          for (var index = 0; index < visible.length; index++)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                border: index == visible.length - 1
+                    ? null
+                    : Border(
+                        bottom: BorderSide(
+                          color: FinStackColors.onSurface.withValues(
+                            alpha: .14,
+                          ),
+                        ),
+                      ),
               ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    visible[index].label,
+                    style: const TextStyle(
+                      fontFamily: FinStackType.display,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    spendingDelta(
+                      visible[index].current,
+                      visible[index].previous,
+                    ),
+                    style: const TextStyle(
+                      fontFamily: FinStackType.mono,
+                      fontFamilyFallback: _monoFallback,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: FinStackColors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _DualBar(
+                    label: 'Selected period',
+                    value: visible[index].current,
+                    max: maxAmount,
+                    color: FinStackColors.accentPurple,
+                  ),
+                  const SizedBox(height: 5),
+                  _DualBar(
+                    label: 'Previous period',
+                    value: visible[index].previous,
+                    max: maxAmount,
+                    color: _previousColor,
+                    muted: true,
+                  ),
+                ],
+              ),
+            ),
+          if (changes.length > 5) ...[
+            const SizedBox(height: 12),
+            BrutalButton(
+              block: true,
+              color: Colors.white,
+              label: showAll ? 'Show top 5' : 'Show all ${changes.length}',
+              onPressed: onToggle,
             ),
           ],
         ],
       ),
     );
   }
+}
 
-  Widget _bar(
-    BuildContext context,
-    String label,
-    int value,
-    int max,
-    Color color,
-  ) => Row(
-    children: [
-      Expanded(
-        flex: 3,
-        child: ExcludeSemantics(
-          child: SizedBox(
-            height: 8,
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: value / max,
-              child: ColoredBox(color: color),
+class _DualBar extends StatelessWidget {
+  const _DualBar({
+    required this.label,
+    required this.value,
+    required this.max,
+    required this.color,
+    this.muted = false,
+  });
+
+  final String label;
+  final int value;
+  final int max;
+  final Color color;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: ExcludeSemantics(
+            child: SizedBox(
+              height: 9,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: value <= 0 ? 0 : (value / max).clamp(0.0, 1.0),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: color,
+                      border: Border.all(
+                        color: FinStackColors.onSurface,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        flex: 2,
-        child: Text(
-          spendingInr(value),
-          semanticsLabel: '$label, ${spendingInr(value)}',
-          textAlign: TextAlign.right,
-          style: Theme.of(context).textTheme.bodySmall,
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 56,
+          child: Text(
+            spendingInr(value),
+            semanticsLabel: '$label, ${spendingInr(value)}',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontFamilyFallback: _monoFallback,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: muted
+                  ? FinStackColors.onSurfaceVariant
+                  : FinStackColors.onSurface,
+            ),
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }

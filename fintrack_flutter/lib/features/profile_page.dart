@@ -6,7 +6,11 @@ import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
 String _initials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
   if (parts.isEmpty) return '?';
   if (parts.length == 1) return parts[0].substring(0, 1).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -68,7 +72,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
     } catch (_) {
       if (mounted) {
-        setState(() => familyError = 'Could not load your family. Check your connection and retry.');
+        setState(
+          () => familyError =
+              'Could not load your family. Check your connection and retry.',
+        );
       }
     } finally {
       if (mounted) setState(() => familyLoading = false);
@@ -108,7 +115,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
     setState(() => busy = true);
     try {
-      await ApiClient.dio.post('/families/join', data: {'inviteCode': code.toUpperCase()});
+      await ApiClient.dio.post(
+        '/families/join',
+        data: {'inviteCode': code.toUpperCase()},
+      );
       codeCtrl.clear();
       await ref.read(authProvider.notifier).checkSession();
       await load();
@@ -123,92 +133,148 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   Widget _familySection() {
     if (familyLoading) {
       return const BrutalCard(
-        child: Row(children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 3, color: FinStackColors.onSurface),
-          ),
-          SizedBox(width: 10),
-          Text('Loading family…', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-        ]),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: FinStackColors.onSurface,
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Loading family…',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
       );
     }
     if (familyError != null) {
       return BrutalCard(
         color: FinStackColors.errorContainer,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(familyError!,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              familyError!,
               style: const TextStyle(
-                  color: FinStackColors.onErrorContainer, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
-        ]),
+                color: FinStackColors.onErrorContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
+          ],
+        ),
       );
     }
     if (family != null) {
       return BrutalCard(
         color: FinStackColors.surfaceContainer,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const BrutalSectionTitle(
-            title: 'Family',
-            accent: FinStackColors.tertiary,
-          ),
-          const SizedBox(height: 4),
-          Text(family!['name'] ?? 'Family',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          if (family!['inviteCode'] != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('Invite code: ${family!['inviteCode']}',
-                  style: const TextStyle(
-                      fontFamily: 'monospace', fontWeight: FontWeight.w700, letterSpacing: 2)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const BrutalSectionTitle(
+              title: 'Family',
+              accent: FinStackColors.tertiary,
             ),
-          if (members.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const Text('MEMBERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
-            ...members.map((m) => Padding(
+            const SizedBox(height: 4),
+            Text(
+              family!['name'] ?? 'Family',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+            if (family!['inviteCode'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Invite code: ${family!['inviteCode']}',
+                  style: const TextStyle(
+                    fontFamily: FinStackType.mono,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            if (members.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text('MEMBERS', style: FinStackType.caption),
+              ...members.map(
+                (m) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(children: [
-                    Expanded(
-                      child: Text('${m['name'] ?? m['email'] ?? ''}',
-                          style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-                    ),
-                    Text('${m['role'] ?? ''}',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                  ]),
-                )),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${m['name'] ?? m['email'] ?? ''}',
+                          style: const TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '${m['membershipRole'] ?? m['role'] ?? ''}',
+                        style: FinStackType.caption,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 6),
+            const Text(
+              'Approve join requests from the Members screen.',
+              style: TextStyle(fontSize: 11),
+            ),
           ],
-          const SizedBox(height: 6),
-          const Text('Approve join requests from the Members screen.',
-              style: TextStyle(fontSize: 11)),
-        ]),
+        ),
       );
     }
     return BrutalCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const BrutalSectionTitle(
-          title: 'Set up your family',
-          accent: FinStackColors.brandYellow,
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Create a household as admin, or join one with an invite code. A family is required for Import, Transactions and Budgets.',
-          style: TextStyle(fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-        TextField(controller: nameCtrl, decoration: const InputDecoration(hintText: 'Family name (e.g. Sharma Family)')),
-        const SizedBox(height: 8),
-        BrutalButton(label: busy ? 'Creating…' : 'Create Family', icon: Icons.group_add, onPressed: busy ? null : _createFamily),
-        const SizedBox(height: 12),
-        TextField(
-          controller: codeCtrl,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(hintText: 'Invite code (e.g. VF7K92)'),
-        ),
-        const SizedBox(height: 8),
-        BrutalButton(label: busy ? 'Joining…' : 'Join Family', icon: Icons.login, onPressed: busy ? null : _joinFamily),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const BrutalSectionTitle(
+            title: 'Set up your family',
+            accent: FinStackColors.brandYellow,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Create a household as admin, or join one with an invite code. A family is required for Import, Transactions and Budgets.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Family name (e.g. Sharma Family)',
+            ),
+          ),
+          const SizedBox(height: 8),
+          BrutalButton(
+            block: true,
+            label: busy ? 'Creating…' : 'Create Family',
+            icon: Icons.group_add,
+            onPressed: busy ? null : _createFamily,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: codeCtrl,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              hintText: 'Invite code (e.g. VF7K92)',
+            ),
+          ),
+          const SizedBox(height: 8),
+          BrutalButton(
+            block: true,
+            label: busy ? 'Joining…' : 'Join Family',
+            icon: Icons.login,
+            onPressed: busy ? null : _joinFamily,
+          ),
+        ],
+      ),
     );
   }
 
@@ -219,85 +285,154 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final email = (user['email'] ?? '') as String;
     final role = (user['role'] ?? 'member') as String;
 
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      BrutalCard(
-        child: Row(children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-                color: FinStackColors.brandYellow,
-                border: Border.all(width: 3, color: FinStackColors.onSurface)),
-            alignment: Alignment.center,
-            child: Text(_initials(name), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(name.isEmpty ? '—' : name,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  overflow: TextOverflow.ellipsis),
-              Text(email, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 14, 19, 24),
+      children: [
+        BrutalCard(
+          child: Row(
+            children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(border: Border.all(width: 2, color: FinStackColors.onSurface)),
-                child: Text(role.toUpperCase(),
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: FinStackColors.brandYellow,
+                  border: Border.all(width: 3, color: FinStackColors.onSurface),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _initials(name),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-            ]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name.isEmpty ? '—' : name,
+                      style: const TextStyle(
+                        fontFamily: FinStackType.display,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      email,
+                      style: FinStackType.caption.copyWith(fontSize: 11.5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          width: 2,
+                          color: FinStackColors.onSurface,
+                        ),
+                      ),
+                      child: Text(
+                        role.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      _familySection(),
-      const SizedBox(height: 12),
-      BrutalCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('NOTIFICATIONS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-          SwitchListTile(
-              title: const Text('Push Notifications', style: TextStyle(fontSize: 12)),
-              value: push,
-              onChanged: (v) => setState(() => push = v)),
-          SwitchListTile(
-              title: const Text('Email Summaries', style: TextStyle(fontSize: 12)),
-              value: emailSum,
-              onChanged: (v) => setState(() => emailSum = v)),
-          SwitchListTile(
-              title: const Text('Payment Reminders (3 days before)', style: TextStyle(fontSize: 12)),
-              value: reminders,
-              onChanged: (v) => setState(() => reminders = v)),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      BrutalCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('SERVER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          TextField(
-              controller: serverCtrl,
-              decoration: const InputDecoration(hintText: 'http://<Mac-IP>:3000/api')),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: BrutalButton(
-                label: 'Save URL',
-                onPressed: () async {
-                  await ApiClient.setBaseUrl(serverCtrl.text);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Server: ${ApiClient.baseUrl} — please log in again')));
-                  await ref.read(authProvider.notifier).logout();
-                }),
+        ),
+        const SizedBox(height: 12),
+        _familySection(),
+        const SizedBox(height: 12),
+        BrutalCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('NOTIFICATIONS', style: FinStackType.caption),
+              SwitchListTile(
+                title: const Text(
+                  'Push Notifications',
+                  style: TextStyle(fontSize: 12),
+                ),
+                activeThumbColor: FinStackColors.brandYellow,
+                value: push,
+                onChanged: (v) => setState(() => push = v),
+              ),
+              SwitchListTile(
+                title: const Text(
+                  'Email Summaries',
+                  style: TextStyle(fontSize: 12),
+                ),
+                activeThumbColor: FinStackColors.brandYellow,
+                value: emailSum,
+                onChanged: (v) => setState(() => emailSum = v),
+              ),
+              SwitchListTile(
+                title: const Text(
+                  'Payment Reminders (3 days before)',
+                  style: TextStyle(fontSize: 12),
+                ),
+                activeThumbColor: FinStackColors.brandYellow,
+                value: reminders,
+                onChanged: (v) => setState(() => reminders = v),
+              ),
+            ],
           ),
-        ]),
-      ),
-      const SizedBox(height: 12),
-      BrutalButton(
-        label: 'Logout',
-        icon: Icons.logout,
-        onPressed: () => ref.read(authProvider.notifier).logout(),
-      ),
-    ]);
+        ),
+        const SizedBox(height: 12),
+        BrutalCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('SERVER', style: FinStackType.caption),
+              const SizedBox(height: 4),
+              TextField(
+                controller: serverCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'http://<Mac-IP>:3000/api',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: BrutalButton(
+                  label: 'Save URL',
+                  onPressed: () async {
+                    await ApiClient.setBaseUrl(serverCtrl.text);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Server: ${ApiClient.baseUrl} — please log in again',
+                        ),
+                      ),
+                    );
+                    await ref.read(authProvider.notifier).logout();
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        BrutalButton(
+          label: 'Logout',
+          block: true,
+          icon: Icons.logout,
+          onPressed: () => ref.read(authProvider.notifier).logout(),
+        ),
+      ],
+    );
   }
 }

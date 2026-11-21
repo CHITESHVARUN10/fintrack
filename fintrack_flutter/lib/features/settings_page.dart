@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
+import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
 /// App settings: server URL editor (ApiClient.baseUrl + setBaseUrl),
@@ -29,18 +30,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> saveUrl() async {
-    if (serverCtrl.text.trim().isEmpty) return;
+    if (saving || serverCtrl.text.trim().isEmpty) return;
+    dismissKeyboard(context);
     setState(() => saving = true);
     try {
       await ApiClient.setBaseUrl(serverCtrl.text);
       if (!mounted) return;
       setState(() => serverCtrl.text = ApiClient.baseUrl);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save the server URL. Try again.')),
+          const SnackBar(
+            content: Text('Could not save the server URL. Try again.'),
+          ),
         );
       }
     } finally {
@@ -49,35 +54,65 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('SETTINGS\nServer, session and app info.', style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 12),
-        BrutalCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('SERVER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(ApiClient.baseUrl, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          BrutalField(label: 'Server URL', controller: serverCtrl, hint: 'http://<Mac-IP>:3000/api'),
-          const SizedBox(height: 8),
-          Align(alignment: Alignment.centerRight, child: BrutalButton(
-            label: saving ? 'Saving…' : 'Save URL',
-            onPressed: saving ? null : saveUrl,
-          )),
-        ])),
-        const SizedBox(height: 12),
-        BrutalButton(
-          label: 'Logout',
-          icon: Icons.logout,
-          onPressed: () => ref.read(authProvider.notifier).logout(),
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(14, 14, 19, 24),
+    children: [
+      Text(
+        'Server, session and app info.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 13),
+      BrutalCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 9,
+          children: [
+            const Text('SERVER', style: FinStackType.caption),
+            SelectableText(
+              ApiClient.baseUrl,
+              style: FinStackType.caption.copyWith(
+                fontSize: 12,
+                color: FinStackColors.onSurface,
+              ),
+            ),
+            BrutalField(
+              label: 'Server URL',
+              controller: serverCtrl,
+              hint: 'http://<Mac-IP>:3000/api',
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              enableSuggestions: false,
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: BrutalButton(
+                label: saving ? 'Saving…' : 'Save URL',
+                onPressed: saving ? null : saveUrl,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        const BrutalCard(
-          child: Center(child: Text('FinStack v1.0.0',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+      ),
+      const SizedBox(height: 13),
+      BrutalButton(
+        label: 'Logout',
+        block: true,
+        icon: Icons.logout,
+        onPressed: () => ref.read(authProvider.notifier).logout(),
+      ),
+      const SizedBox(height: 13),
+      const BrutalCard(
+        child: Center(
+          child: Text(
+            'FinStack v1.0.0',
+            style: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ),
-      ]),
-    );
-  }
+      ),
+    ],
+  );
 }

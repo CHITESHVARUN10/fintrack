@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/workspace.dart';
 
 /// Generates PDF and Excel reports and hands them to the platform.
 class ReportsPage extends StatefulWidget {
@@ -242,10 +243,26 @@ class _ReportsPageState extends State<ReportsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              report.title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            Row(
+              spacing: 8,
+              children: [
+                Expanded(
+                  child: Text(
+                    report.title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                BrutalTag(
+                  label: report.kind == 'tax'
+                      ? 'PDF only'
+                      : format == 'pdf'
+                      ? 'PDF report'
+                      : 'Excel report',
+                  color: FinStackColors.surfaceContainer,
+                ),
+              ],
             ),
+            const SizedBox(height: 3),
             Text(report.desc, style: const TextStyle(fontSize: 12)),
             const SizedBox(height: 10),
             if (generating) ...[
@@ -325,9 +342,14 @@ class _ReportsPageState extends State<ReportsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return WorkspaceScaffold(
+      title: 'Reports',
+      action: const BrutalTag(
+        label: 'Export',
+        color: FinStackColors.accentCyan,
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(14, 14, 19, 24),
         children: [
           const Text(
             'Choose a report and generate a PDF or Excel file to share or save.',
@@ -338,10 +360,7 @@ class _ReportsPageState extends State<ReportsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'MONTH / YEAR',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                ),
+                const Text('MONTH / YEAR', style: FinStackType.caption),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -349,7 +368,8 @@ class _ReportsPageState extends State<ReportsPage> {
                       child: BrutalField(
                         label: 'Month (1-12)',
                         controller: monthCtrl,
-                        hint: '4',
+                        hint: '11',
+                        keyboardType: TextInputType.number,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -358,6 +378,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         label: 'Year',
                         controller: yearCtrl,
                         hint: '2026',
+                        keyboardType: TextInputType.number,
                       ),
                     ),
                   ],
@@ -369,7 +390,8 @@ class _ReportsPageState extends State<ReportsPage> {
                       child: BrutalField(
                         label: 'From (YYYY-MM-DD)',
                         controller: fromCtrl,
-                        hint: '2026-04-01',
+                        hint: 'YYYY-MM-DD',
+                        keyboardType: TextInputType.datetime,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -377,7 +399,8 @@ class _ReportsPageState extends State<ReportsPage> {
                       child: BrutalField(
                         label: 'To (YYYY-MM-DD)',
                         controller: toCtrl,
-                        hint: '2026-04-30',
+                        hint: 'YYYY-MM-DD',
+                        keyboardType: TextInputType.datetime,
                       ),
                     ),
                   ],

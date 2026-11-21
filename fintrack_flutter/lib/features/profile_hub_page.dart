@@ -4,6 +4,7 @@ import '../core/auth_state.dart';
 import '../core/bank_import.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/workspace.dart';
 import 'budgets_page.dart';
 import 'family_dashboard_page.dart';
 import 'import_page.dart';
@@ -33,15 +34,8 @@ class _WorkspaceEntry {
   final String label;
   final IconData icon;
   final Color color;
-  final String title;
   final WidgetBuilder builder;
-  const _WorkspaceEntry(
-    this.label,
-    this.icon,
-    this.color,
-    this.title,
-    this.builder,
-  );
+  const _WorkspaceEntry(this.label, this.icon, this.color, this.builder);
 }
 
 List<_WorkspaceEntry> _workspace(BankImport bankImport) => <_WorkspaceEntry>[
@@ -49,70 +43,63 @@ List<_WorkspaceEntry> _workspace(BankImport bankImport) => <_WorkspaceEntry>[
     'Family board',
     Icons.analytics,
     FinStackColors.tertiary,
-    'FAMILY DASHBOARD',
-    (_) => FamilyDashboardPage(),
+    (_) => const WorkspaceScaffold(
+      title: 'Family dashboard',
+      body: FamilyDashboardPage(),
+    ),
   ),
   _WorkspaceEntry(
     'Income',
     Icons.wallet,
     FinStackColors.accentGreen,
-    'INCOME',
     (_) => IncomePage(),
   ),
   _WorkspaceEntry(
     'Import',
     Icons.upload_file,
     FinStackColors.accentOrange,
-    'IMPORT',
     (_) => ImportPageWidget(bankImport: bankImport),
   ),
   _WorkspaceEntry(
     'Budgets',
     Icons.savings,
     FinStackColors.brandYellow,
-    'BUDGETS',
     (_) => BudgetsPage(),
   ),
   _WorkspaceEntry(
     'Vendors',
     Icons.store,
     FinStackColors.accentPink,
-    'VENDORS',
     (_) => VendorsPage(),
   ),
   _WorkspaceEntry(
     'Subscriptions',
     Icons.autorenew,
     FinStackColors.accentPurple,
-    'SUBSCRIPTIONS',
     (_) => SubscriptionsPage(),
   ),
   _WorkspaceEntry(
     'Recurring',
     Icons.event_repeat,
     FinStackColors.accentCyan,
-    'RECURRING',
     (_) => RecurringPage(),
   ),
   _WorkspaceEntry(
     'Investments',
     Icons.trending_up,
     FinStackColors.accentGreen,
-    'INVESTMENTS',
     (_) => InvestmentsPage(),
   ),
   _WorkspaceEntry(
     'Tax',
     Icons.calculate,
     FinStackColors.accentOrange,
-    'TAX',
     (_) => TaxPage(),
   ),
   _WorkspaceEntry(
     'Reports',
     Icons.bar_chart,
     FinStackColors.accentBlue,
-    'REPORTS',
     (_) => ReportsPage(),
   ),
 ];
@@ -128,25 +115,15 @@ class ProfileHubPage extends ConsumerWidget {
   void _push(BuildContext context, String title, Widget page) {
     dismissKeyboard(context);
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (routeContext) => Scaffold(
-          appBar: AppBar(
-            title: Text(title),
-            leadingWidth: 56,
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: BrutalIconButton(
-                icon: Icons.arrow_back,
-                tooltip: 'Back',
-                color: Colors.white,
-                onPressed: () => Navigator.of(routeContext).pop(),
-              ),
-            ),
-          ),
-          body: BrutalGrid(child: page),
-        ),
+      MaterialPageRoute<void>(
+        builder: (_) => WorkspaceScaffold(title: title, body: page),
       ),
     );
+  }
+
+  void _openTool(BuildContext context, _WorkspaceEntry entry) {
+    dismissKeyboard(context);
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: entry.builder));
   }
 
   @override
@@ -157,15 +134,15 @@ class ProfileHubPage extends ConsumerWidget {
     final role = '${user['role'] ?? 'member'}';
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      padding: const EdgeInsets.fromLTRB(14, 14, 19, 28),
       children: [
         BrutalCard(
           color: FinStackColors.brandYellow,
           child: Row(
             children: [
               Container(
-                width: 60,
-                height: 60,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(color: FinStackColors.onSurface, width: 3),
@@ -196,8 +173,9 @@ class ProfileHubPage extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontFamily: FinStackType.display,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (email.isNotEmpty)
@@ -206,8 +184,9 @@ class ProfileHubPage extends ConsumerWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontFamily: FinStackType.mono,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     const SizedBox(height: 6),
@@ -253,34 +232,27 @@ class ProfileHubPage extends ConsumerWidget {
           onTap: () => _push(context, 'FAMILY', const ProfilePage()),
         ),
         const SizedBox(height: 18),
-        Row(
-          children: [
-            Container(width: 8, height: 16, color: FinStackColors.brandYellow),
-            const SizedBox(width: 8),
-            const Text(
-              'WORKSPACE',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
-        ),
+        const BrutalSectionTitle(title: 'Workspace'),
         const SizedBox(height: 10),
-        GridView.count(
-          crossAxisCount: 2,
+        GridView(
           shrinkWrap: true,
+          clipBehavior: Clip.none,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 2.35,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            mainAxisExtent:
+                (MediaQuery.textScalerOf(context).scale(13) * 2.3 + 24).clamp(
+                  63.0,
+                  135.0,
+                ),
+          ),
           children: [
             for (final entry in _workspace(bankImport))
               _WorkspaceTile(
                 entry: entry,
-                onTap: () =>
-                    _push(context, entry.title, entry.builder(context)),
+                onTap: () => _openTool(context, entry),
               ),
           ],
         ),
@@ -291,13 +263,6 @@ class ProfileHubPage extends ConsumerWidget {
           label: 'Log out',
           icon: Icons.logout,
           onPressed: () => ref.read(authProvider.notifier).logout(),
-        ),
-        const SizedBox(height: 10),
-        const Center(
-          child: Text(
-            'FinStack v1.0.0 · LIVE',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700),
-          ),
         ),
       ],
     );
@@ -320,10 +285,10 @@ class _HubRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: brutal(border: 2, shadow: 3),
         child: Row(
           children: [
@@ -344,16 +309,17 @@ class _HubRow extends StatelessWidget {
                   Text(
                     label,
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontFamily: FinStackType.display,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   Text(
                     subtitle,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 11.5,
                       color: FinStackColors.onSurfaceVariant,
                     ),
                   ),
@@ -375,7 +341,7 @@ class _WorkspaceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -383,8 +349,8 @@ class _WorkspaceTile extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: entry.color,
                 border: Border.all(color: FinStackColors.onSurface, width: 2),
@@ -398,8 +364,9 @@ class _WorkspaceTile extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontFamily: FinStackType.display,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                   height: 1.15,
                 ),
               ),

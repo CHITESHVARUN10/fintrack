@@ -34,11 +34,14 @@ void main() {
         )
         .first;
     final center = tester.getCenter(ring);
-    final gesture = await tester.startGesture(center + const Offset(-98, -44));
-    await gesture.moveBy(const Offset(6, -38));
+    final radius = tester.getSize(ring).width / 2;
+    final gesture = await tester.startGesture(
+      center + const Offset(-.78, -.18) * radius,
+    );
+    await gesture.moveBy(const Offset(.08, -.41) * radius);
     await tester.pump();
     expect(find.text('Fuel'), findsNWidgets(2));
-    await gesture.moveTo(center + const Offset(94, -54));
+    await gesture.moveTo(center + const Offset(.76, -.44) * radius);
     await tester.pump();
     expect(find.text('Groceries'), findsNWidgets(2));
     await gesture.up();

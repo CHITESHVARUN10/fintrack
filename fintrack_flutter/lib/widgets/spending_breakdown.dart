@@ -9,7 +9,7 @@ import 'brutal.dart';
 const _colors = [
   FinStackColors.accentPurple,
   FinStackColors.brandYellow,
-  FinStackColors.chartTeal,
+  FinStackColors.accentTeal,
   FinStackColors.accentPink,
   FinStackColors.accentBlue,
   FinStackColors.accentOrange,
@@ -150,7 +150,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
           else ...[
             Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 248),
+                constraints: const BoxConstraints(maxWidth: 196),
                 child: AspectRatio(
                   aspectRatio: 1,
                   child: LayoutBuilder(
@@ -193,11 +193,11 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                                                 selected == null
                                                     ? compactInr(total)
                                                     : _percent(share[selected]),
-                                                style: const TextStyle(
-                                                  fontSize: 31,
-                                                  fontWeight: FontWeight.w900,
-                                                  height: 1.05,
-                                                ),
+                                                style: FinStackType.amount
+                                                    .copyWith(
+                                                      fontSize: 26,
+                                                      height: 1.05,
+                                                    ),
                                               ),
                                             ),
                                             const SizedBox(height: 5),
@@ -209,7 +209,9 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                                               textAlign: TextAlign.center,
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
-                                                fontSize: 12,
+                                                color: FinStackColors
+                                                    .onSurfaceVariant,
+                                                fontSize: 10.5,
                                                 fontWeight: FontWeight.w700,
                                               ),
                                             ),
@@ -246,7 +248,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const Divider(height: 10),
             for (var i = 0; i < entries.length; i++)
               Semantics(
                 selected: selected == i,
@@ -272,8 +274,8 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                     child: Row(
                       children: [
                         Container(
-                          width: 13,
-                          height: 13,
+                          width: 10,
+                          height: 10,
                           decoration: BoxDecoration(
                             color: _colors[i],
                             border: Border.all(color: FinStackColors.onSurface),
@@ -289,10 +291,10 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                         const SizedBox(width: 8),
                         Text(
                           widget.formatAmount(entries[i].value),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: FinStackType.amount.copyWith(fontSize: 11.5),
                         ),
                         const SizedBox(width: 8),
-                        Text(_percent(share[i])),
+                        Text(_percent(share[i]), style: FinStackType.caption),
                       ],
                     ),
                   ),
@@ -355,7 +357,7 @@ class _TickRing extends CustomPainter {
     final liftAmount = reducedMotion ? 0 : lift();
     final paint = Paint()
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = radius * .029;
+      ..strokeWidth = radius * .048;
     var start = -math.pi / 2;
     for (var i = 0; i < shares.length; i++) {
       final sweep = shares[i] * 2 * math.pi;
@@ -365,16 +367,16 @@ class _TickRing extends CustomPainter {
           ? color
           : color.withValues(alpha: .28);
       final gap = shares.length > 1 ? math.min(sweep * .24, .085) : 0.0;
-      final count = math.max(1, ((sweep - gap) / (2 * math.pi) * 96).round());
+      final count = math.max(1, ((sweep - gap) / (2 * math.pi) * 60).round());
       for (var tick = 0; tick < count; tick++) {
         final angle = start + gap / 2 + (tick + .5) / count * (sweep - gap);
         final direction = Offset(math.cos(angle), math.sin(angle));
         final distance = ((angle - focusAngle + math.pi) % _turn - math.pi)
             .abs();
         final bump = math.max(0.0, 1 - distance / .19) * liftAmount;
-        paint.strokeWidth = radius * (.029 + .016 * bump);
+        paint.strokeWidth = radius * (.048 + .014 * bump);
         canvas.drawLine(
-          center + direction * (radius * .66),
+          center + direction * (radius * .612),
           center +
               direction * (radius * ((active ? .936 : .895) + .081 * bump)),
           paint,

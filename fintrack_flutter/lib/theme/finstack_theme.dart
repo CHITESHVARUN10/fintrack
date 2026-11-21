@@ -1,32 +1,35 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 
 class FinStackColors {
-  static const onSurface = Color(0xFF1E1C10);
-  static const onSurfaceVariant = Color(0xFF4B4731);
-  static const surfaceLow = Color(0xFFFAF3DF);
-  static const surfaceContainer = Color(0xFFF4EEDA);
-  static const surfaceHigh = Color(0xFFEEE8D4);
-  static const surfaceVariant = Color(0xFFE9E2CF);
-  static const outlineVariant = Color(0xFFCEC7AA);
+  static const onSurface = Color(0xFF11110E);
+  static const onSurfaceVariant = Color(0xFF5C594F);
+  static const surfaceLow = Color(0xFFFAF5E6);
+  static const surfaceContainer = Color(0xFFF2EBD5);
+  static const surfaceHigh = Color(0xFFEEE7D2);
+  static const surfaceVariant = Color(0xFFEAE3D0);
+  static const outlineVariant = Color(0xFFD8CEB7);
   static const brandYellow = Color(0xFFFFE500);
-  static const tertiary = Color(0xFF00FCFB);
-  static const accentCyan = Color(0xFF00FCFB);
+  static const tertiary = Color(0xFF00F0FF);
+  static const accentCyan = Color(0xFF00F0FF);
   static const onTertiaryContainer = Color(0xFF007171);
-  static const errorContainer = Color(0xFFFFDAD6);
-  static const onErrorContainer = Color(0xFF93000A);
+  static const errorContainer = Color(0xFFFFD6DC);
+  static const onErrorContainer = Color(0xFFB4152E);
 
-  static const accentPink = Color(0xFFE8487F);
-  static const accentPurple = Color(0xFF7B61FF);
-  static const accentOrange = Color(0xFFFF7A45);
-  static const accentGreen = Color(0xFF6BCB77);
-  static const accentBlue = Color(0xFF4D96FF);
+  static const accentPink = Color(0xFFFF3B7F);
+  static const accentPurple = Color(0xFF7C5CFF);
+  static const accentOrange = Color(0xFFFF6B35);
+  static const accentGreen = Color(0xFF4ADE80);
+  static const accentBlue = Color(0xFF2F80ED);
 
   // Chart series aligned with the web chart kit.
+  static const accentTeal = Color(0xFF00B894);
+  static const successInk = Color(0xFF0D7A4B);
+  static const successContainer = Color(0xFFDCFCE7);
   static const chartTeal = Color(0xFF0E8F8B);
   static const chartPink = Color(0xFFD43A6C);
   static const chartAmber = Color(0xFFB58900);
-  static const chartGrid = Color(0x1A1E1C10);
+  static const chartGrid = Color(0x1A11110E);
 
   static const series = [
     brandYellow,
@@ -40,27 +43,54 @@ class FinStackColors {
   ];
 }
 
+class FinStackType {
+  static const display = 'Space Grotesk';
+  static const body = 'Plus Jakarta Sans';
+  static const mono = 'JetBrains Mono';
+
+  static const caption = TextStyle(
+    fontFamily: mono,
+    fontSize: 10,
+    fontWeight: FontWeight.w800,
+    letterSpacing: .45,
+    color: FinStackColors.onSurfaceVariant,
+  );
+
+  static const amount = TextStyle(
+    fontFamily: mono,
+    fontSize: 19,
+    fontWeight: FontWeight.w800,
+    letterSpacing: -.6,
+  );
+}
+
 BoxDecoration brutal({
   Color color = Colors.white,
-  double border = 3,
-  double shadow = 4,
-}) =>
-    BoxDecoration(
-      color: color,
-      border: Border.all(color: FinStackColors.onSurface, width: border),
-      boxShadow: [
-        BoxShadow(
-          color: FinStackColors.onSurface,
-          offset: Offset(shadow, shadow),
-          blurRadius: 0,
-        ),
-      ],
-    );
+  double border = 2.5,
+  double shadow = 5,
+  Color shadowColor = FinStackColors.onSurface,
+}) => BoxDecoration(
+  color: color,
+  border: Border.all(color: FinStackColors.onSurface, width: border),
+  boxShadow: [
+    if (shadow > 0)
+      BoxShadow(
+        color: shadowColor,
+        offset: Offset(shadow, shadow),
+        blurRadius: 0,
+      ),
+  ],
+);
 
 ThemeData finStackTheme() {
-  final base = ThemeData.light(useMaterial3: true);
-  final textTheme = GoogleFonts.spaceGroteskTextTheme().copyWith(
+  final base = ThemeData(
+    useMaterial3: true,
+    fontFamily: FinStackType.body,
+    brightness: Brightness.light,
+  );
+  final textTheme = base.textTheme.copyWith(
     displayLarge: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 48,
       fontWeight: FontWeight.w700,
       height: 0.95,
@@ -68,46 +98,48 @@ ThemeData finStackTheme() {
       color: FinStackColors.onSurface,
     ),
     headlineLarge: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 30,
       fontWeight: FontWeight.w700,
       letterSpacing: -0.5,
       color: FinStackColors.onSurface,
     ),
     headlineMedium: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 24,
       fontWeight: FontWeight.w800,
       letterSpacing: -0.4,
       color: FinStackColors.onSurface,
     ),
     titleLarge: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 20,
       fontWeight: FontWeight.w800,
       letterSpacing: -0.2,
       color: FinStackColors.onSurface,
     ),
     titleMedium: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 16,
       fontWeight: FontWeight.w700,
       color: FinStackColors.onSurface,
     ),
     labelLarge: const TextStyle(
+      fontFamily: FinStackType.display,
       fontSize: 12,
       fontWeight: FontWeight.w800,
       letterSpacing: 0.8,
       color: FinStackColors.onSurface,
     ),
-    labelSmall: const TextStyle(
-      fontSize: 10,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 1.1,
-      color: FinStackColors.onSurfaceVariant,
-    ),
+    labelSmall: FinStackType.caption,
     bodyMedium: const TextStyle(
+      fontFamily: FinStackType.body,
       fontSize: 14,
       fontWeight: FontWeight.w500,
       color: FinStackColors.onSurface,
     ),
     bodySmall: const TextStyle(
+      fontFamily: FinStackType.body,
       fontSize: 12,
       fontWeight: FontWeight.w500,
       color: FinStackColors.onSurfaceVariant,
@@ -131,10 +163,11 @@ ThemeData finStackTheme() {
       outlineVariant: FinStackColors.outlineVariant,
     ),
     textTheme: textTheme,
-    pageTransitionsTheme: const PageTransitionsTheme(
+    pageTransitionsTheme: PageTransitionsTheme(
       builders: {
-        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        ...base.pageTransitionsTheme.builders,
+        TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
       },
     ),
     appBarTheme: const AppBarTheme(
@@ -143,23 +176,25 @@ ThemeData finStackTheme() {
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
       foregroundColor: FinStackColors.onSurface,
-      toolbarHeight: 60,
+      toolbarHeight: 56,
+      titleSpacing: 14,
+      systemOverlayStyle: SystemUiOverlayStyle.dark,
       centerTitle: false,
       titleTextStyle: TextStyle(
-        fontFamily: 'Space Grotesk',
-        fontSize: 18,
-        fontWeight: FontWeight.w800,
+        fontFamily: FinStackType.display,
+        fontSize: 19,
+        fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
         color: FinStackColors.onSurface,
       ),
       shape: Border(
-        bottom: BorderSide(color: FinStackColors.onSurface, width: 3),
+        bottom: BorderSide(color: FinStackColors.onSurface, width: 2.5),
       ),
     ),
     drawerTheme: const DrawerThemeData(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
-      scrimColor: Color(0x8A1E1C10),
+      scrimColor: Color(0x8A11110E),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
@@ -210,9 +245,14 @@ ThemeData finStackTheme() {
       ),
       errorBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.zero,
-        borderSide: BorderSide(color: FinStackColors.onErrorContainer, width: 2),
+        borderSide: BorderSide(
+          color: FinStackColors.onErrorContainer,
+          width: 2,
+        ),
       ),
-      hintStyle: TextStyle(color: FinStackColors.onSurface.withValues(alpha: 0.5)),
+      hintStyle: TextStyle(
+        color: FinStackColors.onSurface.withValues(alpha: 0.5),
+      ),
       labelStyle: const TextStyle(
         fontWeight: FontWeight.w700,
         fontSize: 12,
@@ -276,13 +316,13 @@ ThemeData finStackTheme() {
         side: BorderSide(color: FinStackColors.onSurface, width: 3),
       ),
       titleTextStyle: TextStyle(
-        fontFamily: 'Space Grotesk',
+        fontFamily: FinStackType.display,
         fontSize: 18,
         fontWeight: FontWeight.w800,
         color: FinStackColors.onSurface,
       ),
       contentTextStyle: TextStyle(
-        fontFamily: 'Space Grotesk',
+        fontFamily: FinStackType.display,
         fontSize: 13,
         fontWeight: FontWeight.w500,
         color: FinStackColors.onSurfaceVariant,
@@ -292,7 +332,7 @@ ThemeData finStackTheme() {
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: Colors.white,
-      modalBarrierColor: Color(0x991E1C10),
+      modalBarrierColor: Color(0x9911110E),
       elevation: 0,
       showDragHandle: false,
       shape: RoundedRectangleBorder(

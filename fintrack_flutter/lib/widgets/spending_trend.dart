@@ -7,6 +7,8 @@ import '../core/spending_statistics.dart';
 import '../theme/finstack_theme.dart';
 import 'brutal.dart';
 
+const _monoFallback = <String>[FinStackType.body];
+
 String spendingDateRange(DateTimeRange dates) => dates.start == dates.end
     ? dateLabel(dates.start)
     : '${dates.start.year == dates.end.year ? shortDateLabel(dates.start) : dateLabel(dates.start)} – ${dateLabel(dates.end)}';
@@ -44,12 +46,19 @@ class SpendingChartKey extends StatelessWidget {
         height: 10,
         decoration: BoxDecoration(
           color: color,
-          border: Border.all(color: FinStackColors.onSurface),
+          border: Border.all(color: FinStackColors.onSurface, width: 1.5),
         ),
       ),
-      const SizedBox(width: 5),
+      const SizedBox(width: 6),
       Flexible(
-        child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: FinStackColors.onSurfaceVariant,
+          ),
+        ),
       ),
     ],
   );
@@ -77,10 +86,11 @@ class _SpendingTrendState extends State<SpendingTrend> {
     final view = widget.view;
     final buckets = view.buckets;
     final selected =
-        _selected ?? buckets.lastIndexWhere((bucket) => bucket.paise > 0);
-    final style = Theme.of(context).textTheme;
+        (_selected ?? buckets.lastIndexWhere((bucket) => bucket.paise > 0))
+            .clamp(0, math.max(0, buckets.length - 1))
+            .toInt();
     return BrutalCard(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -88,55 +98,86 @@ class _SpendingTrendState extends State<SpendingTrend> {
             title: 'Spending',
             accent: FinStackColors.brandYellow,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             spendingInr(view.currentPaise),
-            style: style.headlineLarge?.copyWith(fontWeight: FontWeight.w900),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: FinStackType.mono,
+              fontFamilyFallback: _monoFallback,
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1.2,
+              height: 1.1,
+            ),
           ),
           Text(
             '${view.count} ${view.count == 1 ? 'expense' : 'expenses'}',
-            style: style.bodySmall,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: FinStackColors.onSurfaceVariant,
+            ),
           ),
           if (view.count > 0) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _chart(context, buckets, selected),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _selection(buckets, selected),
           ],
           if (widget.previousRange case final DateTimeRange previousRange) ...[
-            const Divider(
-              height: 20,
-              thickness: 1,
-              color: FinStackColors.outlineVariant,
-            ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  view.currentPaise == view.previousPaise
-                      ? Icons.remove
-                      : view.currentPaise > view.previousPaise
-                      ? Icons.north_east
-                      : Icons.south_east,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        spendingDelta(view.currentPaise, view.previousPaise),
-                        style: style.titleMedium,
-                      ),
-                      Text(
-                        '${spendingInr(view.previousPaise)} in ${spendingDateRange(previousRange)}',
-                        style: style.bodySmall,
-                      ),
-                    ],
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.only(top: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: FinStackColors.onSurface.withValues(alpha: .16),
+                    width: 1.5,
                   ),
                 ),
-              ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    view.currentPaise == view.previousPaise
+                        ? Icons.remove
+                        : view.currentPaise > view.previousPaise
+                        ? Icons.north_east
+                        : Icons.south_east,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          spendingDelta(view.currentPaise, view.previousPaise),
+                          style: const TextStyle(
+                            fontFamily: FinStackType.mono,
+                            fontFamilyFallback: _monoFallback,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${spendingInr(view.previousPaise)} in ${spendingDateRange(previousRange)}',
+                          style: const TextStyle(
+                            fontFamily: FinStackType.mono,
+                            fontFamilyFallback: _monoFallback,
+                            fontSize: 10.5,
+                            color: FinStackColors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
@@ -154,25 +195,30 @@ class _SpendingTrendState extends State<SpendingTrend> {
       (max, bucket) => math.max(max, bucket.paise),
     );
     final max = _axisCeiling(peak);
-    final axis = Theme.of(context).textTheme.bodySmall;
+    const axisStyle = TextStyle(
+      fontFamily: FinStackType.mono,
+      fontFamilyFallback: _monoFallback,
+      fontSize: 9.5,
+      fontWeight: FontWeight.w700,
+      color: FinStackColors.onSurfaceVariant,
+    );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ExcludeSemantics(
           child: SizedBox(
-            height: 118,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                for (final amount in [max, max / 2, 0])
-                  Text(
-                    amount > 0 && amount < 1000
-                        ? spendingInr(amount.round())
-                        : compactInr(amount / 100),
-                    style: axis,
-                  ),
-              ],
+            width: 40,
+            height: 116,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (final amount in [max, max ~/ 2, 0])
+                    Text(_axisLabel(amount), style: axisStyle),
+                ],
+              ),
             ),
           ),
         ),
@@ -181,8 +227,16 @@ class _SpendingTrendState extends State<SpendingTrend> {
           child: Column(
             children: [
               ExcludeSemantics(
-                child: SizedBox(
-                  height: 118,
+                child: Container(
+                  height: 116,
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: FinStackColors.onSurface,
+                        width: 2,
+                      ),
+                    ),
+                  ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       void select(Offset point) {
@@ -226,13 +280,13 @@ class _SpendingTrendState extends State<SpendingTrend> {
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(shortDateLabel(buckets.first.start), style: axis),
+                  Text(shortDateLabel(buckets.first.start), style: axisStyle),
                   if (buckets.first.start != buckets.last.end)
-                    Text(shortDateLabel(buckets.last.end), style: axis),
+                    Text(shortDateLabel(buckets.last.end), style: axisStyle),
                 ],
               ),
             ],
@@ -244,13 +298,20 @@ class _SpendingTrendState extends State<SpendingTrend> {
 
   Widget _selection(List<SpendingBucket> buckets, int selected) {
     final bucket = buckets[selected];
-    return DecoratedBox(
-      decoration: const BoxDecoration(color: FinStackColors.surfaceContainer),
+    return Container(
+      decoration: BoxDecoration(
+        color: FinStackColors.surfaceContainer,
+        border: Border.all(color: FinStackColors.onSurface, width: 2),
+      ),
       child: Row(
         children: [
           if (buckets.length > 1)
             IconButton(
               tooltip: 'Previous chart point',
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              padding: EdgeInsets.zero,
               onPressed: selected > 0
                   ? () => setState(() => _selected = selected - 1)
                   : null,
@@ -258,13 +319,20 @@ class _SpendingTrendState extends State<SpendingTrend> {
             ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
               child: Semantics(
                 liveRegion: true,
                 child: Text(
                   '${spendingDateRange(DateTimeRange(start: bucket.start, end: bucket.end))} · ${spendingInr(bucket.paise)}',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: FinStackType.mono,
+                    fontFamilyFallback: _monoFallback,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ),
@@ -272,6 +340,10 @@ class _SpendingTrendState extends State<SpendingTrend> {
           if (buckets.length > 1)
             IconButton(
               tooltip: 'Next chart point',
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              padding: EdgeInsets.zero,
               onPressed: selected < buckets.length - 1
                   ? () => setState(() => _selected = selected + 1)
                   : null,
@@ -283,7 +355,11 @@ class _SpendingTrendState extends State<SpendingTrend> {
   }
 }
 
+String _axisLabel(int paise) =>
+    paise > 0 && paise < 1000 ? spendingInr(paise) : compactInr(paise / 100);
+
 int _axisCeiling(int value) {
+  if (value <= 0) return 1;
   final magnitude = math.pow(10, (math.log(value) / math.ln10).floor()).toInt();
   for (final step in [2, 4, 6, 8, 10]) {
     if (value <= step * magnitude) return step * magnitude;
@@ -301,37 +377,46 @@ class _TrendBars extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final grid = Paint()..color = FinStackColors.outlineVariant;
-    const top = 7.0;
-    final bottom = size.height - 7;
-    final height = bottom - top;
-    for (final y in [top, top + height / 2, bottom]) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
+    final grid = Paint()
+      ..color = FinStackColors.onSurface.withValues(alpha: .12)
+      ..strokeWidth = 1;
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      grid,
+    );
+
     final step = size.width / buckets.length;
-    final bar = Paint();
+    final barWidth = math.max(1.5, math.min(30.0, step - 2.5));
+    const topPadding = 4.0;
+    final usable = math.max(0.0, size.height - topPadding);
+    final column = Paint()
+      ..color = FinStackColors.onSurface.withValues(alpha: .08);
+    final fill = Paint()..color = FinStackColors.accentPurple;
+    final activeFill = Paint()..color = FinStackColors.onSurface;
+    final cap = Paint()
+      ..color = FinStackColors.onSurface
+      ..strokeWidth = 1.5;
     for (var i = 0; i < buckets.length; i++) {
-      final x = step * (i + .5);
+      final left = step * i;
       final active = i == selected;
       if (active) {
-        bar.color = FinStackColors.surfaceVariant.withValues(alpha: .55);
-        canvas.drawRect(
-          Rect.fromLTRB(x - step / 2, top, x + step / 2, bottom),
-          bar,
-        );
+        canvas.drawRect(Rect.fromLTWH(left, 0, step, size.height), column);
       }
       final value = buckets[i].paise;
-      if (value == 0) continue;
-      bar.color = active
-          ? FinStackColors.onSurface
-          : FinStackColors.accentPurple;
-      canvas.drawRect(
-        Rect.fromCenter(
-          center: Offset(x, bottom - value / max * height * reveal / 2),
-          width: math.min(30, step * .73),
-          height: value / max * height * reveal,
-        ),
-        bar,
+      if (value <= 0) continue;
+      final height = math.max(2.0, value / max * usable * reveal);
+      final bar = Rect.fromLTWH(
+        left + (step - barWidth) / 2,
+        size.height - height,
+        barWidth,
+        height,
+      );
+      canvas.drawRect(bar, active ? activeFill : fill);
+      canvas.drawLine(
+        Offset(bar.left, bar.top),
+        Offset(bar.right, bar.top),
+        cap,
       );
     }
   }

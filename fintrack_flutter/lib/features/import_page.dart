@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/bank_import.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/workspace.dart';
 
 class ImportPageWidget extends StatefulWidget {
   const ImportPageWidget({super.key, required this.bankImport});
@@ -121,7 +122,11 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
             header: true,
             child: const Text(
               'Bank statement',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                fontFamily: FinStackType.display,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(height: 4),
@@ -220,47 +225,52 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ListenableBuilder(
-          listenable: widget.bankImport,
-          builder: (context, _) => _bankCard(widget.bankImport),
-        ),
-        const SizedBox(height: 12),
-        BrutalCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'UPI SCREENSHOT',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-              ),
-              const Text(
-                'Gemini extracts amount/date/UPI from the image.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: FinStackColors.onSurfaceVariant,
+    return WorkspaceScaffold(
+      title: 'Import',
+      action: const BrutalTag(
+        label: 'CSV / AI',
+        color: FinStackColors.surfaceContainer,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 19, 24),
+        children: [
+          ListenableBuilder(
+            listenable: widget.bankImport,
+            builder: (context, _) => _bankCard(widget.bankImport),
+          ),
+          const SizedBox(height: 12),
+          BrutalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('UPI SCREENSHOT', style: FinStackType.caption),
+                const Text(
+                  'Extract the amount, date, and UPI details from a screenshot.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: FinStackColors.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              BrutalButton(
-                label: shotBusy ? 'Reading…' : 'Pick Image',
-                icon: Icons.image,
-                onPressed: shotBusy ? null : pickScreenshot,
-              ),
-              _resultBox(shotResult, shotError),
-            ],
+                const SizedBox(height: 8),
+                BrutalButton(
+                  label: shotBusy ? 'Reading…' : 'Pick Image',
+                  icon: Icons.image,
+                  onPressed: shotBusy ? null : pickScreenshot,
+                ),
+                _resultBox(shotResult, shotError),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        const BrutalCard(
-          child: Text(
-            'Tip: imports need a family. Create or join one from Profile before uploading.',
-            style: TextStyle(fontSize: 11),
+          const SizedBox(height: 12),
+          const BrutalCard(
+            color: FinStackColors.surfaceContainer,
+            child: Text(
+              'Tip: imports need a family. Create or join one from Profile before uploading.',
+              style: TextStyle(fontSize: 11),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

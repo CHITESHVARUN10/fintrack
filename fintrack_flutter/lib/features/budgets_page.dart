@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/workspace.dart';
+import '../core/format.dart';
 import '../widgets/states.dart';
 
 class BudgetsPage extends StatefulWidget {
@@ -44,7 +46,10 @@ class _BudgetsPageState extends State<BudgetsPage> {
       setState(() => items = r.data['items'] ?? r.data ?? []);
     } catch (_) {
       if (mounted) {
-        setState(() => error = 'Could not load budgets. Check your connection and retry.');
+        setState(
+          () => error =
+              'Could not load budgets. Check your connection and retry.',
+        );
       }
     } finally {
       if (mounted) setState(() => loading = false);
@@ -54,29 +59,38 @@ class _BudgetsPageState extends State<BudgetsPage> {
   Future<void> save() async {
     final paise = (double.tryParse(amountCtrl.text) ?? 0) * 100;
     if (paise <= 0) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Enter a budget amount')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter a budget amount')));
       return;
     }
     setState(() => saving = true);
     try {
-      await ApiClient.dio.post('/budgets', data: {
-        'scope': scope,
-        'category': categoryCtrl.text.isEmpty ? null : categoryCtrl.text,
-        'period': period,
-        'amountPaise': paise.round(),
-      });
+      await ApiClient.dio.post(
+        '/budgets',
+        data: {
+          'scope': scope,
+          'category': scope == 'CATEGORY' && categoryCtrl.text.trim().isNotEmpty
+              ? categoryCtrl.text.trim()
+              : null,
+          'period': period,
+          'amountPaise': paise.round(),
+        },
+      );
       amountCtrl.clear();
       categoryCtrl.clear();
       await load();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Budget saved')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Budget saved')));
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save budget. Check your connection.')),
+          const SnackBar(
+            content: Text('Could not save budget. Check your connection.'),
+          ),
         );
       }
     } finally {
@@ -86,106 +100,151 @@ class _BudgetsPageState extends State<BudgetsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const BrutalLoading(label: 'Loading budgets…', cards: 2);
-    if (error != null) return BrutalError(message: error!, onRetry: load);
-
-    return RefreshIndicator(
-      onRefresh: load,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        children: [
-        BrutalCard(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Text('NEW BUDGET',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 4),
-            DropdownButtonFormField<String>(
-              initialValue: scope,
-              decoration: const InputDecoration(labelText: 'Scope'),
-              items: const ['FAMILY', 'CATEGORY', 'MEMBER']
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
-              onChanged: (v) => setState(() => scope = v!),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: categoryCtrl,
-              decoration: const InputDecoration(hintText: 'Category (for CATEGORY scope)'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: amountCtrl,
-              decoration: const InputDecoration(hintText: 'Amount ₹'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 10),
-            BrutalButton(
-              label: saving ? 'Saving…' : 'Save Budget',
-              onPressed: saving ? null : save,
-            ),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        if (items.isEmpty)
-          const BrutalEmpty(
-            icon: Icons.savings_outlined,
-            message: 'No budgets yet. Create one above to start tracking a spending limit.',
-          )
-        else
-          ...items.map((b) {
-            final paise = b['amountPaise'] is num
-                ? b['amountPaise'] as num
-                : (num.tryParse('${b['amountPaise']}') ?? 0);
-            final spent = b['spentPaise'] is num
-                ? b['spentPaise'] as num
-                : (num.tryParse('${b['spentPaise']}') ?? 0);
-            final ratio = paise <= 0 ? 0.0 : (spent / paise).clamp(0.0, 1.0);
-            final over = spent > paise;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: brutal(border: 2, shadow: 3),
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(
-                    child: Text('${b['scope']} ${b['category'] ?? ''}',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  Text('₹${(paise / 100).toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-                ]),
-                const SizedBox(height: 6),
-                ClipRect(
-                  child: Container(
-                    height: 10,
-                    decoration: BoxDecoration(
-                      border: Border.all(width: 1.5),
-                      color: const Color(0xFFE9E2CF),
+    final monthLabel = monthYearLabel(DateTime.now());
+    return WorkspaceScaffold(
+      title: 'Budgets',
+      action: BrutalTag(
+        label: monthLabel,
+        color: FinStackColors.surfaceContainer,
+      ),
+      body: loading
+          ? const BrutalLoading(label: 'Loading budgets…', cards: 2)
+          : error != null
+          ? BrutalError(message: error!, onRetry: load)
+          : RefreshIndicator(
+              onRefresh: load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 14, 19, 24),
+                children: [
+                  BrutalCard(
+                    child: Column(
+                      spacing: 10,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const BrutalSectionTitle(title: 'New budget'),
+                        DropdownButtonFormField<String>(
+                          initialValue: scope,
+                          decoration: const InputDecoration(labelText: 'Scope'),
+                          items: const ['FAMILY', 'CATEGORY', 'MEMBER']
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) setState(() => scope = value);
+                          },
+                        ),
+                        if (scope == 'CATEGORY')
+                          BrutalField(
+                            label: 'Category',
+                            controller: categoryCtrl,
+                            hint: 'e.g. Dining, Travel',
+                          ),
+                        BrutalField(
+                          label: 'Amount ₹',
+                          controller: amountCtrl,
+                          hint: 'e.g. 5000',
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                        BrutalButton(
+                          label: saving ? 'Saving…' : 'Save budget',
+                          block: true,
+                          onPressed: saving ? null : save,
+                        ),
+                      ],
                     ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: ratio,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                        color: over ? const Color(0xFFD43A6C) : const Color(0xFF1E1C10),
+                  ),
+                  const SizedBox(height: 13),
+                  if (items.isEmpty)
+                    const BrutalEmpty(
+                      icon: Icons.savings_outlined,
+                      message:
+                          'No budgets yet. Create one above to start tracking a spending limit.',
+                    )
+                  else
+                    for (final item in items.whereType<Map>())
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _budgetCard(item),
                       ),
-                    ),
-                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _budgetCard(Map item) {
+    final limit = num.tryParse('${item['amountPaise']}') ?? 0;
+    final spent = num.tryParse('${item['spentPaise']}') ?? 0;
+    final ratio = limit <= 0 ? 0.0 : (spent / limit).clamp(0.0, 1.0);
+    final over = spent > limit;
+    final category = '${item['category'] ?? ''}';
+    final scope = '${item['scope'] ?? ''}';
+    return BrutalCard(
+      child: Column(
+        spacing: 9,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  category.isEmpty ? scope : '$scope · $category',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(height: 4),
-                Text('Spent ₹${(spent / 100).toStringAsFixed(0)}'
-                    '${over ? ' · over budget' : ''}',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: over ? const Color(0xFF93000A) : null)),
-              ]),
-            );
-          }),
-      ]),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                inr(limit / 100),
+                style: FinStackType.amount.copyWith(fontSize: 14),
+              ),
+            ],
+          ),
+          Semantics(
+            label: 'Budget used',
+            value: '${(ratio * 100).round()} percent',
+            child: Container(
+              height: 12,
+              decoration: brutal(
+                color: FinStackColors.surfaceContainer,
+                border: 2,
+                shadow: 0,
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: ratio,
+                child: ColoredBox(
+                  color: over
+                      ? FinStackColors.accentPink
+                      : FinStackColors.onSurface,
+                ),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Spent ${inr(spent / 100)}${over ? '' : ' (${(ratio * 100).round()}%)'}',
+                  style: FinStackType.caption,
+                ),
+              ),
+              if (over)
+                const BrutalTag(
+                  label: 'Over budget',
+                  color: FinStackColors.errorContainer,
+                  textColor: FinStackColors.onErrorContainer,
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../theme/finstack_theme.dart';
@@ -24,6 +25,44 @@ const _allCategories = [
 ];
 
 const _pageSize = 50;
+
+const _types = [
+  'EXPENSE',
+  'INCOME',
+  'INTERNAL_TRANSFER',
+  'CASH_WITHDRAWAL',
+  'CASH_EXPENSE',
+];
+
+const _modes = ['UPI', 'BANK', 'CASH', 'CARD', 'OTHER'];
+
+const _tabular = <FontFeature>[FontFeature.tabularFigures()];
+
+TextStyle _numStyle({
+  double size = 13,
+  FontWeight weight = FontWeight.w800,
+  Color color = FinStackColors.onSurface,
+  double letterSpacing = -0.2,
+  double height = 1.2,
+}) => FinStackType.amount.copyWith(
+  fontSize: size,
+  fontWeight: weight,
+  letterSpacing: letterSpacing,
+  height: height,
+  color: color,
+  fontFeatures: _tabular,
+);
+
+TextStyle _labelStyle({
+  double size = 9.5,
+  Color color = FinStackColors.onSurfaceVariant,
+  double letterSpacing = 0.9,
+}) => FinStackType.caption.copyWith(
+  fontSize: size,
+  letterSpacing: letterSpacing,
+  height: 1.25,
+  color: color,
+);
 
 enum _Period {
   thisMonth('This month'),
@@ -76,8 +115,18 @@ IconData _typeIcon(String type) {
 }
 
 class TransactionsPage extends StatefulWidget {
-  const TransactionsPage({super.key, this.refresh = 0});
+  const TransactionsPage({
+    super.key,
+    this.refresh = 0,
+    this.showHeader = false,
+  });
+
   final int refresh;
+
+  /// Renders a branded Part 2 header with the active ledger badge. Off by
+  /// default so the page still works inside a shell that supplies its own bar.
+  final bool showHeader;
+
   @override
   State<TransactionsPage> createState() => _TransactionsPageState();
 }
@@ -263,11 +312,6 @@ class _TransactionsPageState extends State<TransactionsPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-        side: BorderSide(color: FinStackColors.onSurface, width: 3),
-      ),
       builder: (sheetContext) => _FiltersSheet(
         period: period,
         fromDate: _dateRange.$1,
@@ -293,7 +337,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   List<String> get _filters => [
     if (modeFilter.isNotEmpty) modeFilter,
-    if (statusFilter.isNotEmpty) _filterStatuses[statusFilter]!,
+    if (statusFilter.isNotEmpty) _filterStatuses[statusFilter] ?? statusFilter,
     if (categoryFilter.isNotEmpty) categoryFilter,
     if (vendorCtrl.text.trim().isNotEmpty) vendorCtrl.text.trim(),
   ];
@@ -315,14 +359,16 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final added = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
-        side: BorderSide(color: FinStackColors.onSurface, width: 3),
-      ),
+      useSafeArea: true,
       builder: (_) => const _AddTransactionSheet(),
     );
-    if (added == true) load();
+    if (added == true) {
+      await load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction added to your ledger.')),
+      );
+    }
   }
 
   void _showDetail(Map<String, dynamic> txn) {
@@ -337,9 +383,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final list = loading ? <Map<String, dynamic>>[] : filtered;
-    final headers = _headers(list);
-    return Stack(
+    final body = Stack(
       children: [
         RefreshIndicator(
           color: FinStackColors.onSurface,
@@ -349,11 +393,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
             controller: _scroll,
             physics: const AlwaysScrollableScrollPhysics(),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 92),
-            itemCount: headers.length + list.length + 1,
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 104),
+            itemCount: _headers.length + _list.length + 1,
             itemBuilder: (context, index) {
-              if (index < headers.length) return headers[index];
-              final i = index - headers.length;
+              if (index < _headers.length) return _headers[index];
+              final i = index - _headers.length;
+              final list = _list;
               if (i < list.length) {
                 final txn = list[i];
                 final previous = i > 0 ? list[i - 1] : null;
@@ -382,178 +427,296 @@ class _TransactionsPageState extends State<TransactionsPage> {
             label: 'Add',
             icon: Icons.add,
             fontSize: 13,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            shadow: 4,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
             onPressed: _openAdd,
+          ),
+        ),
+      ],
+    );
+    if (!widget.showHeader) return body;
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const FinStackTitle('Activity'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: BrutalTag(
+              label: familyView ? 'Family ledger' : 'My ledger',
+              color: FinStackColors.surfaceContainer,
+            ),
+          ),
+        ],
+      ),
+      body: BrutalGrid(child: body),
+    );
+  }
+
+  List<Map<String, dynamic>> get _list =>
+      loading && items.isEmpty ? const [] : filtered;
+
+  List<Widget> get _headers {
+    final actual = ((summary['actualExpenditurePaise'] ?? 0) as num) / 100;
+    final movement = ((summary['totalMovementPaise'] ?? 0) as num) / 100;
+    final firstLoad = loading && items.isEmpty;
+    return [
+      _scopeToggle(),
+      const SizedBox(height: 14),
+      _summaryCard(actual, movement),
+      const SizedBox(height: 14),
+      if (items.isNotEmpty || searchCtrl.text.isNotEmpty) ...[
+        _searchField(),
+        const SizedBox(height: 14),
+      ],
+      if (firstLoad)
+        const _SkeletonFeed()
+      else if (error != null && items.isEmpty)
+        _errorCard()
+      else if (_list.isEmpty)
+        _emptyState(),
+    ];
+  }
+
+  Widget _scopeToggle() {
+    return Row(
+      children: [
+        Expanded(
+          child: _HardPress(
+            shadow: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            color: familyView ? Colors.white : FinStackColors.brandYellow,
+            selected: !familyView,
+            semanticLabel: 'My activity',
+            onTap: () {
+              if (!familyView) return;
+              dismissKeyboard(context);
+              setState(() => familyView = false);
+              load();
+            },
+            child: Text(
+              'My activity',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _HardPress(
+            shadow: 3,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            color: familyView ? FinStackColors.brandYellow : Colors.white,
+            selected: familyView,
+            semanticLabel: 'Family activity',
+            onTap: () {
+              if (familyView) return;
+              dismissKeyboard(context);
+              setState(() => familyView = true);
+              load();
+            },
+            child: Text(
+              'Family',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  List<Widget> _headers(List<Map<String, dynamic>> list) {
-    final actual = ((summary['actualExpenditurePaise'] ?? 0) as num) / 100;
-    final movement = ((summary['totalMovementPaise'] ?? 0) as num) / 100;
-    return [
-      Row(
+  Widget _summaryCard(double spent, double movement) {
+    final active = _filters;
+    final firstLoad = loading && items.isEmpty;
+    return BrutalCard(
+      color: FinStackColors.surfaceContainer,
+      shadow: 5,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Semantics(
-              selected: !familyView,
-              child: OutlinedButton(
-                style: _filterButtonStyle(
-                  familyView ? Colors.white : FinStackColors.brandYellow,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        _periodTitle(context),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(
+                              fontSize: 22,
+                              height: 1.1,
+                              letterSpacing: -0.4,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      firstLoad
+                          ? 'Loading ledger…'
+                          : '$total transaction${total == 1 ? '' : 's'}',
+                      style: _numStyle(
+                        size: 11.5,
+                        weight: FontWeight.w700,
+                        color: FinStackColors.onSurfaceVariant,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  if (!familyView) return;
-                  setState(() => familyView = false);
-                  load();
-                },
-                child: const Text('My activity'),
               ),
-            ),
+              const SizedBox(width: 10),
+              _HardPress(
+                onTap: _openFilters,
+                shadow: 2.5,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 10,
+                ),
+                semanticLabel: active.isEmpty
+                    ? 'Filters'
+                    : 'Filters, ${active.length} active',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.tune, size: 15),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Filters',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    if (active.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: FinStackColors.accentPink,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: FinStackColors.onSurface,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Semantics(
-              selected: familyView,
-              child: OutlinedButton(
-                style: _filterButtonStyle(
-                  familyView ? FinStackColors.brandYellow : Colors.white,
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryStat(
+                  label: 'Spent',
+                  value: firstLoad ? '—' : inr(spent),
                 ),
-                onPressed: () {
-                  if (familyView) return;
-                  setState(() => familyView = true);
-                  load();
-                },
-                child: const Text('Family'),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SummaryStat(
+                  label: 'Movement',
+                  value: firstLoad ? '—' : inr(movement),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-      const SizedBox(height: 10),
-      BrutalCard(
-        color: FinStackColors.surfaceContainer,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      _periodTitle(context),
-                      style: const TextStyle(
-                        fontSize: 23,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
-                      ),
-                    ),
-                  ),
+    );
+  }
+
+  Widget _searchField() {
+    return Container(
+      decoration: const BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: FinStackColors.onSurface,
+            offset: Offset(3, 3),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: searchCtrl,
+        onChanged: (_) => setState(() {}),
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: 'Search loaded transactions',
+          prefixIcon: const Icon(Icons.search, size: 18),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 0,
+          ),
+          suffixIcon: searchCtrl.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () => setState(searchCtrl.clear),
+                  icon: const Icon(Icons.close, size: 18),
                 ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  style: _filterButtonStyle(
-                    _filters.isEmpty
-                        ? Colors.white
-                        : FinStackColors.brandYellow,
-                  ),
-                  onPressed: _openFilters,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.tune, size: 17),
-                      const SizedBox(width: 6),
-                      Text(
-                        _filters.isEmpty
-                            ? 'Filters'
-                            : 'Filters (${_filters.length})',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (!loading && (error == null || items.isNotEmpty)) ...[
-              Text('$total transaction${total == 1 ? '' : 's'}'),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatTile(label: 'Spent', value: inr(actual)),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _StatTile(label: 'Movement', value: inr(movement)),
-                  ),
-                ],
-              ),
-            ],
-          ],
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 12,
+          ),
         ),
       ),
-      const SizedBox(height: 12),
-      if (_filters.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Filtered by ${_filters.join(' · ')}',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+    );
+  }
+
+  Widget _errorCard() {
+    return BrutalCard(
+      color: FinStackColors.errorContainer,
+      border: 2.5,
+      shadow: 3,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'COULD NOT LOAD',
+            style: _labelStyle(
+              color: FinStackColors.onErrorContainer,
+              letterSpacing: 0.7,
+            ),
           ),
-        ),
-      if (items.isNotEmpty || searchCtrl.text.isNotEmpty) ...[
-        TextField(
-          controller: searchCtrl,
-          onChanged: (_) => setState(() {}),
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            labelText: 'Search loaded transactions',
-            prefixIcon: const Icon(Icons.search, size: 20),
-            suffixIcon: searchCtrl.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'Clear search',
-                    onPressed: () => setState(searchCtrl.clear),
-                    icon: const Icon(Icons.close),
-                  ),
+          const SizedBox(height: 6),
+          Text(
+            error!,
+            style: const TextStyle(
+              color: FinStackColors.onErrorContainer,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              height: 1.4,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-      ],
-      if (loading)
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: LinearProgressIndicator(
-            semanticsLabel: 'Loading transactions',
-          ),
-        )
-      else if (error != null && items.isEmpty)
-        BrutalCard(
-          color: FinStackColors.errorContainer,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                error!,
-                style: const TextStyle(
-                  color: FinStackColors.onErrorContainer,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              BrutalButton(
-                label: 'Retry',
-                icon: Icons.refresh,
-                onPressed: load,
-              ),
-            ],
-          ),
-        )
-      else if (list.isEmpty)
-        _emptyState(),
-    ];
+          const SizedBox(height: 10),
+          BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
+        ],
+      ),
+    );
   }
 
   Widget _emptyState() {
@@ -561,55 +724,113 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final hasFilters = _filters.isNotEmpty;
     final currentMonth = period == _Period.thisMonth;
     final month = MaterialLocalizations.of(context).formatMonthYear(_today);
-    return BrutalEmpty(
-      icon: Icons.receipt_long_outlined,
-      message: hasSearch
-          ? 'No matches in the loaded transactions.'
-          : hasFilters
-          ? 'No transactions match the filters for this period.'
-          : currentMonth
-          ? 'No transactions in $month so far. You can check the previous month.'
-          : period == _Period.allTime
-          ? 'No transactions yet. Scan a QR or add one to get started.'
-          : 'No transactions for ${_periodTitle(context)}.',
-      action: hasSearch
-          ? BrutalButton(
-              label: 'Clear search',
-              onPressed: () => setState(searchCtrl.clear),
-            )
-          : hasFilters
-          ? BrutalButton(label: 'Clear filters', onPressed: _clearFilters)
-          : currentMonth
-          ? BrutalButton(
-              label: 'View previous month',
-              icon: Icons.arrow_back,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              onPressed: () => _selectPeriod(_Period.previousMonth),
-            )
-          : period == _Period.allTime
-          ? null
-          : BrutalButton(
-              label: 'Back to this month',
-              icon: Icons.calendar_today_outlined,
-              onPressed: () => _selectPeriod(_Period.thisMonth),
-            ),
+    final message = hasSearch
+        ? 'No matches in the loaded transactions.'
+        : hasFilters
+        ? 'No transactions match the filters for this period.'
+        : currentMonth
+        ? 'No transactions in $month so far. You can check the previous month.'
+        : period == _Period.allTime
+        ? 'No transactions yet. Scan a QR or add one to get started.'
+        : 'No transactions for ${_periodTitle(context)}.';
+    final action = hasSearch
+        ? BrutalButton(
+            block: true,
+            label: 'Clear search',
+            onPressed: () => setState(searchCtrl.clear),
+          )
+        : hasFilters
+        ? BrutalButton(
+            block: true,
+            label: 'Clear filters',
+            onPressed: _clearFilters,
+          )
+        : currentMonth
+        ? BrutalButton(
+            block: true,
+            label: 'View previous month',
+            icon: Icons.arrow_back,
+            onPressed: () => _selectPeriod(_Period.previousMonth),
+          )
+        : period == _Period.allTime
+        ? null
+        : BrutalButton(
+            block: true,
+            label: 'Back to this month',
+            icon: Icons.calendar_today_outlined,
+            onPressed: () => _selectPeriod(_Period.thisMonth),
+          );
+    return Container(
+      decoration: brutal(color: Colors.white, border: 3, shadow: 5),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: FinStackColors.brandYellow,
+                  border: Border.all(
+                    color: FinStackColors.onSurface,
+                    width: 2.5,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: FinStackColors.onSurface,
+                      offset: Offset(2.5, 2.5),
+                      blurRadius: 0,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  hasFilters || hasSearch
+                      ? Icons.search_off
+                      : Icons.receipt_long_outlined,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (action != null) ...[const SizedBox(height: 14), action],
+        ],
+      ),
     );
   }
 
   Widget _dayHeader(String? iso) => Padding(
-    padding: const EdgeInsets.only(top: 14, bottom: 6),
+    padding: const EdgeInsets.only(top: 14, bottom: 8),
     child: Row(
       children: [
-        Container(width: 8, height: 14, color: FinStackColors.brandYellow),
+        Container(
+          width: 6,
+          height: 14,
+          decoration: BoxDecoration(
+            color: FinStackColors.brandYellow,
+            border: Border.all(color: FinStackColors.onSurface, width: 1.5),
+          ),
+        ),
         const SizedBox(width: 8),
         Text(
           _dayLabel(iso).toUpperCase(),
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.1,
-            color: FinStackColors.onSurfaceVariant,
-          ),
+          style: _labelStyle(size: 11, letterSpacing: 0.9),
         ),
       ],
     ),
@@ -622,80 +843,98 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final vendor =
         '${t['recipient']?['name'] ?? t['productName'] ?? t['category'] ?? 'Transaction'}';
     final status = '${t['status'] ?? ''}';
+    final category = '${t['category'] ?? ''}';
+    final mode = '${t['mode'] ?? ''}';
+    final creator = (t['createdBy'] as Map?)?['name'];
+    final meta = [
+      if (category.isNotEmpty) category,
+      if (mode.isNotEmpty) mode,
+      if ('${t['visibility'] ?? ''}' == 'PRIVATE') 'PRIVATE',
+      if (familyView && creator != null) 'by $creator',
+    ].join(' · ');
+    final amount = '${isIncome ? '+' : ''}${inr(paise)}';
+    final statusLabel = (status.isEmpty ? type : status).replaceAll('_', ' ');
+    final (tagBg, tagFg) = status == 'RECONCILED'
+        ? (FinStackColors.tertiary, FinStackColors.onSurface)
+        : status == 'PENDING_REVIEW'
+        ? (FinStackColors.errorContainer, FinStackColors.onErrorContainer)
+        : (Colors.white, FinStackColors.onSurface);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: GestureDetector(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _HardPress(
         onTap: () => _showDetail(t),
-        child: Container(
-          decoration: brutal(shadow: 3),
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: isIncome
-                      ? FinStackColors.tertiary
-                      : FinStackColors.surfaceContainer,
-                  border: Border.all(color: FinStackColors.onSurface, width: 2),
-                ),
-                child: Icon(_typeIcon(type), size: 19),
+        shadow: 3,
+        padding: const EdgeInsets.all(12),
+        semanticLabel: '$vendor, $amount, $statusLabel',
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isIncome
+                    ? FinStackColors.tertiary
+                    : FinStackColors.surfaceContainer,
+                border: Border.all(color: FinStackColors.onSurface, width: 2),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      vendor,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
+              child: Icon(_typeIcon(type), size: 19),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    vendor,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      height: 1.2,
                     ),
-                    const SizedBox(height: 2),
+                  ),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 3),
                     Text(
-                      '${t['category'] ?? ''} · ${t['mode'] ?? ''}',
+                      meta,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
                         color: FinStackColors.onSurfaceVariant,
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    inr(paise),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: isIncome
-                          ? FinStackColors.onTertiaryContainer
-                          : FinStackColors.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  BrutalTag(
-                    label: status.isEmpty ? type : status.replaceAll('_', ' '),
-                    color: status == 'RECONCILED'
-                        ? FinStackColors.tertiary
-                        : status == 'PENDING_REVIEW'
-                        ? FinStackColors.errorContainer
-                        : Colors.white,
-                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 132),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      amount,
+                      style: _numStyle(size: 15, letterSpacing: -0.45),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                BrutalTag(
+                  label: statusLabel.isEmpty ? '—' : statusLabel,
+                  color: tagBg,
+                  textColor: tagFg,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -704,57 +943,302 @@ class _TransactionsPageState extends State<TransactionsPage> {
   Widget _footer(List<Map<String, dynamic>> list) {
     if (loading) return const SizedBox.shrink();
     if (loadingMore) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 18),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 8),
-            Text(
-              'Loading more…',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      );
-    }
-    if (items.isEmpty) return const SizedBox(height: 20);
-    if (hasMore) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Center(
-          child: Column(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Semantics(
+          label: 'Loading more transactions',
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (error != null) ...[Text(error!), const SizedBox(height: 8)],
-              BrutalButton(
-                label: error == null ? 'Load more' : 'Retry loading more',
-                icon: error == null ? Icons.expand_more : Icons.refresh,
-                onPressed: _loadMore,
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Loading more…',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ],
           ),
         ),
       );
     }
+    if (items.isEmpty) return const SizedBox(height: 20);
+    if (hasMore) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        child: Column(
+          children: [
+            if (error != null) ...[
+              Text(
+                error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: FinStackColors.onErrorContainer,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              '${items.length} of $total shown',
+              style: _numStyle(
+                size: 11,
+                weight: FontWeight.w700,
+                color: FinStackColors.onSurfaceVariant,
+                letterSpacing: 0.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            BrutalButton(
+              label: error == null ? 'Load more' : 'Retry loading more',
+              icon: error == null ? Icons.expand_more : Icons.refresh,
+              onPressed: _loadMore,
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        border: Border.all(color: FinStackColors.onSurface, width: 2),
         color: FinStackColors.surfaceContainer,
+        border: Border.all(color: FinStackColors.onSurface, width: 2.5),
       ),
+      child: Text(
+        list.length == total
+            ? 'All $total transactions loaded'
+            : '${list.length} of $total shown',
+        textAlign: TextAlign.center,
+        style: _numStyle(
+          size: 11.5,
+          weight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: brutal(color: Colors.white, border: 2.5, shadow: 2.5),
+    padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: _labelStyle(size: 9.5)),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(value, style: _numStyle(size: 17, letterSpacing: -0.5)),
+        ),
+      ],
+    ),
+  );
+}
+
+class _SkeletonFeed extends StatelessWidget {
+  const _SkeletonFeed();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: 'Loading transactions',
       child: Column(
+        children: [for (var i = 0; i < 3; i++) const _SkeletonCard()],
+      ),
+    );
+  }
+}
+
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(12),
+    decoration: brutal(color: Colors.white, border: 2.5, shadow: 3),
+    child: Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: FinStackColors.surfaceContainer,
+            border: Border.all(color: FinStackColors.onSurface, width: 2),
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 130,
+                height: 10,
+                color: FinStackColors.surfaceHigh,
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: 190,
+                height: 8,
+                color: FinStackColors.surfaceContainer,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Container(width: 64, height: 11, color: FinStackColors.surfaceHigh),
+            const SizedBox(height: 8),
+            Container(
+              width: 46,
+              height: 14,
+              decoration: BoxDecoration(
+                color: FinStackColors.surfaceContainer,
+                border: Border.all(color: FinStackColors.onSurface, width: 1.5),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _HardPress extends StatefulWidget {
+  const _HardPress({
+    required this.child,
+    this.onTap,
+    this.color = Colors.white,
+    this.shadow = 3,
+    this.padding = EdgeInsets.zero,
+    this.semanticLabel,
+    this.selected,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final Color color;
+  final double shadow;
+  final EdgeInsets padding;
+  final String? semanticLabel;
+  final bool? selected;
+
+  @override
+  State<_HardPress> createState() => _HardPressState();
+}
+
+class _HardPressState extends State<_HardPress> {
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    final shift = _down && enabled
+        ? (widget.shadow >= 3 ? 3.0 : widget.shadow)
+        : 0.0;
+    final box = AnimatedContainer(
+      duration: const Duration(milliseconds: 90),
+      curve: Curves.easeOut,
+      transform: Matrix4.translationValues(shift, shift, 0),
+      padding: widget.padding,
+      decoration: BoxDecoration(
+        color: widget.color,
+        border: Border.all(color: FinStackColors.onSurface, width: 2.5),
+        boxShadow: enabled && !_down
+            ? [
+                BoxShadow(
+                  color: FinStackColors.onSurface,
+                  offset: Offset(widget.shadow, widget.shadow),
+                  blurRadius: 0,
+                ),
+              ]
+            : null,
+      ),
+      child: widget.child,
+    );
+    final gesture = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => setState(() => _down = true) : null,
+      onTapUp: enabled ? (_) => setState(() => _down = false) : null,
+      onTapCancel: enabled ? () => setState(() => _down = false) : null,
+      onTap: widget.onTap,
+      child: box,
+    );
+    final label = widget.semanticLabel;
+    if (label == null) return gesture;
+    return Semantics(
+      container: true,
+      button: true,
+      selected: widget.selected,
+      label: label,
+      excludeSemantics: true,
+      onTap: widget.onTap,
+      child: gesture,
+    );
+  }
+}
+
+class _SheetButton extends StatelessWidget {
+  const _SheetButton({
+    required this.label,
+    this.onPressed,
+    this.color = FinStackColors.brandYellow,
+    this.icon,
+    this.fontSize = 12,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final Color color;
+  final IconData? icon;
+  final double fontSize;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return _HardPress(
+      onTap: onPressed,
+      color: enabled ? color : color.withValues(alpha: 0.45),
+      padding: padding,
+      semanticLabel: label,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            list.length == total
-                ? 'All $total transactions loaded'
-                : '${list.length} of $total shown',
-            style: const TextStyle(fontSize: 11),
+          if (icon != null) ...[
+            Icon(icon, size: fontSize + 4),
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
         ],
       ),
@@ -762,33 +1246,116 @@ class _TransactionsPageState extends State<TransactionsPage> {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  final String label;
-  final String value;
-  const _StatTile({required this.label, required this.value});
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({
+    required this.title,
+    this.subtitle,
+    this.tag,
+    this.closeLabel = 'Close',
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? tag;
+  final String closeLabel;
+
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: brutal(border: 2, shadow: 2, color: Colors.white),
-    padding: const EdgeInsets.all(8),
-    child: Column(
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (tag != null) ...[tag!, const SizedBox(height: 6)],
+              Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 20,
+                    height: 1.1,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle!,
+                  style: _numStyle(
+                    size: 11,
+                    weight: FontWeight.w700,
+                    color: FinStackColors.onSurfaceVariant,
+                    letterSpacing: 0.1,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        BrutalIconButton(
+          icon: Icons.close,
+          tooltip: closeLabel,
+          size: 32,
+          color: FinStackColors.surfaceContainer,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    );
+  }
+}
+
+class _SheetSelect extends StatelessWidget {
+  const _SheetSelect({
+    super.key,
+    required this.label,
+    required this.initialValue,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String initialValue;
+  final Map<String, String> options;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+          style: _labelStyle(size: 10, letterSpacing: 0.7),
         ),
-        const SizedBox(height: 3),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: initialValue,
+          icon: const Icon(Icons.expand_more, size: 20),
+          style: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: FinStackColors.onSurface,
           ),
+          items: [
+            for (final entry in options.entries)
+              DropdownMenuItem(
+                value: entry.key,
+                child: Text(entry.value, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: (value) {
+            if (value != null) onChanged(value);
+          },
         ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 const _filterStatuses = {
@@ -796,15 +1363,6 @@ const _filterStatuses = {
   'ACTIVE': 'Active',
   'RECONCILED': 'Reconciled',
 };
-
-ButtonStyle _filterButtonStyle(Color background) => OutlinedButton.styleFrom(
-  minimumSize: const Size(48, 48),
-  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-  backgroundColor: background,
-  foregroundColor: FinStackColors.onSurface,
-  side: const BorderSide(color: FinStackColors.onSurface, width: 2),
-  shape: const RoundedRectangleBorder(),
-);
 
 class _FiltersSheet extends StatefulWidget {
   final _Period period;
@@ -829,10 +1387,10 @@ class _FiltersSheet extends StatefulWidget {
 }
 
 class _FiltersSheetState extends State<_FiltersSheet> {
+  final _today = DateUtils.dateOnly(DateTime.now());
   late _Period period = widget.period;
   late DateTime from = widget.fromDate ?? DateTime(_today.year, _today.month);
   late DateTime to = widget.toDate ?? _today;
-  final _today = DateUtils.dateOnly(DateTime.now());
   late String mode = widget.mode;
   late String status = widget.status;
   late String category = widget.category;
@@ -878,123 +1436,115 @@ class _FiltersSheetState extends State<_FiltersSheet> {
     });
   }
 
-  Widget _dropdown(
-    String label,
-    String value,
-    Map<String, String> options,
-    ValueChanged<String> onChanged,
-  ) => DropdownButtonFormField<String>(
-    isExpanded: true,
-    initialValue: value,
-    decoration: InputDecoration(labelText: label),
-    items: [
-      for (final entry in options.entries)
-        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-    ],
-    onChanged: (value) {
-      if (value != null) setState(() => onChanged(value));
-    },
-  );
+  String _subtitle(BuildContext context) {
+    final dates = MaterialLocalizations.of(context);
+    final month = switch (period) {
+      _Period.thisMonth => dates.formatMonthYear(
+        DateTime(_today.year, _today.month),
+      ),
+      _Period.previousMonth => dates.formatMonthYear(
+        DateTime(_today.year, _today.month - 1),
+      ),
+      _Period.allTime => 'all-time',
+      _Period.custom =>
+        '${dates.formatShortDate(from)} – ${dates.formatShortDate(to)}',
+    };
+    return 'Narrow down your $month ledger';
+  }
 
   @override
   Widget build(BuildContext context) {
     final dates = MaterialLocalizations.of(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.86,
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          padding: EdgeInsets.fromLTRB(16, 18, 16, 24 + bottomInset),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Semantics(
-                      header: true,
-                      child: const Text(
-                        'Filter transactions',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close filters',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+              _SheetHeader(
+                title: 'Filter transactions',
+                subtitle: _subtitle(context),
+                closeLabel: 'Close filters',
               ),
-              const SizedBox(height: 12),
-              _dropdown(
-                'Date range',
-                period.name,
-                {
+              const SizedBox(height: 16),
+              _SheetSelect(
+                label: 'Date range',
+                initialValue: period.name,
+                options: {
                   for (final option in _Period.values)
                     option.name: option.label,
                 },
-                (value) => period = _Period.values.byName(value),
+                onChanged: (value) =>
+                    setState(() => period = _Period.values.byName(value)),
               ),
               if (period == _Period.custom) ...[
                 const SizedBox(height: 10),
-                OutlinedButton(
-                  style: _filterButtonStyle(Colors.white),
+                _SheetButton(
+                  label: 'From ${dates.formatShortDate(from)}',
+                  color: Colors.white,
+                  fontSize: 12,
                   onPressed: () => _pick(true),
-                  child: Text('From ${dates.formatShortDate(from)}'),
                 ),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  style: _filterButtonStyle(Colors.white),
+                _SheetButton(
+                  label: 'Through ${dates.formatShortDate(to)}',
+                  color: Colors.white,
+                  fontSize: 12,
                   onPressed: () => _pick(false),
-                  child: Text('Through ${dates.formatShortDate(to)}'),
                 ),
               ],
-              const SizedBox(height: 12),
-              _dropdown('Payment method', mode, const {
-                '': 'Any method',
-                'UPI': 'UPI',
-                'BANK': 'Bank',
-                'CASH': 'Cash',
-                'CARD': 'Card',
-                'OTHER': 'Other',
-              }, (value) => mode = value),
-              const SizedBox(height: 12),
-              _dropdown('Status', status, const {
-                '': 'Any status',
-                ..._filterStatuses,
-              }, (value) => status = value),
-              const SizedBox(height: 12),
-              _dropdown('Category', category, {
-                '': 'Any category',
-                for (final name in _allCategories) name: name,
-              }, (value) => category = value),
-              const SizedBox(height: 12),
-              TextField(
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Payment method',
+                initialValue: mode,
+                options: const {
+                  '': 'Any method',
+                  'UPI': 'UPI',
+                  'BANK': 'Bank',
+                  'CASH': 'Cash',
+                  'CARD': 'Card',
+                  'OTHER': 'Other',
+                },
+                onChanged: (value) => setState(() => mode = value),
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Status',
+                initialValue: status,
+                options: const {'': 'Any status', ..._filterStatuses},
+                onChanged: (value) => setState(() => status = value),
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Category',
+                initialValue: category,
+                options: {
+                  '': 'Any category',
+                  for (final name in _allCategories) name: name,
+                },
+                onChanged: (value) => setState(() => category = value),
+              ),
+              const SizedBox(height: 13),
+              BrutalField(
+                label: 'Vendor',
                 controller: vendorCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Vendor',
-                  hintText: 'Merchant name or UPI ID',
-                ),
+                hint: 'Merchant name or UPI ID',
                 textInputAction: TextInputAction.done,
               ),
               const SizedBox(height: 18),
-              OutlinedButton(
-                style: _filterButtonStyle(FinStackColors.brandYellow),
-                onPressed: _apply,
-                child: const Text('Apply filters'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                style: _filterButtonStyle(Colors.white),
+              _SheetButton(label: 'Apply filters', onPressed: () => _apply()),
+              const SizedBox(height: 9),
+              _SheetButton(
+                label: 'Reset to this month',
+                color: Colors.white,
                 onPressed: () => _apply(reset: true),
-                child: const Text('Reset to this month'),
               ),
             ],
           ),
@@ -1068,114 +1618,96 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: BrutalTag(
-                label: 'Manual entry',
-                color: FinStackColors.brandYellow,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'ADD TRANSACTION',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(height: 14),
-            BrutalField(
-              label: 'Amount ₹',
-              controller: amountCtrl,
-              hint: '0',
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => add(),
-            ),
-            const SizedBox(height: 10),
-            BrutalField(
-              label: 'Recipient (optional)',
-              controller: recipientCtrl,
-              hint: 'Merchant or person',
-              textCapitalization: TextCapitalization.words,
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              initialValue: type,
-              decoration: const InputDecoration(),
-              items: const [
-                'EXPENSE',
-                'INCOME',
-                'INTERNAL_TRANSFER',
-                'CASH_WITHDRAWAL',
-                'CASH_EXPENSE',
-              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (v) => setState(() => type = v ?? 'EXPENSE'),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              initialValue: mode,
-              decoration: const InputDecoration(),
-              items: const [
-                'UPI',
-                'BANK',
-                'CASH',
-                'CARD',
-                'OTHER',
-              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: (v) => setState(() => mode = v ?? 'UPI'),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              initialValue: category,
-              decoration: const InputDecoration(),
-              items: _allCategories
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
-              onChanged: (v) => setState(() => category = v ?? 'Other'),
-            ),
-            if (error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                error!,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: FinStackColors.onErrorContainer,
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.86,
+        ),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 18, 16, 24 + bottomInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SheetHeader(
+                title: 'ADD TRANSACTION',
+                closeLabel: 'Close add transaction',
+                tag: BrutalTag(
+                  label: 'Manual entry',
+                  color: FinStackColors.brandYellow,
                 ),
               ),
+              const SizedBox(height: 16),
+              BrutalField(
+                label: 'Amount ₹',
+                controller: amountCtrl,
+                hint: '0',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => add(),
+              ),
+              const SizedBox(height: 13),
+              BrutalField(
+                label: 'Recipient (optional)',
+                controller: recipientCtrl,
+                hint: 'Merchant or person',
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Type',
+                initialValue: type,
+                options: {for (final option in _types) option: option},
+                onChanged: (value) => setState(() => type = value),
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Payment method',
+                initialValue: mode,
+                options: {for (final option in _modes) option: option},
+                onChanged: (value) => setState(() => mode = value),
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
+                label: 'Category',
+                initialValue: category,
+                options: {for (final name in _allCategories) name: name},
+                onChanged: (value) => setState(() => category = value),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    error!,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: FinStackColors.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              _SheetButton(
+                label: adding ? 'Adding…' : 'Add transaction',
+                icon: Icons.add,
+                onPressed: adding ? null : add,
+              ),
+              const SizedBox(height: 9),
+              _SheetButton(
+                label: 'Cancel',
+                color: Colors.white,
+                onPressed: adding
+                    ? null
+                    : () => Navigator.of(context).pop(false),
+              ),
             ],
-            const SizedBox(height: 16),
-            BrutalButton(
-              block: true,
-              label: adding ? 'Adding…' : 'Add transaction',
-              icon: Icons.add,
-              onPressed: adding ? null : add,
-            ),
-            const SizedBox(height: 8),
-            BrutalButton(
-              block: true,
-              color: Colors.white,
-              label: 'Cancel',
-              onPressed: adding ? null : () => Navigator.of(context).pop(false),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1228,9 +1760,11 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
       widget.onChanged();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Update failed.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save the change. Try again.'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -1253,9 +1787,11 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
       widget.onChanged();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Resolve failed.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not resolve the duplicate. Try again.'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -1267,163 +1803,247 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
     final tx = detail?['transaction'];
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.85,
-      builder: (_, ctrl) {
+      initialChildSize: 0.86,
+      minChildSize: 0.45,
+      maxChildSize: 0.96,
+      builder: (context, ctrl) {
         if (loading) {
           return const BrutalLoading(label: 'Loading transaction', cards: 2);
         }
         if (tx == null) {
-          return const Center(child: Text('Could not load transaction.'));
+          return SafeArea(
+            top: false,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+              children: [
+                const _SheetHeader(
+                  title: 'Transaction',
+                  subtitle: 'Details unavailable',
+                  closeLabel: 'Close transaction',
+                ),
+                const SizedBox(height: 14),
+                BrutalCard(
+                  color: FinStackColors.errorContainer,
+                  border: 2.5,
+                  shadow: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Could not load this transaction.',
+                        style: const TextStyle(
+                          color: FinStackColors.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      BrutalButton(
+                        label: 'Retry',
+                        icon: Icons.refresh,
+                        onPressed: () {
+                          setState(() => loading = true);
+                          fetch();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
         }
         final paise = ((tx['amountPaise'] ?? 0) as num).toDouble();
         final vis = '${tx['visibility'] ?? 'FAMILY'}';
         final status = '${tx['status'] ?? ''}';
-        final sources = (detail?['sources'] as List?) ?? [];
-        return ListView(
-          controller: ctrl,
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              '₹${(paise / 100).toStringAsFixed(0)} · ${tx['type'] ?? ''}',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-            ),
-            Text(
-              '${_fmtDate('${tx['occurredAt'] ?? ''}')} · ${tx['mode'] ?? ''} · $status',
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            BrutalCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'CATEGORY',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                  ),
-                  DropdownButton<String>(
-                    value: _allCategories.contains(editCategory)
-                        ? editCategory
-                        : 'Other',
-                    isExpanded: true,
-                    items: _allCategories
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (v) => setState(() => editCategory = v),
-                  ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: BrutalButton(
-                      label: busy ? '…' : 'Save category',
-                      onPressed: busy
-                          ? null
-                          : () => patch({'category': editCategory}),
-                    ),
-                  ),
-                ],
+        final sources = (detail?['sources'] as List?) ?? const [];
+        final firstSource = sources.isNotEmpty && sources.first is Map
+            ? sources.first as Map
+            : null;
+        final recipient = (tx['recipient'] as Map?)?['name'] ?? '—';
+        final upi = tx['upiId'] ?? firstSource?['upiId'] ?? '—';
+        final utr = tx['utr'] ?? firstSource?['utr'] ?? '—';
+        final subscription = tx['subscriptionRef'] is Map
+            ? (tx['subscriptionRef'] as Map)['name'] ?? 'linked'
+            : tx['subscriptionRef'] != null
+            ? 'linked'
+            : null;
+        final safeCategory = _allCategories.contains(editCategory)
+            ? editCategory!
+            : 'Other';
+        final statusLabel = status.replaceAll('_', ' ');
+        return SafeArea(
+          top: false,
+          child: ListView(
+            controller: ctrl,
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+            children: [
+              _SheetHeader(
+                title: '${inr(paise / 100)} · ${tx['type'] ?? ''}',
+                subtitle:
+                    '${_fmtDate('${tx['occurredAt'] ?? ''}')} · ${tx['mode'] ?? ''} · $statusLabel',
+                closeLabel: 'Close transaction',
               ),
-            ),
-            const SizedBox(height: 8),
-            BrutalCard(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'VISIBILITY',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        vis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const Text(
-                        'Private is hidden from other members.',
-                        style: TextStyle(fontSize: 10),
-                      ),
-                    ],
-                  ),
-                  BrutalButton(
-                    label: vis == 'PRIVATE' ? 'Make Family' : 'Make Private',
-                    onPressed: busy
-                        ? null
-                        : () => patch({
-                            'visibility': vis == 'PRIVATE'
-                                ? 'FAMILY'
-                                : 'PRIVATE',
-                          }),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            BrutalCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'LINKS',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    'Recipient: ${tx['recipient']?['name'] ?? '—'}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  Text(
-                    'UPI: ${tx['upiId'] ?? detail?['sources']?[0]?['upiId'] ?? '—'}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  Text(
-                    'UTR: ${tx['utr'] ?? detail?['sources']?[0]?['utr'] ?? '—'}',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  if (tx['subscriptionRef'] != null)
-                    Text(
-                      'Subscription: ${tx['subscriptionRef'] is Map ? tx['subscriptionRef']['name'] : 'linked'}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  Text(
-                    'Sources: ${sources.length}',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-            if (status == 'PENDING_REVIEW') ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
               BrutalCard(
+                border: 2.5,
+                shadow: 3,
+                padding: const EdgeInsets.all(13),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'POSSIBLE DUPLICATE',
-                      style: TextStyle(
+                    _SheetSelect(
+                      key: ValueKey('category-${tx['category']}'),
+                      label: 'Category',
+                      initialValue: safeCategory,
+                      options: {for (final c in _allCategories) c: c},
+                      onChanged: (value) =>
+                          setState(() => editCategory = value),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _SheetButton(
+                        label: busy ? 'Saving…' : 'Save category',
                         fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        onPressed: busy
+                            ? null
+                            : () => patch({'category': editCategory}),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    BrutalButton(
-                      label: 'Merge duplicate',
-                      onPressed: busy ? null : () => resolve('merge'),
-                    ),
-                    const SizedBox(height: 8),
-                    BrutalButton(
-                      label: 'Keep separate',
-                      onPressed: busy ? null : () => resolve('keepSeparate'),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              BrutalCard(
+                border: 2.5,
+                shadow: 3,
+                padding: const EdgeInsets.all(13),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'VISIBILITY',
+                            style: _labelStyle(color: FinStackColors.onSurface),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            vis,
+                            style: const TextStyle(
+                              fontFamily: 'Space Grotesk',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Private is hidden from other members.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: FinStackColors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: _SheetButton(
+                        label: vis == 'PRIVATE'
+                            ? 'Make family'
+                            : 'Make private',
+                        fontSize: 11,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        onPressed: busy
+                            ? null
+                            : () => patch({
+                                'visibility': vis == 'PRIVATE'
+                                    ? 'FAMILY'
+                                    : 'PRIVATE',
+                              }),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              BrutalCard(
+                border: 2.5,
+                shadow: 3,
+                padding: const EdgeInsets.all(13),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'LINKS',
+                      style: _labelStyle(color: FinStackColors.onSurface),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      [
+                        'Recipient: $recipient',
+                        'UPI: $upi',
+                        'UTR: $utr',
+                        if (subscription != null) 'Subscription: $subscription',
+                        'Sources: ${sources.length}',
+                      ].join('\n'),
+                      style: _numStyle(
+                        size: 11.5,
+                        weight: FontWeight.w600,
+                        height: 1.65,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (status == 'PENDING_REVIEW') ...[
+                const SizedBox(height: 12),
+                BrutalCard(
+                  color: FinStackColors.errorContainer,
+                  border: 2.5,
+                  shadow: 3,
+                  padding: const EdgeInsets.all(13),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'POSSIBLE DUPLICATE',
+                        style: _labelStyle(
+                          color: FinStackColors.onErrorContainer,
+                          letterSpacing: 0.7,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _SheetButton(
+                        label: 'Merge duplicate',
+                        onPressed: busy ? null : () => resolve('merge'),
+                      ),
+                      const SizedBox(height: 9),
+                      _SheetButton(
+                        label: 'Keep separate',
+                        color: Colors.white,
+                        onPressed: busy ? null : () => resolve('keepSeparate'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         );
       },
     );

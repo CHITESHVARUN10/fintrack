@@ -49,3 +49,9 @@ stitch_screens/
 pdfs/
 /pdfs/
 *.pdf
+
+# Local mobile UI review captures
+/ui-screenshots/
+
+# Local HTML design references
+/htmls/

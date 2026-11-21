@@ -59,37 +59,31 @@ class _BootSplash extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 68,
-                  height: 68,
-                  decoration: BoxDecoration(
-                    color: FinStackColors.brandYellow,
-                    border: Border.all(color: FinStackColors.onSurface, width: 3),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: FinStackColors.onSurface,
-                        offset: Offset(5, 5),
-                        blurRadius: 0,
-                      )
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    'F',
-                    style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, height: 1),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const FinStackMark(size: 84),
+                const SizedBox(height: 16),
                 const Text(
                   'FINSTACK',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.8),
+                  style: TextStyle(
+                    fontFamily: FinStackType.display,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .8,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                const BrutalTag(label: 'Opening your ledger', color: Colors.white),
-                const SizedBox(height: 20),
-                const SizedBox(
-                  width: 120,
-                  child: LinearProgressIndicator(minHeight: 5),
+                const Text('Opening your ledger', style: FinStackType.caption),
+                const SizedBox(height: 16),
+                Container(
+                  width: 190,
+                  decoration: brutal(
+                    color: FinStackColors.surfaceContainer,
+                    shadow: 3,
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: const LinearProgressIndicator(
+                    minHeight: 8,
+                    semanticsLabel: 'Opening your ledger',
+                  ),
                 ),
               ],
             ),

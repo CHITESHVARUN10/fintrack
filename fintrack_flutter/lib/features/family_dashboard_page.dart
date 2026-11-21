@@ -53,7 +53,10 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   String _mid(Map m) => '${m['id'] ?? m['_id'] ?? ''}';
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final qp = <String, dynamic>{};
       if (from != null) qp['from'] = from!.toIso8601String().substring(0, 10);
@@ -68,7 +71,10 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
       setState(() => data = res.data);
     } catch (_) {
       if (mounted) {
-        setState(() => error = 'Could not load family analytics. Check your connection and retry.');
+        setState(
+          () => error =
+              'Could not load family analytics. Check your connection and retry.',
+        );
       }
     } finally {
       if (mounted) setState(() => loading = false);
@@ -76,7 +82,10 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
   }
 
   Future<void> clearFilters() async {
-    setState(() { selMembers = []; selModes = []; });
+    setState(() {
+      selMembers = [];
+      selModes = [];
+    });
     await load();
   }
 
@@ -99,9 +108,14 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
           });
         }
       },
+      style: OutlinedButton.styleFrom(
+        backgroundColor: FinStackColors.surfaceContainer,
+        minimumSize: const Size(44, 44),
+      ),
       child: Text(
         value == null ? label : dateLabel(value),
         overflow: TextOverflow.ellipsis,
+        style: FinStackType.caption,
       ),
     );
   }
@@ -115,41 +129,40 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
     final topVendors = (data?['topVendors'] as List?) ?? [];
     final heatmap = (data?['heatmap'] as List?) ?? [];
     final highestDay = data?['highestDay'];
+    double daySpend(Map item) => double.tryParse('${item['spendPaise']}') ?? 0;
+    final maxSpend = heatmap
+        .whereType<Map>()
+        .map(daySpend)
+        .fold<double>(0, (max, spend) => spend > max ? spend : max);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 19, 26),
       children: [
         BrutalCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              LayoutBuilder(builder: (context, constraints) {
-                final dates = Row(children: [
+              Row(
+                spacing: 8,
+                children: [
                   Expanded(child: _dateField('From', from, true)),
-                  const SizedBox(width: 8),
                   Expanded(child: _dateField('To', to, false)),
-                ]);
-                final apply = BrutalButton(label: 'Apply', onPressed: load);
-                if (constraints.maxWidth < 380) {
-                  return Column(children: [
-                    dates,
-                    const SizedBox(height: 8),
-                    SizedBox(width: double.infinity, child: apply),
-                  ]);
-                }
-                return Row(children: [
-                  Expanded(child: _dateField('From', from, true)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _dateField('To', to, false)),
-                  const SizedBox(width: 8),
-                  apply,
-                ]);
-              }),
-              const SizedBox(height: 8),
-              const Text('MEMBERS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(height: 9),
+              BrutalButton(
+                label: 'Apply',
+                block: true,
+                onPressed: loading ? null : load,
+              ),
+              const SizedBox(height: 12),
+              const Text('MEMBERS', style: FinStackType.caption),
               const SizedBox(height: 4),
               if (members.isEmpty)
-                const Text('No family members found.', style: TextStyle(fontSize: 11))
+                const Text(
+                  'No family members found.',
+                  style: TextStyle(fontSize: 11),
+                )
               else
                 Wrap(
                   spacing: 6,
@@ -158,41 +171,29 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                     final id = _mid(Map<String, dynamic>.from(m as Map));
                     final name = '${m['name'] ?? m['email'] ?? '?'}';
                     final active = selMembers.contains(id);
-                    return GestureDetector(
-                      onTap: () => setState(() {
-                        active ? selMembers.remove(id) : selMembers.add(id);
+                    return FilterChip(
+                      label: Text(name, style: FinStackType.caption),
+                      selected: active,
+                      onSelected: (selected) => setState(() {
+                        selected ? selMembers.add(id) : selMembers.remove(id);
                       }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: active ? FinStackColors.brandYellow : Colors.white,
-                          border: Border.all(width: 2, color: FinStackColors.onSurface),
-                        ),
-                        child: Text(name, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                      ),
                     );
                   }).toList(),
                 ),
               const SizedBox(height: 8),
-              const Text('MODE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+              const Text('MODE', style: FinStackType.caption),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: modes.map((m) {
                   final active = selModes.contains(m);
-                  return GestureDetector(
-                    onTap: () => setState(() {
-                      active ? selModes.remove(m) : selModes.add(m);
+                  return FilterChip(
+                    label: Text(m, style: FinStackType.caption),
+                    selected: active,
+                    onSelected: (selected) => setState(() {
+                      selected ? selModes.add(m) : selModes.remove(m);
                     }),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: active ? FinStackColors.brandYellow : Colors.white,
-                        border: Border.all(width: 2, color: FinStackColors.onSurface),
-                      ),
-                      child: Text(m, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-                    ),
                   );
                 }).toList(),
               ),
@@ -200,7 +201,10 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: BrutalButton(label: 'Clear filters', onPressed: clearFilters),
+                  child: BrutalButton(
+                    label: 'Clear filters',
+                    onPressed: clearFilters,
+                  ),
                 ),
               ],
             ],
@@ -209,42 +213,95 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
         const SizedBox(height: 12),
         if (loading)
           const BrutalCard(
-            child: Row(children: [
-              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 3, color: FinStackColors.onSurface)),
-              SizedBox(width: 10),
-              Text('Loading analytics…', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-            ]),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: FinStackColors.onSurface,
+                  ),
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Loading analytics…',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
           )
         else if (error != null)
           BrutalCard(
             color: FinStackColors.errorContainer,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(error!, style: const TextStyle(color: FinStackColors.onErrorContainer, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              BrutalButton(label: 'Retry', icon: Icons.refresh, onPressed: load),
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  error!,
+                  style: const TextStyle(
+                    color: FinStackColors.onErrorContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                BrutalButton(
+                  label: 'Retry',
+                  icon: Icons.refresh,
+                  onPressed: load,
+                ),
+              ],
+            ),
           )
         else if (data == null)
-          const BrutalEmpty(message: 'No data yet. Join a family and add transactions.')
+          const BrutalEmpty(
+            message: 'No data yet. Join a family and add transactions.',
+          )
         else ...[
-          LayoutBuilder(builder: (context, constraints) {
-            final cell = (constraints.maxWidth - 8) / 2;
-            return Wrap(spacing: 8, runSpacing: 8, children: [
-              SizedBox(width: cell, child: _Kpi(
-                label: 'Actual Spend',
-                value: inr(((s?['actualExpenditurePaise'] ?? 0) as num) / 100),
-                color: FinStackColors.brandYellow,
-              )),
-              SizedBox(width: cell, child: _Kpi(
-                label: 'Avg / day',
-                value: inr((data?['avgDaily'] ?? 0) as num),
-                color: FinStackColors.tertiary,
-              )),
-              SizedBox(width: cell, child: _Kpi(label: 'Total', value: '${data?['totalCount'] ?? 0} txns')),
-              if (highestDay != null)
-                SizedBox(width: cell, child: _Kpi(label: 'Highest', value: '${highestDay['date']}')),
-            ]);
-          }),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cell = (constraints.maxWidth - 8) / 2;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: cell,
+                    child: _Kpi(
+                      label: 'Actual Spend',
+                      value: inr(
+                        ((s?['actualExpenditurePaise'] ?? 0) as num) / 100,
+                      ),
+                      color: FinStackColors.brandYellow,
+                    ),
+                  ),
+                  SizedBox(
+                    width: cell,
+                    child: _Kpi(
+                      label: 'Avg / day',
+                      value: inr((data?['avgDaily'] ?? 0) as num),
+                      color: FinStackColors.tertiary,
+                    ),
+                  ),
+                  SizedBox(
+                    width: cell,
+                    child: _Kpi(
+                      label: 'Total',
+                      value: '${data?['totalCount'] ?? 0} txns',
+                    ),
+                  ),
+                  if (highestDay != null)
+                    SizedBox(
+                      width: cell,
+                      child: _Kpi(
+                        label: 'Highest',
+                        value: '${highestDay['date']}',
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 12),
           BrutalCard(
             child: Column(
@@ -289,12 +346,24 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                       interval: 1,
                                       getTitlesWidget: (v, meta) {
                                         final i = v.toInt();
-                                        if (v != i.toDouble() || i < 0 || i >= timeSeries.length) {
+                                        final stride = (timeSeries.length / 5)
+                                            .ceil();
+                                        if (v != i.toDouble() ||
+                                            i < 0 ||
+                                            i >= timeSeries.length ||
+                                            (i % stride != 0 &&
+                                                i != timeSeries.length - 1)) {
                                           return const SizedBox();
                                         }
                                         return Text(
-                                          _safeRange(timeSeries[i]['date'].toString(), 5, 10),
-                                          style: const TextStyle(fontSize: 8),
+                                          _safeRange(
+                                            timeSeries[i]['date'].toString(),
+                                            5,
+                                            10,
+                                          ),
+                                          style: FinStackType.caption.copyWith(
+                                            fontSize: 8,
+                                          ),
                                         );
                                       },
                                     ),
@@ -309,8 +378,12 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                       ),
                                     ),
                                   ),
-                                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  topTitles: const AxisTitles(
+                                    sideTitles: SideTitles(showTitles: false),
+                                  ),
+                                  rightTitles: const AxisTitles(
+                                    sideTitles: SideTitles(showTitles: false),
+                                  ),
                                 ),
                                 lineBarsData: [
                                   LineChartBarData(
@@ -318,7 +391,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                     isCurved: true,
                                     curveSmoothness: 0.28,
                                     color: FinStackColors.chartTeal,
-                                    barWidth: 2,
+                                    barWidth: 2.8,
                                     isStrokeCapRound: true,
                                     dotData: const FlDotData(show: false),
                                     belowBarData: BarAreaData(
@@ -327,8 +400,12 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                         begin: Alignment.topCenter,
                                         end: Alignment.bottomCenter,
                                         colors: [
-                                          FinStackColors.chartTeal.withValues(alpha: 0.30),
-                                          FinStackColors.chartTeal.withValues(alpha: 0.01),
+                                          FinStackColors.chartTeal.withValues(
+                                            alpha: 0.30,
+                                          ),
+                                          FinStackColors.chartTeal.withValues(
+                                            alpha: 0.01,
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -377,13 +454,18 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                   interval: 1,
                                   getTitlesWidget: (v, meta) {
                                     final i = v.toInt();
-                                    if (v != i.toDouble() || i < 0 || i >= byCategory.length) {
+                                    if (v != i.toDouble() ||
+                                        i < 0 ||
+                                        i >= byCategory.length) {
                                       return const SizedBox();
                                     }
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 4),
                                       child: Text(
-                                        _safeTrunc(byCategory[i]['category'].toString(), 6),
+                                        _safeTrunc(
+                                          byCategory[i]['category'].toString(),
+                                          6,
+                                        ),
                                         style: const TextStyle(fontSize: 8),
                                       ),
                                     );
@@ -400,8 +482,12 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                   ),
                                 ),
                               ),
-                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: const AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
                             ),
                             barGroups: [
                               for (int i = 0; i < byCategory.length; i++)
@@ -413,9 +499,13 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                           .toDouble(),
                                       width: 12,
                                       color: FinStackColors.brandYellow,
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(3),
+                                      ),
                                       borderSide: const BorderSide(
-                                          color: FinStackColors.onSurface, width: 1.5),
+                                        color: FinStackColors.onSurface,
+                                        width: 1.5,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -531,20 +621,14 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                   itemCount: heatmap.length,
                   itemBuilder: (c, i) {
                     final h = heatmap[i];
-                    // Null-tolerant numeric reads — backend may omit spendPaise.
-                    double spendOf(e) {
-                      final v = e['spendPaise'];
-                      return v is num ? v.toDouble() : (double.tryParse('$v') ?? 0);
-                    }
-                    final max = heatmap
-                        .map(spendOf)
-                        .reduce((a, b) => a > b ? a : b);
-                    final ratio = max > 0 ? spendOf(h) / max : 0;
+                    final ratio = maxSpend > 0
+                        ? daySpend(h as Map) / maxSpend
+                        : 0;
                     final bg = ratio > 0.66
                         ? FinStackColors.onSurface
                         : ratio > 0.33
                         ? const Color(0xFF6B6A5E)
-                        : const Color(0xFFE9E2CF);
+                        : FinStackColors.surfaceContainer;
                     final fg = ratio > 0.33
                         ? Colors.white
                         : FinStackColors.onSurface;
@@ -564,7 +648,8 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                         child: Text(
                           _safeRange(h['date'].toString(), 5, 10),
                           style: TextStyle(
-                            fontSize: 7,
+                            fontFamily: FinStackType.mono,
+                            fontSize: 8,
                             color: fg,
                             fontWeight: FontWeight.w700,
                           ),
@@ -586,7 +671,11 @@ class _Kpi extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _Kpi({required this.label, required this.value, this.color = Colors.white});
+  const _Kpi({
+    required this.label,
+    required this.value,
+    this.color = Colors.white,
+  });
   @override
   Widget build(BuildContext context) => Container(
     decoration: brutal(color: color, border: 2, shadow: 3),
@@ -596,10 +685,19 @@ class _Kpi extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            fontFamily: FinStackType.mono,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(
+          value,
+          style: FinStackType.amount.copyWith(
+            fontSize: label == 'Highest' ? 15 : 19,
+          ),
+        ),
       ],
     ),
   );

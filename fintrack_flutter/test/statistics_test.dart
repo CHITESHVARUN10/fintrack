@@ -3,6 +3,7 @@ import 'package:fintrack_flutter/core/api_client.dart';
 import 'package:fintrack_flutter/core/spending_statistics.dart';
 import 'package:fintrack_flutter/features/shell.dart';
 import 'package:fintrack_flutter/widgets/spending_breakdown.dart';
+import 'package:fintrack_flutter/widgets/spending_trend.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -189,18 +190,34 @@ void main() {
       await tester.tap(find.text('STATS'));
       await tester.pumpAndSettle();
       expect(find.text('STATISTICS'), findsOneWidget);
-      expect(find.text('₹360'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SpendingTrend),
+          matching: find.text('₹360'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.text('All categories'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'food');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Food'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('Food'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('1 expense'), findsOneWidget);
       expect(find.text('₹90 more (100%)'), findsWidgets);
       await tester.tap(find.text('All vendors'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Metro'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('Metro'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         find.text('No spending matches these filters in this period.'),

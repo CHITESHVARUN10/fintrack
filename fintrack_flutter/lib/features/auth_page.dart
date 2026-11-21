@@ -32,6 +32,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   }
 
   Future<void> submit() async {
+    if (busy) return;
     dismissKeyboard(context);
     final email = emailCtrl.text.trim();
     final pass = passCtrl.text;
@@ -47,7 +48,10 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       setState(() => error = 'Password must be at least 6 characters.');
       return;
     }
-    setState(() { busy = true; error = null; });
+    setState(() {
+      busy = true;
+      error = null;
+    });
     try {
       final auth = ref.read(authProvider.notifier);
       if (isLogin) {
@@ -59,128 +63,214 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       TextInput.finishAutofillContext(shouldSave: true);
     } on DioException catch (e) {
       final d = e.response?.data;
-      setState(() => error = (d is Map && d['error'] != null) ? '${d['error']}' : 'Failed. Check server URL.');
+      if (mounted) {
+        setState(
+          () => error = (d is Map && d['error'] != null)
+              ? '${d['error']}'
+              : 'Failed. Check server URL.',
+        );
+      }
     } catch (_) {
-      setState(() => error = 'Failed. Check server URL.');
+      if (mounted) setState(() => error = 'Failed. Check server URL.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
   @override
+  void dispose() {
+    nameCtrl.dispose();
+    emailCtrl.dispose();
+    passCtrl.dispose();
+    serverCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveServer() async {
+    dismissKeyboard(context);
+    await ApiClient.setBaseUrl(serverCtrl.text);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final authErr = ref.watch(authProvider).error;
+    final message = error ?? ref.watch(authProvider).error;
+    final title = isLogin ? 'Login' : 'Create account';
     return Scaffold(
-      appBar: AppBar(title: const Text('FINSTACK', style: TextStyle(fontWeight: FontWeight.w700)), centerTitle: false),
+      appBar: AppBar(title: const FinStackTitle('FinStack')),
       body: BrutalGrid(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(15, 18, 22, 28),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: BrutalCard(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Row(children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: FinStackColors.brandYellow,
-                        border: Border.all(color: FinStackColors.onSurface, width: 2),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text('F', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(child: Text('FINSTACK', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.8))),
-                    BrutalTag(
-                      label: isLogin ? 'Welcome back' : 'New account',
-                      color: isLogin ? FinStackColors.tertiary : FinStackColors.brandYellow,
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  Text(isLogin ? 'LOGIN' : 'CREATE ACCOUNT', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                  const Text('Enter your credentials to continue.', style: TextStyle(fontSize: 12)),
-                  const SizedBox(height: 16),
-                if ((error ?? authErr) != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: const Color(0xFFFFDAD6), border: Border.all(width: 3)),
-                    child: Text(error ?? authErr ?? '', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                  ),
-                AutofillGroup(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!isLogin) ...[
-                        BrutalField(
-                          label: 'Name',
-                          controller: nameCtrl,
-                          hint: 'Your name',
-                          autofillHints: const [AutofillHints.name],
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
+                shadow: 7,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(child: FinStackTitle('FinStack')),
+                        const SizedBox(width: 6),
+                        BrutalTag(
+                          label: isLogin ? 'Welcome back' : 'New account',
+                          color: isLogin
+                              ? FinStackColors.accentCyan
+                              : FinStackColors.brandYellow,
                         ),
-                        const SizedBox(height: 12),
                       ],
-                      BrutalField(
-                        label: 'Email Address',
-                        controller: emailCtrl,
-                        hint: 'you@example.com',
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [
-                          AutofillHints.username,
-                          AutofillHints.email,
-                        ],
-                        enableSuggestions: false,
-                        autocorrect: false,
+                    ),
+                    const SizedBox(height: 14),
+                    Semantics(
+                      header: true,
+                      child: Text(
+                        title.toUpperCase(),
+                        style: Theme.of(context).textTheme.headlineMedium,
                       ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Enter your credentials to continue.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (message != null) ...[
                       const SizedBox(height: 12),
-                      BrutalField(
-                        label: 'Password',
-                        controller: passCtrl,
-                        hint: '••••••••',
-                        obscure: true,
-                        textInputAction: TextInputAction.done,
-                        autofillHints: [
-                          isLogin ? AutofillHints.password : AutofillHints.newPassword,
-                        ],
-                        enableSuggestions: false,
-                        autocorrect: false,
-                        onSubmitted: (_) => submit(),
+                      Semantics(
+                        liveRegion: true,
+                        child: BrutalCard(
+                          color: FinStackColors.errorContainer,
+                          padding: const EdgeInsets.all(10),
+                          shadow: 0,
+                          border: 2,
+                          child: Text(message),
+                        ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 13),
+                    AutofillGroup(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!isLogin) ...[
+                            BrutalField(
+                              label: 'Name',
+                              controller: nameCtrl,
+                              hint: 'Your name',
+                              autofillHints: const [AutofillHints.name],
+                              textCapitalization: TextCapitalization.words,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          BrutalField(
+                            label: 'Email address',
+                            controller: emailCtrl,
+                            hint: 'you@example.com',
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [
+                              AutofillHints.username,
+                              AutofillHints.email,
+                            ],
+                            enableSuggestions: false,
+                            autocorrect: false,
+                          ),
+                          const SizedBox(height: 12),
+                          BrutalField(
+                            label: 'Password',
+                            controller: passCtrl,
+                            hint: '••••••••',
+                            obscure: true,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: [
+                              isLogin
+                                  ? AutofillHints.password
+                                  : AutofillHints.newPassword,
+                            ],
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            onSubmitted: (_) => submit(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    BrutalButton(
+                      label: busy ? 'Please wait…' : title,
+                      block: true,
+                      onPressed: busy ? null : submit,
+                    ),
+                    TextButton(
+                      onPressed: busy
+                          ? null
+                          : () => setState(() {
+                              isLogin = !isLogin;
+                              error = null;
+                              ref.read(authProvider.notifier).clearError();
+                            }),
+                      child: Text(
+                        isLogin
+                            ? 'New here? Create account'
+                            : 'Have an account? Login',
+                        style: const TextStyle(
+                          decoration: TextDecoration.underline,
+                          decorationThickness: 1.5,
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 12),
+                    const SizedBox(height: 6),
+                    Semantics(
+                      expanded: showServer,
+                      child: BrutalButton(
+                        label: 'Server settings',
+                        icon: Icons.settings_outlined,
+                        color: FinStackColors.surfaceContainer,
+                        block: true,
+                        onPressed: () =>
+                            setState(() => showServer = !showServer),
+                      ),
+                    ),
+                    if (showServer) ...[
+                      const SizedBox(height: 14),
+                      const BrutalCard(
+                        color: FinStackColors.surfaceLow,
+                        padding: EdgeInsets.all(9),
+                        shadow: 0,
+                        border: 1.5,
+                        child: Text(
+                          'To connect to a local server from your phone, use the computer’s network IP address.',
+                          style: TextStyle(fontSize: 11.5),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      BrutalField(
+                        label: 'API base URL',
+                        controller: serverCtrl,
+                        hint: 'http://192.168.1.5:3000/api',
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: BrutalButton(
+                          label: 'Save URL',
+                          onPressed: _saveServer,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 16),
-                BrutalButton(label: busy ? 'Please wait…' : (isLogin ? 'Login' : 'Create account'), onPressed: busy ? null : submit),
-                TextButton(
-                  onPressed: () => setState(() { isLogin = !isLogin; error = null; ref.read(authProvider.notifier).clearError(); }),
-                  child: Text(isLogin ? 'New here? Create account' : 'Have an account? Login'),
-                ),
-                const Divider(),
-                TextButton.icon(
-                  onPressed: () => setState(() => showServer = !showServer),
-                  icon: const Icon(Icons.dns, size: 16),
-                  label: const Text('Server settings', style: TextStyle(fontSize: 11)),
-                ),
-                if (showServer) ...[
-                  const Text('On a real iPhone, localhost = the phone. Use your Mac LAN IP, e.g. http://192.168.1.5:3000/api',
-                    style: TextStyle(fontSize: 11)),
-                  const SizedBox(height: 8),
-                  TextField(controller: serverCtrl, decoration: const InputDecoration(hintText: 'http://<Mac-IP>:3000/api', labelText: 'API base URL')),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: BrutalButton(label: 'Save URL', onPressed: () async {
-                      await ApiClient.setBaseUrl(serverCtrl.text);
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Server: ${ApiClient.baseUrl}')));
-                    }),
-                  ),
-                ],
-                ]),
               ),
             ),
           ),

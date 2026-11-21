@@ -55,6 +55,7 @@ void main() {
     await tester.ensureVisible(find.text('Import'));
     await tester.tap(find.text('Import'));
     await tester.pumpAndSettle();
+    expect(find.text('IMPORT'), findsOneWidget);
   }
 
   void mockApi(void Function(RequestOptions, RequestInterceptorHandler) route) {
