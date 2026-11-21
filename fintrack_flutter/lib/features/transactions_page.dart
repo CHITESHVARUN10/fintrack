@@ -5,119 +5,13 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/ledger_categories.dart';
 import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/category_picker.dart';
 import '../widgets/states.dart';
 import 'activity_review.dart';
-
-const _allCategories = [
-  'Groceries',
-  'Food',
-  'Electricity',
-  'Rent',
-  'Transportation',
-  'Shopping',
-  'Medical',
-  'Education',
-  'Entertainment',
-  'Bills',
-  'Household',
-  'Proxy',
-  'Family',
-  'Internal Transfer',
-  'Investment',
-  'Income',
-  'Other',
-];
-
-const _financeSubcategories = {
-  'Investment': ['Fixed Deposit', 'Stocks'],
-  'Income': [
-    'Salary',
-    'Freelance',
-    'Pocket Money',
-    'Rental',
-    'Business',
-    'Regular',
-    'Variable',
-  ],
-};
-
-Future<String?> _createCategory(BuildContext context) => showDialog<String>(
-  context: context,
-  builder: (_) => const _CreateCategoryDialog(),
-);
-
-class _CreateCategoryDialog extends StatefulWidget {
-  const _CreateCategoryDialog();
-
-  @override
-  State<_CreateCategoryDialog> createState() => _CreateCategoryDialogState();
-}
-
-class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
-  final name = TextEditingController();
-  String? error;
-  bool saving = false;
-
-  @override
-  void dispose() {
-    name.dispose();
-    super.dispose();
-  }
-
-  Future<void> save() async {
-    if (saving) return;
-    final value = name.text.trim();
-    if (value.isEmpty || value.length > 50) {
-      setState(() => error = 'Enter a name of 1 to 50 characters.');
-      return;
-    }
-    setState(() {
-      saving = true;
-      error = null;
-    });
-    try {
-      final response = await ApiClient.dio.post<Map>(
-        '/recipients/categories',
-        data: {'name': value},
-      );
-      if (mounted) Navigator.pop(context, response.data!['category'] as String);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        saving = false;
-        error = ApiClient.errorMessage(e, 'Could not create category.');
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('New category'),
-    content: TextField(
-      controller: name,
-      autofocus: true,
-      enabled: !saving,
-      maxLength: 50,
-      textCapitalization: TextCapitalization.words,
-      textInputAction: TextInputAction.done,
-      onSubmitted: (_) => save(),
-      decoration: InputDecoration(labelText: 'Category name', errorText: error),
-    ),
-    actions: [
-      TextButton(
-        onPressed: saving ? null : () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: saving ? null : save,
-        child: Text(saving ? 'Creating…' : 'Create'),
-      ),
-    ],
-  );
-}
 
 const _pageSize = 50;
 
@@ -222,9 +116,11 @@ class TransactionsPage extends StatefulWidget {
     super.key,
     this.refresh = 0,
     this.showHeader = false,
+    this.importedPeriod,
   });
 
   final int refresh;
+  final DateTimeRange? importedPeriod;
 
   /// Renders a branded Part 2 header with the active ledger badge. Off by
   /// default so the page still works inside a shell that supplies its own bar.
@@ -270,11 +166,36 @@ class _TransactionsPageState extends State<TransactionsPage> {
   String vendorQuery = '';
   String statusFilter = '';
   String categoryFilter = '';
-  final categories = <String>{..._allCategories};
+  final categories = <String>{...ledgerCategories};
 
   @override
   void initState() {
     super.initState();
+    final imported = widget.importedPeriod;
+    if (imported != null) {
+      final start = imported.start;
+      final end = imported.end;
+      final singleMonth = start.year == end.year && start.month == end.month;
+      final previousMonth = DateTime(_today.year, _today.month - 1);
+      if (singleMonth &&
+          start.year == previousMonth.year &&
+          start.month == previousMonth.month) {
+        period = _Period.previousMonth;
+      } else if (singleMonth &&
+          start.year == _today.year &&
+          start.month == _today.month &&
+          !DateUtils.dateOnly(end).isAfter(_today)) {
+        period = _Period.thisMonth;
+      } else {
+        period = _Period.custom;
+        fromDate = singleMonth
+            ? DateTime(start.year, start.month)
+            : DateUtils.dateOnly(start);
+        toDate = singleMonth
+            ? DateTime(end.year, end.month + 1, 0)
+            : DateUtils.dateOnly(end);
+      }
+    }
     _scroll.addListener(_onScroll);
     load();
     loadCategories();
@@ -295,15 +216,9 @@ class _TransactionsPageState extends State<TransactionsPage> {
   }
 
   Future<void> loadCategories() async {
-    try {
-      final response = await ApiClient.dio.get('/recipients/categories');
-      final data = response.data;
-      final saved = data is Map ? data['categories'] : null;
-      if (mounted && saved is List) {
-        setState(() => categories.addAll(saved.whereType<String>()));
-      }
-    } catch (_) {
-      // The built-in categories are available offline and on older servers.
+    final saved = await loadLedgerCategories();
+    if (mounted && saved.isNotEmpty) {
+      setState(() => categories.addAll(saved));
     }
   }
 
@@ -450,8 +365,15 @@ class _TransactionsPageState extends State<TransactionsPage> {
       _Period.thisMonth ||
       _Period.previousMonth => dates.formatMonthYear(from!),
       _Period.allTime => 'All time',
-      _Period.custom =>
-        '${dates.formatShortDate(from!)} – ${dates.formatShortDate(to!)}',
+      _Period.custom
+          when from != null &&
+              to != null &&
+              from.day == 1 &&
+              from.year == to.year &&
+              from.month == to.month &&
+              to.day == DateUtils.getDaysInMonth(to.year, to.month) =>
+        dates.formatMonthYear(from),
+      _Period.custom => '${numericDateLabel(from!)} – ${numericDateLabel(to!)}',
     };
   }
 
@@ -1015,7 +937,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
     final category = '${t['category'] ?? ''}';
     final subcategory = '${t['subcategory'] ?? ''}';
     final categoryLabel =
-        _financeSubcategories.containsKey(category) && subcategory.isNotEmpty
+        ledgerFinanceSubcategories.containsKey(category) &&
+            subcategory.isNotEmpty
         ? '$category / $subcategory'
         : category;
     final creator = (t['createdBy'] as Map?)?['name'];
@@ -1538,232 +1461,6 @@ class _SheetSelect extends StatelessWidget {
   }
 }
 
-class _CategoryChoice extends StatelessWidget {
-  const _CategoryChoice({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onSelected,
-    this.enabled = true,
-  });
-
-  final String label;
-  final String value;
-  final Map<String, String> options;
-  final ValueChanged<String> onSelected;
-  final bool enabled;
-
-  Future<void> _choose(BuildContext context) async {
-    final selection = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.white,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) =>
-          _CategoryPicker(label: label, selected: value, options: options),
-    );
-    if (context.mounted && selection != null && selection != value) {
-      onSelected(selection);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        label.toUpperCase(),
-        style: _labelStyle(size: 10, letterSpacing: 0.7),
-      ),
-      const SizedBox(height: 6),
-      OutlinedButton(
-        onPressed: enabled ? () => _choose(context) : null,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
-          minimumSize: const Size(0, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(options[value] ?? value, textAlign: TextAlign.left),
-            ),
-            const Icon(Icons.expand_more, size: 20),
-          ],
-        ),
-      ),
-    ],
-  );
-}
-
-class _CategoryPicker extends StatefulWidget {
-  const _CategoryPicker({
-    required this.label,
-    required this.selected,
-    required this.options,
-  });
-
-  final String label;
-  final String selected;
-  final Map<String, String> options;
-
-  @override
-  State<_CategoryPicker> createState() => _CategoryPickerState();
-}
-
-class _CategoryPickerState extends State<_CategoryPicker> {
-  String query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final rows =
-        widget.options.entries
-            .where((entry) => entry.value.toLowerCase().contains(query))
-            .toList()
-          ..sort((a, b) {
-            if (a.key == widget.selected) return -1;
-            if (b.key == widget.selected) return 1;
-            return a.value.toLowerCase().compareTo(b.value.toLowerCase());
-          });
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: .78,
-          minChildSize: .5,
-          maxChildSize: .96,
-          builder: (_, scroll) => Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                child: Column(
-                  children: [
-                    _SheetHeader(
-                      title: 'Choose ${widget.label.toLowerCase()}',
-                      closeLabel: 'Close category picker',
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      decoration: InputDecoration(
-                        labelText: 'Search ${widget.label.toLowerCase()}',
-                        prefixIcon: const Icon(Icons.search),
-                      ),
-                      onChanged: (text) =>
-                          setState(() => query = text.trim().toLowerCase()),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  controller: scroll,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                  itemCount: rows.isEmpty ? 1 : rows.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    if (rows.isEmpty) {
-                      return const ListTile(
-                        title: Text('No matching categories'),
-                      );
-                    }
-                    final row = rows[index];
-                    final selected = row.key == widget.selected;
-                    return ListTile(
-                      selected: selected,
-                      selectedColor: FinStackColors.onSurface,
-                      selectedTileColor: FinStackColors.surfaceLow,
-                      title: Text(row.value),
-                      trailing: selected
-                          ? const Icon(Icons.check, size: 20)
-                          : null,
-                      onTap: () => Navigator.of(context).pop(row.key),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryFields extends StatelessWidget {
-  const _CategoryFields({
-    required this.category,
-    required this.subcategory,
-    required this.categories,
-    required this.enabled,
-    required this.onChanged,
-    required this.onCreated,
-  });
-
-  final String category;
-  final String subcategory;
-  final Set<String> categories;
-  final bool enabled;
-  final void Function(String, String) onChanged;
-  final ValueChanged<String> onCreated;
-
-  @override
-  Widget build(BuildContext context) {
-    final subcategories = _financeSubcategories[category] ?? const <String>[];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _CategoryChoice(
-          label: 'Category',
-          value: category,
-          options: {
-            for (final name in {...categories, category}) name: name,
-          },
-          onSelected: (value) => onChanged(value, ''),
-          enabled: enabled,
-        ),
-        if (subcategories.isNotEmpty || subcategory.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _CategoryChoice(
-            label: 'Subcategory',
-            value: subcategory,
-            options: {
-              '': 'None',
-              for (final item in {
-                ...subcategories,
-                if (subcategory.isNotEmpty) subcategory,
-              })
-                item: item,
-            },
-            onSelected: (value) => onChanged(category, value),
-            enabled: enabled,
-          ),
-        ],
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New category'),
-            onPressed: !enabled
-                ? null
-                : () async {
-                    final name = await _createCategory(context);
-                    if (name == null || !context.mounted) return;
-                    onCreated(name);
-                    onChanged(name, '');
-                  },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 const _filterStatuses = {
   'PENDING_REVIEW': 'Needs review',
   'ACTIVE': 'Active',
@@ -2007,7 +1704,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 onChanged: (value) => setState(() => status = value),
               ),
               const SizedBox(height: 13),
-              _CategoryChoice(
+              CategoryChoice(
                 label: 'Category',
                 value: category,
                 options: {
@@ -2186,7 +1883,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                 onChanged: (value) => setState(() => mode = value),
               ),
               const SizedBox(height: 13),
-              _CategoryFields(
+              CategoryFields(
                 category: category,
                 subcategory: subcategory,
                 categories: widget.categories,
@@ -2243,7 +1940,7 @@ Future<void> showActivityTransaction(
   ValueChanged<String>? onCategoryCreated,
 }) async {
   dismissKeyboard(context);
-  final available = categories ?? <String>{..._allCategories};
+  final available = categories ?? <String>{...ledgerCategories};
   if (categories == null) {
     try {
       final response = await ApiClient.dio.get<Map>('/recipients/categories');
@@ -2553,7 +2250,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                           style: _labelStyle(),
                         ),
                     ] else ...[
-                      _CategoryFields(
+                      CategoryFields(
                         category: editCategory,
                         subcategory: editSubcategory,
                         categories: widget.categories,

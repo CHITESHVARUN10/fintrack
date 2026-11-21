@@ -8,23 +8,24 @@ services:
     name: fintrack-api
     runtime: node
     rootDir: backend
-    buildCommand: npm install
+    buildCommand: pnpm install --frozen-lockfile
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      # Point at the Atlas DB (same data migrated from local).
-      # Either name works: db.js/app.js read MONGODB_URI, then mongo_uri_production.
+      - key: NODE_VERSION
+        value: ">=26.13.1 <27"
+      # Set this to the hosted MongoDB URI. Legacy URI variables take precedence if set.
       - key: MONGODB_URI
         sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: GEMINI_API_KEY
         sync: false
-      # Comma-separated frontend origin(s), e.g. https://fintrack.vercel.app
-      # Native mobile apps don't need CORS entries (no Origin header).
+      # Optional additional direct browser origins. The hosted web app
+      # uses its own /api path via the Vercel rewrite. Native apps use this API directly.
       - key: CORS_ORIGIN
         sync: false
       - key: SMTP_HOST

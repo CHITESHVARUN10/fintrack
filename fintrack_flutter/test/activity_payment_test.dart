@@ -523,7 +523,12 @@ void main() {
         'PATCH' => {
           'transaction': {...saved, ...options.data as Map},
         },
-        _ => <String, dynamic>{},
+        _ =>
+          options.path == '/recipients/categories'
+              ? {
+                  'categories': ['Studio supplies'],
+                }
+              : <String, dynamic>{},
       },
     );
 
@@ -551,13 +556,16 @@ void main() {
     expect(feedback, 1);
     await tester.tap(find.text('Other'));
     await tester.pumpAndSettle();
-    final foodOption = find.text('Food').hitTestable();
-    await tester.scrollUntilVisible(
-      foodOption,
-      -220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.tap(foodOption);
+    final categorySearch = find.widgetWithText(TextField, 'Search category');
+    await tester.enterText(categorySearch, 'Studio supplies');
+    await tester.pumpAndSettle();
+    expect(find.text('Studio supplies'), findsWidgets);
+    await tester.enterText(categorySearch, 'Investment');
+    await tester.pumpAndSettle();
+    expect(find.text('Investment'), findsWidgets);
+    await tester.enterText(categorySearch, 'Food');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Food'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Coffee');
     await tester.ensureVisible(find.text('Save details'));
@@ -570,5 +578,64 @@ void main() {
     expect(requests.where((request) => request.method == 'POST'), hasLength(1));
     expect(find.text('Purchase details saved.'), findsOneWidget);
     expect(feedback, 1);
+  });
+
+  testWidgets('QR payment applies the saved category of a legacy vendor', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const vendorName = 'UPI/UPI/Corner Coffee/HDFC/123456789012';
+    final saved = {
+      '_id': 'payment-2',
+      'category': 'Other',
+      'status': 'RECONCILED',
+    };
+    final requests = mockApi(
+      (options) => switch ((options.method, options.path)) {
+        ('GET', '/recipients/by-key') => {'vendor': null},
+        ('GET', '/recipients') => {
+          'items': [
+            {'label': 'Corner Coffee Annex', 'category': 'Shopping'},
+            {
+              'label': 'Corner Coffee',
+              'category': 'Entertainment',
+              'upiId': 'different@upi',
+            },
+            {'label': vendorName, 'primaryCategory': 'Food'},
+          ],
+        },
+        ('POST', '/transactions') => {'transaction': saved, 'reconciled': true},
+        ('PATCH', '/transactions/payment-2') => {
+          'transaction': {...saved, 'category': 'Food'},
+        },
+        _ => <String, dynamic>{},
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: finStackTheme(),
+        home: const UpiPayPage(
+          request: UpiPaymentRequest(
+            raw: 'coffee@upi',
+            payeeVpa: 'coffee@upi',
+            payeeName: 'Corner Coffee',
+            amountPaise: 3000,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('SAVED PAYEE'), findsOneWidget);
+    await tester.tap(find.text('ALREADY PAID? SAVE IT'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('YES, SAVE'));
+    await tester.pumpAndSettle();
+
+    final post = requests.singleWhere((request) => request.method == 'POST');
+    expect(post.data['category'], 'Food');
+    expect(post.data['recipient']['name'], vendorName);
+    final patch = requests.singleWhere((request) => request.method == 'PATCH');
+    expect(patch.data, {'category': 'Food'});
+    expect(find.text('Food'), findsOneWidget);
   });
 }

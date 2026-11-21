@@ -9,29 +9,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/ledger_categories.dart';
 import '../core/upi.dart';
+import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/category_picker.dart';
 
 const _monoFallback = <String>[FinStackType.body];
-
-const _fallbackCategories = [
-  'Groceries',
-  'Food',
-  'Electricity',
-  'Rent',
-  'Transportation',
-  'Shopping',
-  'Medical',
-  'Education',
-  'Entertainment',
-  'Bills',
-  'Household',
-  'Proxy',
-  'Family',
-  'Internal Transfer',
-  'Other',
-];
 
 /// Confirm & pay, built around one action: the sticky pay bar is always on
 /// screen, so the amount and the pay button never need a scroll.
@@ -54,12 +39,14 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
   final _productCtrl = TextEditingController();
   final _utrCtrl = TextEditingController();
 
-  List<String> _categories = List.of(_fallbackCategories);
+  final _categories = <String>{...ledgerCategories};
+  late final Future<void> _vendorLookup;
   String _selectedCategory = 'Other';
+  String _selectedSubcategory = '';
+  bool _categoryEdited = false;
   Map? _vendor;
   bool _metaLoading = true;
   bool _detailsOpen = false;
-  bool _showAllCategories = false;
 
   String? _preferredAppId;
   bool _appPrefLoaded = false;
@@ -81,9 +68,11 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       ? widget.request.payeeName
       : _vendorCtrl.text.trim();
   String get _savedCategory => '${_savedTxn?['category'] ?? 'Other'}';
+  String get _savedSubcategory => '${_savedTxn?['subcategory'] ?? ''}';
   String get _savedProduct => '${_savedTxn?['productName'] ?? ''}';
   bool get _detailsChanged =>
       _selectedCategory != _savedCategory ||
+      _selectedSubcategory != _savedSubcategory ||
       _productCtrl.text.trim() != _savedProduct;
 
   @override
@@ -95,7 +84,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     );
     _vendorCtrl = TextEditingController(text: widget.request.payeeName);
     WidgetsBinding.instance.addObserver(this);
-    _loadMeta();
+    _vendorLookup = _loadVendor();
+    unawaited(_loadCategories());
     _loadAppPreference();
   }
 
@@ -131,56 +121,91 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _loadMeta() async {
-    try {
-      final res = await ApiClient.dio.get('/recipients/categories');
-      final list = (res.data['categories'] as List?)
-          ?.map((e) => '$e')
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      if (list != null && list.isNotEmpty && mounted) {
-        setState(() => _categories = list);
-      }
-    } catch (_) {
-      // The local list is a complete fallback.
+  Future<void> _loadCategories() async {
+    final saved = await loadLedgerCategories();
+    if (mounted && saved.isNotEmpty) {
+      setState(() => _categories.addAll(saved));
     }
+  }
 
+  bool _canUseVendor(Map vendor) {
+    final upi = '${vendor['upiId'] ?? ''}'.trim().toLowerCase();
+    return vendor['status'] != 'ARCHIVED' &&
+        (upi.isEmpty || upi == widget.request.payeeVpa.toLowerCase());
+  }
+
+  Future<Map?> _findVendor() async {
+    final request = widget.request;
+    final response = await ApiClient.dio.get(
+      '/recipients/by-key',
+      queryParameters: {'upiId': request.payeeVpa, 'label': request.payeeName},
+    );
+    final data = response.data;
+    final exact = data is Map ? data['vendor'] : null;
+    if (exact is Map && _canUseVendor(exact)) return exact;
+
+    // Older imports may store a bank narration as the vendor key and label.
+    final name = readableVendorName(request.payeeName);
+    final responseByName = await ApiClient.dio.get(
+      '/recipients',
+      queryParameters: {'q': name, 'limit': 200},
+    );
+    final searchData = responseByName.data;
+    final items = searchData is Map ? searchData['items'] : null;
+    if (items is! List) return null;
+    final nameKey = name.toLowerCase();
+    final matches = items
+        .whereType<Map>()
+        .where((vendor) {
+          if (!_canUseVendor(vendor)) return false;
+          final aliases = vendor['aliases'];
+          return [
+            vendor['label'],
+            vendor['vendorKey'],
+            if (aliases is List) ...aliases,
+          ].whereType<String>().any(
+            (value) => readableVendorName(value).toLowerCase() == nameKey,
+          );
+        })
+        .take(2)
+        .toList();
+    return matches.length == 1 ? matches.single : null;
+  }
+
+  Future<void> _loadVendor() async {
     try {
-      final res = await ApiClient.dio.get(
-        '/recipients/by-key',
-        queryParameters: {
-          'upiId': widget.request.payeeVpa,
-          'label': widget.request.payeeName,
-        },
-      );
-      final vendor = res.data['vendor'];
-      if (vendor is Map && mounted && !_saving && !_saved) {
-        final map = Map<String, dynamic>.from(vendor);
-        setState(() {
-          _vendor = map;
-          if (map['label'] != null && '${map['label']}'.trim().isNotEmpty) {
-            _vendorCtrl.text = '${map['label']}';
-          }
-          final primary = map['primaryCategory'] ?? map['category'];
-          final offerings = map['offerings'];
-          if (primary is String && primary.trim().isNotEmpty) {
-            _selectedCategory = primary;
-          } else if (offerings is List && offerings.isNotEmpty) {
-            final first = offerings.first;
-            if (first is Map && first['category'] is String) {
-              _selectedCategory = first['category'];
-            }
-          }
-          if (!_categories.contains(_selectedCategory)) {
-            _categories = [..._categories, _selectedCategory];
-          }
-        });
-      }
+      final vendor = await _findVendor();
+      if (!mounted || vendor == null) return;
+      final offerings = vendor['offerings'];
+      final names =
+          [
+                vendor['primaryCategory'],
+                vendor['category'],
+                if (offerings is List)
+                  for (final offering in offerings.whereType<Map>())
+                    offering['category'],
+              ]
+              .whereType<String>()
+              .map((name) => name.trim())
+              .where(
+                (name) => name.isNotEmpty && name.toLowerCase() != 'other',
+              );
+      final label = readableVendorName('${vendor['label'] ?? ''}');
+      setState(() {
+        _vendor = vendor;
+        if (_vendorCtrl.text == widget.request.payeeName && label.isNotEmpty) {
+          _vendorCtrl.text = label;
+        }
+        _categories.addAll(names);
+        if (!_categoryEdited && names.isNotEmpty) {
+          _selectedCategory = names.first;
+        }
+      });
     } catch (_) {
-      // New vendor: the transaction ingest creates it automatically.
+      // The ledger can still record the payment if the lookup is unavailable.
+    } finally {
+      if (mounted) setState(() => _metaLoading = false);
     }
-
-    if (mounted) setState(() => _metaLoading = false);
   }
 
   @override
@@ -482,7 +507,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       setState(() {
         _utrCtrl.clear();
         _error =
-            'Check the payment status in your UPI app before trying again. If the app rejected the link, try its own QR scanner.';
+            'Check your UPI app’s history before paying again. If it declined the link and no money was debited, scan the original QR inside your UPI app. Once it shows success, return here and tap Already paid.';
       });
     }
   }
@@ -571,14 +596,22 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       _error = null;
       _needsFamily = false;
     });
+    await _vendorLookup;
+    if (!mounted) return;
     final product = _productCtrl.text.trim();
+    final vendorLabel = '${_vendor?['label'] ?? ''}'.trim();
+    final ledgerPayee =
+        vendorLabel.isNotEmpty && _payeeName == readableVendorName(vendorLabel)
+        ? vendorLabel
+        : _payeeName;
     final data = <String, dynamic>{
       'amountPaise': paise,
       'type': 'EXPENSE',
       'mode': 'UPI',
       'occurredAt': DateTime.now().toUtc().toIso8601String(),
       'category': _selectedCategory,
-      'recipient': {'name': _payeeName, 'upiId': widget.request.payeeVpa},
+      if (_selectedSubcategory.isNotEmpty) 'subcategory': _selectedSubcategory,
+      'recipient': {'name': ledgerPayee, 'upiId': widget.request.payeeVpa},
       'upiId': widget.request.payeeVpa,
       'visibility': 'FAMILY',
       'origin': 'QR_SCAN',
@@ -593,15 +626,25 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       final body = res.data;
       final txn = body is Map ? (body['transaction'] ?? body) : body;
       final matched = body is Map && body['reconciled'] == true;
+      final applyCategoryToMatch =
+          matched &&
+          txn is Map &&
+          txn['financeLink'] == null &&
+          (txn['category'] == null || txn['category'] == 'Other') &&
+          _selectedCategory != 'Other';
       setState(() {
         _saving = false;
         _saved = true;
         _savedMatched = matched;
         _savedTxn = txn is Map ? Map<String, dynamic>.from(txn) : null;
-        if (_selectedCategory == 'Other') _selectedCategory = _savedCategory;
+        if (!applyCategoryToMatch) {
+          _selectedCategory = _savedCategory;
+          _selectedSubcategory = _savedSubcategory;
+        }
         _productCtrl.text = product.isEmpty ? _savedProduct : product;
       });
       unawaited(_playPaymentFeedback());
+      if (applyCategoryToMatch) await _savePurchaseDetails();
     } on DioException catch (e) {
       if (!mounted) return;
       final body = e.response?.data;
@@ -816,6 +859,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   ),
                   child: TextField(
                     controller: _amountCtrl,
+                    enabled: !_saving && !_opening,
                     readOnly:
                         widget.request.isSigned && widget.request.hasAmount,
                     keyboardType: const TextInputType.numberWithOptions(
@@ -909,13 +953,16 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                Text(
-                  _selectedCategory.toUpperCase(),
-                  style: const TextStyle(
-                    fontFamily: FinStackType.mono,
-                    fontFamilyFallback: _monoFallback,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w800,
+                Flexible(
+                  child: Text(
+                    _selectedCategory.toUpperCase(),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: FinStackType.mono,
+                      fontFamilyFallback: _monoFallback,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -930,26 +977,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           ),
           if (_detailsOpen) ...[
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: [
-                for (final c in _visibleCategories())
-                  _CategoryPill(
-                    label: c,
-                    selected: c == _selectedCategory,
-                    onTap: () => setState(() => _selectedCategory = c),
-                  ),
-                if (_categories.length > 8)
-                  _CategoryPill(
-                    label: _showAllCategories ? 'Less' : 'More',
-                    selected: false,
-                    onTap: () => setState(
-                      () => _showAllCategories = !_showAllCategories,
-                    ),
-                  ),
-              ],
-            ),
+            _categoryFields(enabled: !_saving),
             const SizedBox(height: 12),
             BrutalField(
               label: 'Vendor / payee',
@@ -1139,13 +1167,18 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     );
   }
 
-  List<String> _visibleCategories() {
-    final base = _showAllCategories
-        ? List<String>.from(_categories)
-        : _categories.take(8).toList();
-    if (!base.contains(_selectedCategory)) base.add(_selectedCategory);
-    return base;
-  }
+  Widget _categoryFields({required bool enabled}) => CategoryFields(
+    category: _selectedCategory,
+    subcategory: _selectedSubcategory,
+    categories: _categories,
+    enabled: enabled,
+    onChanged: (category, subcategory) => _editPurchaseDetails(() {
+      _categoryEdited = true;
+      _selectedCategory = category;
+      _selectedSubcategory = subcategory;
+    }),
+    onCreated: (name) => setState(() => _categories.add(name)),
+  );
 
   Future<void> _playPaymentFeedback() async {
     unawaited(HapticFeedback.lightImpact());
@@ -1174,6 +1207,10 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
         '/transactions/$id',
         data: {
           'category': _selectedCategory,
+          if (_selectedSubcategory != _savedSubcategory)
+            'subcategory': _selectedSubcategory.isEmpty
+                ? null
+                : _selectedSubcategory,
           if (product != _savedProduct) 'productName': product,
         },
       );
@@ -1184,6 +1221,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       setState(() {
         _savedTxn = transaction;
         _selectedCategory = _savedCategory;
+        _selectedSubcategory = _savedSubcategory;
         _productCtrl.text = _savedProduct;
         _detailsSaved = true;
       });
@@ -1392,32 +1430,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           ),
         ),
         const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          key: ValueKey(_savedCategory),
-          isExpanded: true,
-          initialValue: _selectedCategory,
-          decoration: const InputDecoration(
-            labelText: 'Category',
-            labelStyle: TextStyle(
-              fontFamily: FinStackType.mono,
-              fontFamilyFallback: _monoFallback,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: .6,
-            ),
-          ),
-          items: [
-            for (final category in {..._categories, _selectedCategory})
-              DropdownMenuItem(value: category, child: Text(category)),
-          ],
-          onChanged: _savingDetails
-              ? null
-              : (value) {
-                  if (value != null) {
-                    _editPurchaseDetails(() => _selectedCategory = value);
-                  }
-                },
-        ),
+        _categoryFields(enabled: !_savingDetails),
         const SizedBox(height: 12),
         TextField(
           controller: _productCtrl,
@@ -1611,51 +1624,4 @@ class _CheckStroke extends CustomPainter {
   @override
   bool shouldRepaint(_CheckStroke oldDelegate) =>
       progress != oldDelegate.progress;
-}
-
-class _CategoryPill extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _CategoryPill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? FinStackColors.brandYellow : Colors.white,
-          border: Border.all(color: FinStackColors.onSurface, width: 2),
-          boxShadow: selected
-              ? const [
-                  BoxShadow(
-                    color: FinStackColors.onSurface,
-                    offset: Offset(2, 2),
-                    blurRadius: 0,
-                  ),
-                ]
-              : const [],
-        ),
-        child: Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            fontFamily: FinStackType.mono,
-            fontFamilyFallback: _monoFallback,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: .4,
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -104,11 +104,12 @@ router.post('/login', loginRateLimiter, (req, res, next) => {
 
 // ---- POST /api/auth/logout ----
 router.post('/logout', (req, res, next) => {
+  const { path, httpOnly, sameSite, secure } = req.session.cookie;
   req.logout((err) => {
     if (err) return next(err);
     req.session.destroy((destroyErr) => {
       if (destroyErr) return next(destroyErr);
-      res.clearCookie('fintrack.sid');
+      res.clearCookie('fintrack.sid', { path, httpOnly, sameSite, secure });
       return res.json({ message: 'Logged out' });
     });
   });

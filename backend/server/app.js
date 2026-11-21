@@ -10,11 +10,8 @@ const mongoUri = connectDB.mongoUri;
 const app = express();
 
 // ---- Core middleware ----
-// Browsers calling the API from the hosted web frontend need an explicit
-// origin allowlist. Native mobile apps send no Origin header, so CORS
-// never applies to them — no entry needed for Flutter.
-// CORS_ORIGIN (comma-separated) only ADDS origins later; the built-ins
-// below always apply, so Render works with zero CORS env vars set.
+// Browser requests normally come through the web app's same-origin proxy.
+// Keep an explicit allowlist for clients that call the API directly.
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:5173', // local Vite dev
   'http://localhost:3000', // local alt / previews
@@ -35,6 +32,11 @@ app.use(
 );
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 
 // ---- Sessions (stored in MongoDB, 7-day TTL) ----
 const isProd = process.env.NODE_ENV === 'production';
@@ -58,9 +60,8 @@ app.use(
     store: sessionStore,
     cookie: {
       httpOnly: true,
-      // Cross-origin frontend (e.g. Vercel) needs SameSite=None + Secure.
-      // Same-origin / local dev keeps Lax.
-      sameSite: isProd ? 'none' : 'lax',
+      // The browser sees /api on its own host, so the cookie can stay Lax.
+      sameSite: 'lax',
       secure: isProd,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },

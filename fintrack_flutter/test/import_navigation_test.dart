@@ -177,4 +177,59 @@ void main() {
     expect(find.text('3 added · 0 matched · 2 failed'), findsOneWidget);
     expect(uploads, 1);
   });
+
+  testWidgets('An imported statement opens its month for one Activity visit', (
+    tester,
+  ) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final month = DateTime(today.year, today.month - 1);
+    final lastDay = DateTime(today.year, today.month, 0);
+    final ranges = <Map<String, dynamic>>[];
+    mockApi((request, handler) {
+      if (request.path == '/imports/bank') {
+        resolve(request, handler, {
+          'status': 'success',
+          'periodFrom': month.add(const Duration(days: 2)).toIso8601String(),
+          'periodTo': lastDay
+              .subtract(const Duration(days: 2))
+              .toIso8601String(),
+          'summary': {'created': 4},
+        });
+        return;
+      }
+      if (request.path == '/transactions') ranges.add(request.queryParameters);
+      resolve(request, handler, {'items': [], 'total': 0});
+    });
+
+    await openImport(tester);
+    await tester.tap(find.text('Choose statement'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import complete'), findsOneWidget);
+    expect(find.text('IMPORT'), findsNothing);
+    expect(DateTime.parse(ranges.single['from'] as String).toLocal(), month);
+    expect(
+      DateTime.parse(ranges.single['to'] as String).toLocal(),
+      DateTime(
+        today.year,
+        today.month,
+      ).subtract(const Duration(milliseconds: 1)),
+    );
+
+    await tester.tap(find.text('HOME'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ACTIVITY'));
+    await tester.pumpAndSettle();
+    expect(
+      DateTime.parse(ranges.last['from'] as String).toLocal(),
+      DateTime(today.year, today.month),
+    );
+    expect(
+      DateTime.parse(ranges.last['to'] as String).toLocal(),
+      DateTime(
+        today.year,
+        today.month,
+        today.day + 1,
+      ).subtract(const Duration(milliseconds: 1)),
+    );
+  });
 }

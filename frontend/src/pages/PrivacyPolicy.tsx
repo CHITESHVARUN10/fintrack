@@ -2,7 +2,6 @@ import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from '../components/ui/Icon'
-import { CodeText } from './docsPages/CodeText'
 import { PublicPageHeader } from './docsPages/PublicPageHeader'
 import './docsPages/docsPages.css'
 
@@ -108,7 +107,7 @@ export function PrivacyPolicy(): React.ReactElement {
             How FinStack collects, stores, uses, and protects your data — and where our responsibility ends.
           </p>
           <div className="fpol-meta">
-            Last updated: <strong>August 30, 2026</strong> · Effective: August 30, 2026 · Version 1.1
+            Last updated: <strong>November 21, 2026</strong> · Effective: November 21, 2026 · Version 1.2
           </div>
           <div className="fpol-pills">
             <span className="fdp-pill">Controller: FinStack Inc.</span>
@@ -141,9 +140,8 @@ export function PrivacyPolicy(): React.ReactElement {
               <Icon name="info" /> TL;DR
             </div>
             <p>
-              We store what you give us in MongoDB. We send Form 16 PDFs to Google Gemini only when you ask for
-              extraction/recommendation. We never sell data. Financial advice is AI-generated — verify with a
-              professional. You can delete/export anytime.
+              We store your finance records in MongoDB. If you import a UPI screenshot, we send it to Google Gemini
+              to extract payment details. We never sell data. You can export reports and request account deletion.
             </p>
           </div>
         </aside>
@@ -246,20 +244,11 @@ export function PrivacyPolicy(): React.ReactElement {
               </li>
             </ul>
 
-            <h3 className="fpol-h3">C. Form 16 &amp; Tax Data</h3>
-            <ul className="fpol-list">
-              <li>
-                When you <strong>upload</strong> a Form 16 PDF or use <strong>Fill Manually / Duplicate</strong>, we
-                store: employer/employee names, PAN/TAN, addresses, salary breakdown, standard deduction, professional
-                tax, 80C/80D/80E/80G/80CCD, TDS, regime used, <code>sourceType</code>, <code>isEdited</code>, and{' '}
-                <code>TDS</code> fields.
-              </li>
-              <li>
-                Generated <strong>TaxRecommendation:</strong> regime taxes, recommended regime, savings, explanation,{' '}
-                <code>taxSavingSuggestions</code>, <code>deductionBreakdown</code>, and debug trace — cached per Form16
-                until marked stale.
-              </li>
-            </ul>
+            <h3 className="fpol-h3">C. Tax Estimates</h3>
+            <p>
+              FinStack uses recorded income, investments, and eligible payments to calculate estimates and compare
+              tax regimes. The comparison uses the financial year and amounts you enter or have saved.
+            </p>
 
             <h3 className="fpol-h3">D. Automatically Collected</h3>
             <ul className="fpol-list">
@@ -286,8 +275,8 @@ export function PrivacyPolicy(): React.ReactElement {
               <li>
                 <strong>Where:</strong> MongoDB (Mongoose ODM) — primary DB; session store <code>connect-mongo</code>{' '}
                 collection <code>sessions</code> TTL 7 days. Hosted on MongoDB Atlas (configurable{' '}
-                <code>MONGODB_URI</code>). PDFs are parsed in memory (Multer <code>memoryStorage</code>) and not
-                persisted as files — only extracted JSON is saved.
+                <code>MONGODB_URI</code>). Statement and screenshot files are processed in memory. The app stores
+                the resulting ledger entries and import records.
               </li>
               <li>
                 <strong>Encryption at rest/in transit:</strong> TLS for API + DB, bcrypt salt 12 for passwords,{' '}
@@ -299,10 +288,8 @@ export function PrivacyPolicy(): React.ReactElement {
               </li>
               <li>
                 <strong>Retention:</strong> Account + financial records until you delete them. Sessions auto-expire
-                after 7 days inactivity. <code>Notification</code> docs may be pruned. Deleted Form16 also deletes its{' '}
-                <code>TaxRecommendation</code>. <code>DELETE /api/form16/:id</code> and{' '}
-                <code>DELETE /api/members/:id</code> are soft/logical where noted, but you can request hard deletion via{' '}
-                <code>privacy@fintrack.app</code>.
+                after 7 days inactivity. Notification records may be pruned. Removing a member deactivates their
+                access. You can request permanent deletion at <code>privacy@fintrack.app</code>.
               </li>
               <li>
                 <strong>Backups:</strong> Atlas automated daily backups (if enabled) — not a user-export guarantee.
@@ -320,7 +307,7 @@ export function PrivacyPolicy(): React.ReactElement {
               <li>
                 Provide the service: dashboard, charts, upcoming-payment alerts, tax estimate, reports, vendor learning.
               </li>
-              <li>Run AI features you trigger: Form 16 extraction and regime recommendation (see §7).</li>
+              <li>Extract payment details when you upload a UPI screenshot (see §7).</li>
               <li>
                 Enforce family scoping: members see only their data; admin sees family aggregate via role checks.
               </li>
@@ -328,7 +315,7 @@ export function PrivacyPolicy(): React.ReactElement {
                 Improve categorization: vendor → category and amount → product mappings learn from your corrections
                 (stays inside your <code>familyId</code>).
               </li>
-              <li>Security: rate-limiting, audit logs, stale-marking for recommendations.</li>
+              <li>Protect account access through session checks and login rate limits.</li>
             </ul>
             <p className="fpol-note">
               We do <strong>not</strong> use your financial data for advertising, nor do we sell it.
@@ -376,11 +363,9 @@ export function PrivacyPolicy(): React.ReactElement {
                     <br />
                     <span className="fpol-mono">googleapis.com</span>
                   </td>
-                  <td>
-                    Form 16 PDF bytes + financial summary JSON (only when you click Extract / Recommendation)
-                  </td>
-                  <td>Document AI &amp; tax advice</td>
-                  <td>TLS in transit; API data not used for training under Google API terms; you can manually edit before saving</td>
+                  <td>UPI screenshots that you choose to import</td>
+                  <td>Extract payment fields for the ledger</td>
+                  <td>TLS in transit. Google’s Gemini API terms govern its handling of the image.</td>
                 </tr>
                 <tr>
                   <td>
@@ -432,39 +417,23 @@ export function PrivacyPolicy(): React.ReactElement {
           </article>
 
           <article className="fpol-card" id="ai">
-            <SectionHeading icon="smart_toy">7. AI Disclosure — What Goes to Gemini</SectionHeading>
+            <SectionHeading icon="smart_toy">7. UPI Screenshot Extraction</SectionHeading>
             <ul className="fpol-list">
               <li>
-                <strong>Extraction call</strong> (<code>POST /api/form16/upload</code>): the PDF you chose is
-                base64-encoded and sent to <code>gemini-2.5-flash</code> with a strict JSON-only prompt. We parse{' '}
-                <code>candidates[0].content.parts[0].text</code> and store the JSON as your <code>Form16</code> doc.
+                When you choose a UPI screenshot in Import, FinStack sends the image to the Gemini API to read the
+                payment amount, date, payee, UPI ID, and references. Extracted fields are stored with the import and
+                used to create or match a ledger entry.
               </li>
+              <li>Bank statement imports are parsed by FinStack’s API. Tax calculations run on the API.</li>
               <li>
-                <strong>Recommendation call</strong> (<code>GET /api/form16/:id/recommendation</code> if{' '}
-                <code>isStale</code> or missing): we send the stored <code>Form16</code> JSON plus aggregated
-                financials (salary, investments, loans, insurance, education) — never your password or session token —
-                to Gemini with a tax-advisor prompt, then cache the JSON as <code>TaxRecommendation</code>.
-              </li>
-              <li>
-                <strong>If <code>GEMINI_API_KEY</code> is missing</strong>, both calls gracefully fall back to{' '}
-                <code>mockForm16()</code> / <code>mockRecommendation()</code> so the app still works offline in dev.
-              </li>
-              <li>
-                <strong>Your control:</strong> Don’t upload a PDF? No call. Use “Fill Manually” and no bytes leave your
-                device for extraction.
-              </li>
-              <li>
-                <strong>Retention at Google:</strong> Subject to Google’s API data policies — we do not opt your data
-                into training. Review Google’s{' '}
+                Google handles submitted images under its{' '}
                 <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">
                   Gemini API Terms
-                </a>
-                .
+                </a>.
               </li>
             </ul>
             <div className="fpol-callout-warm">
-              AI output is probabilistic. Always review the extracted Form 16 fields on the Review screen before
-              accepting them.
+              After importing a screenshot, check the amount, date, and payee in Activity.
             </div>
           </article>
 
@@ -497,11 +466,9 @@ export function PrivacyPolicy(): React.ReactElement {
                 <code>connect-mongo</code> (TTL 7d), rate-limiting on auth, Joi validation, <code>passport-local</code>.
               </li>
               <li>
-                <strong>What we cannot guarantee:</strong> No internet transmission is 100% secure. We are not
-                responsible for: (a) inaccuracies in AI-extracted Form 16 fields you didn’t review, (b) tax payable
-                differences due to stale financial data (we mark <code>isStale=true</code> but you must re-generate),
-                (c) losses from acting solely on AI tax advice, (d) file corruption or failed uploads, (e) third-party
-                outages (Gemini, MongoDB, SMTP).
+                <strong>What we cannot guarantee:</strong> Data transmission, file uploads, and third-party services
+                can fail. Screenshot extraction can contain errors. Tax estimates depend on the financial records
+                available when you generate them.
               </li>
               <li>
                 <strong>No warranty:</strong> Service is provided “AS IS” without warranties of merchantability,
@@ -510,8 +477,8 @@ export function PrivacyPolicy(): React.ReactElement {
                 whichever is less.
               </li>
               <li>
-                <strong>Your duties:</strong> Keep password private, review Form 16 before saving, verify regime
-                calculation with a qualified professional, and keep your own backups of exported reports.
+                <strong>Your duties:</strong> Keep your password private, review imported transactions, verify tax
+                estimates with a qualified professional, and keep copies of reports you need.
               </li>
               <li>
                 <strong>Breach notice:</strong> If we become aware of unauthorized access to personal data, we will
@@ -524,22 +491,19 @@ export function PrivacyPolicy(): React.ReactElement {
             <SectionHeading icon="person">10. Your Rights, Retention &amp; Deletion</SectionHeading>
             <ul className="fpol-list">
               <li>
-                <strong>Access / Correction:</strong> All financial data is editable in-app (Income, Subscriptions,
-                etc.) and via <code>PUT /api/form16/:id</code>.
+                <strong>Access / Correction:</strong> Use Activity and the finance screens to review and edit your
+                records.
               </li>
               <li>
-                <strong>Export:</strong> Use Reports (<code>/reports</code> → Excel/PDF) or <code>GET /api/form16</code>{' '}
-                to dump your records.
+                <strong>Export:</strong> Use Reports to download the available Excel and PDF reports.
               </li>
               <li>
-                <strong>Deletion:</strong> <code>DELETE /api/form16/:id</code> deletes Form 16 + its recommendation;{' '}
-                <code>DELETE /api/members/:id</code> deactivates a member (data retained, <code>isActive=false</code>{' '}
-                for audit). For hard deletion of account + all data, email <code>privacy@fintrack.app</code> — we
-                complete within 30 days.
+                <strong>Deletion:</strong> Removing a member deactivates their access. To request permanent deletion
+                of your account and data, email <code>privacy@fintrack.app</code>. We complete requests within 30 days.
               </li>
               <li>
-                <strong>Restriction / Objection:</strong> You can stop AI calls by not uploading PDFs; you can opt out
-                of notification emails via Settings.
+                <strong>Restriction / Objection:</strong> You can enter payments manually or import a bank statement
+                when you prefer to keep screenshots on your device.
               </li>
               <li>
                 <strong>Retention:</strong> Until deletion request or account closure, except sessions (7 days) and
@@ -591,10 +555,6 @@ export function PrivacyPolicy(): React.ReactElement {
                 <div className="fpol-note">Address: To be published upon company registration</div>
               </div>
             </div>
-
-            <p className="fpol-note">
-              <CodeText text="This document was drafted with reference to the PRD v1.0 (July 16, 2026) and the actual codebase routes (`/api/auth`, `/api/form16`, `/api/dashboard`, etc.). It is not legal advice — have counsel review before public launch." />
-            </p>
 
             <div className="fpol-actions">
               <Link to="/docs" className="fdp-btn fdp-btn-white">

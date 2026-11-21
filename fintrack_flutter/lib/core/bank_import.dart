@@ -6,10 +6,12 @@ import 'api_client.dart';
 
 enum BankImportStage { idle, choosing, uploading, processing, checking }
 
+typedef StatementPeriod = ({DateTime from, DateTime to});
+
 class BankImport extends ChangeNotifier {
   BankImport({required this.onLedgerChanged});
 
-  final ValueChanged<String> onLedgerChanged;
+  final void Function(String message, StatementPeriod? period) onLedgerChanged;
   BankImportStage stage = BankImportStage.idle;
   String? fileName;
   String? title;
@@ -175,9 +177,15 @@ class BankImport extends ChangeNotifier {
   bool _applyResult(Map data) {
     final status = data['status'];
     final summary = data['summary'] is Map ? data['summary'] as Map : data;
+    StatementPeriod? period;
     switch (status) {
       case 'success':
       case 'partial':
+        final from = DateTime.tryParse('${data['periodFrom']}');
+        final to = DateTime.tryParse('${data['periodTo']}');
+        if (from != null && to != null && !to.isBefore(from)) {
+          period = (from: from.toLocal(), to: to.toLocal());
+        }
         title = status == 'success'
             ? 'Import complete'
             : 'Import partially complete';
@@ -206,7 +214,7 @@ class BankImport extends ChangeNotifier {
     }
     hasError = false;
     canCheck = false;
-    onLedgerChanged(title!);
+    onLedgerChanged(title!, period);
     return true;
   }
 

@@ -125,9 +125,7 @@ function computeSurcharge(totalIncome, incomeTaxAfterRebate, regime) {
 //   (a) actual HRA received,
 //   (b) 10% of basic salary,
 //   (c) rent paid minus 10% of basic salary.
-// If we lack the basic salary or the rent paid, we CANNOT compute it, so it
-// returns 0 — we never guess an HRA exemption (the Form 16 may not state rent
-// paid, which is exactly the "not enough information" case from the audit).
+// If the basic salary or rent paid is missing, the exemption is zero.
 function computeHraExemption({ basicSalary = 0, hra = 0, rentPaid = null, regime }) {
   if (regime !== 'Old' || !basicSalary || rentPaid == null) return 0
   const tenPctBasic = 0.1 * basicSalary
@@ -227,8 +225,7 @@ function buildDeductionPlan(regime, input, sources = {}) {
       claimed: round(claimed),
       remaining, // null = unlimited, 0 = none, number = headroom
       qualifying: allowed && userAmount > 0,
-      // Provenance: where this claimed amount came from (Form 16, the user's
-      // declared records, or both). Null when nothing was claimed.
+      // Source of the claimed amount. Null when nothing was claimed.
       source: source ?? (allowed && userAmount > 0 ? 'Declared' : null),
       note: meta.note,
     });

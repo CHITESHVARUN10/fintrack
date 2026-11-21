@@ -27,16 +27,22 @@ class Shell extends ConsumerStatefulWidget {
 class _ShellState extends ConsumerState<Shell> {
   _Tab _tab = _Tab.home;
   int _activityRefresh = 0;
+  DateTimeRange? _importReview;
   int _statisticsRefresh = 0;
   int _familyRefresh = 0;
   final _visited = {_Tab.home};
   final _profileNavigator = GlobalKey<NavigatorState>();
   late final _bankImport = BankImport(
-    onLedgerChanged: (message) {
+    onLedgerChanged: (message, period) {
       if (!mounted) return;
       setState(() {
         _activityRefresh++;
         _statisticsRefresh++;
+        if (period != null) {
+          _importReview = DateTimeRange(start: period.from, end: period.to);
+          _tab = _Tab.activity;
+          _visited.add(_Tab.activity);
+        }
       });
       if (_tab != _Tab.profile ||
           _profileNavigator.currentState?.canPop() == false) {
@@ -92,6 +98,10 @@ class _ShellState extends ConsumerState<Shell> {
         if (next == _Tab.family) _familyRefresh++;
       }
       _tab = next;
+      if (next != _Tab.activity && _importReview != null) {
+        _importReview = null;
+        _visited.remove(_Tab.activity);
+      }
       _visited.add(next);
     });
   }
@@ -105,7 +115,12 @@ class _ShellState extends ConsumerState<Shell> {
           onInvestments: () => _openWorkspace(const InvestmentsPage()),
         );
       case _Tab.activity:
-        return TransactionsPage(refresh: _activityRefresh, showHeader: true);
+        return TransactionsPage(
+          key: ValueKey(_importReview),
+          refresh: _activityRefresh,
+          showHeader: true,
+          importedPeriod: _importReview,
+        );
       case _Tab.statistics:
         return StatisticsPage(refresh: _statisticsRefresh);
       case _Tab.family:
