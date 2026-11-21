@@ -17,6 +17,12 @@ const _colors = [
   FinStackColors.onSurfaceVariant,
 ];
 
+/// How the tick ring reacts to a pointer.
+///
+/// `slice` lifts every tick in the focused group; `tick` lifts only the tick
+/// under the pointer, matching the reference radial chart's two hover modes.
+enum TickHoverEffect { slice, tick }
+
 class SpendingBreakdown extends StatefulWidget {
   const SpendingBreakdown({
     super.key,
@@ -27,6 +33,7 @@ class SpendingBreakdown extends StatefulWidget {
     this.background = Colors.white,
     this.subtitle = 'Share of this month’s spend',
     this.formatAmount = inr,
+    this.hoverEffect = TickHoverEffect.slice,
   });
 
   final String title;
@@ -36,6 +43,7 @@ class SpendingBreakdown extends StatefulWidget {
   final Color background;
   final String subtitle;
   final String Function(num) formatAmount;
+  final TickHoverEffect hoverEffect;
 
   @override
   State<SpendingBreakdown> createState() => _SpendingBreakdownState();
@@ -172,6 +180,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                                   painter: _TickRing(
                                     share,
                                     selected,
+                                    hoverEffect: widget.hoverEffect,
                                     motion: _motion,
                                     angle: () => _angle,
                                     lift: () => _lift,
@@ -336,12 +345,14 @@ class _TickRing extends CustomPainter {
   _TickRing(
     this.shares,
     this.selected, {
+    required this.hoverEffect,
     required Animation<double> motion,
     required this.angle,
     required this.lift,
     required this.reducedMotion,
   }) : super(repaint: motion);
 
+  final TickHoverEffect hoverEffect;
   final double Function() angle;
   final double Function() lift;
   final bool reducedMotion;
@@ -354,7 +365,8 @@ class _TickRing extends CustomPainter {
     final center = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
     final focusAngle = angle();
-    final liftAmount = reducedMotion ? 0 : lift();
+    final liftAmount = reducedMotion ? 0.0 : lift();
+    final tickEffect = hoverEffect == TickHoverEffect.tick;
     final paint = Paint()
       ..strokeCap = StrokeCap.round
       ..strokeWidth = radius * .048;
@@ -371,14 +383,20 @@ class _TickRing extends CustomPainter {
       for (var tick = 0; tick < count; tick++) {
         final angle = start + gap / 2 + (tick + .5) / count * (sweep - gap);
         final direction = Offset(math.cos(angle), math.sin(angle));
-        final distance = ((angle - focusAngle + math.pi) % _turn - math.pi)
-            .abs();
-        final bump = math.max(0.0, 1 - distance / .19) * liftAmount;
-        paint.strokeWidth = radius * (.048 + .014 * bump);
+        // slice: the whole focused group lifts. tick: only the tick nearest
+        // the pointer lifts, with a short falloff so it feels analogue.
+        final double lifted;
+        if (tickEffect) {
+          final distance =
+              ((angle - focusAngle + math.pi) % _turn - math.pi).abs();
+          lifted = math.max(0.0, 1 - distance / .06) * liftAmount;
+        } else {
+          lifted = active ? liftAmount : 0.0;
+        }
+        paint.strokeWidth = radius * (.048 + .010 * lifted);
         canvas.drawLine(
           center + direction * (radius * .612),
-          center +
-              direction * (radius * ((active ? .936 : .895) + .081 * bump)),
+          center + direction * (radius * (.895 + .075 * lifted)),
           paint,
         );
       }
@@ -389,6 +407,7 @@ class _TickRing extends CustomPainter {
   @override
   bool shouldRepaint(_TickRing oldDelegate) =>
       oldDelegate.selected != selected ||
+      oldDelegate.hoverEffect != hoverEffect ||
       !listEquals(oldDelegate.shares, shares) ||
       oldDelegate.reducedMotion != reducedMotion;
 }

@@ -50,6 +50,9 @@ pdfs/
 /pdfs/
 *.pdf
 
+# Local agent handoff docs
+/UPI_INTENT_FLOW.md
+
 # Local mobile UI review captures
 /ui-screenshots/
 

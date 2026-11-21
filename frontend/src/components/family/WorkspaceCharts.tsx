@@ -17,6 +17,8 @@ const CENTER = 98
 const R_IN = 60
 const R_OUT = 88
 
+export type TickHoverEffect = 'slice' | 'tick'
+
 export function TickDonut({
   slices,
   total,
@@ -25,6 +27,7 @@ export function TickDonut({
   emptyLabel = 'No spend in this range.',
   legendColumns = 2,
   footer,
+  hoverEffect = 'slice',
 }: {
   slices: ShareSlice[]
   total: number
@@ -33,8 +36,15 @@ export function TickDonut({
   emptyLabel?: string
   legendColumns?: 2 | 3
   footer?: string
+  /**
+   * How the ring reacts to a pointer. `slice` lifts every tick in the hovered
+   * group, `tick` lifts only the tick under the pointer — the same two modes
+   * the reference radial chart exposes.
+   */
+  hoverEffect?: TickHoverEffect
 }) {
   const [active, setActive] = useState<number | null>(null)
+  const [hoverTick, setHoverTick] = useState<number | null>(null)
 
   const items = useMemo(
     () =>
@@ -72,23 +82,44 @@ export function TickDonut({
           viewBox="0 0 196 196"
           role="img"
           aria-label={`${centerLabel} share across ${items.length} ${items.length === 1 ? 'group' : 'groups'}, total ${formatCurrency(total)}`}
+          onMouseLeave={() => {
+            setActive(null)
+            setHoverTick(null)
+          }}
         >
           {tickMap.map((itemIndex, tick) => {
             const angle = (tick / TICKS) * Math.PI * 2 - Math.PI / 2
             const dim = active != null && active !== itemIndex
+            const groupActive = active === itemIndex
+            const lifted = hoverEffect === 'tick' ? hoverTick === tick : groupActive
+            const lift = lifted ? (hoverEffect === 'tick' ? 12 : 9) : 0
+            const dx = Math.cos(angle) * lift
+            const dy = Math.sin(angle) * lift
             return (
               <line
                 key={tick}
+                className="fw-donut-tick"
                 x1={(CENTER + Math.cos(angle) * R_IN).toFixed(1)}
                 y1={(CENTER + Math.sin(angle) * R_IN).toFixed(1)}
                 x2={(CENTER + Math.cos(angle) * R_OUT).toFixed(1)}
                 y2={(CENTER + Math.sin(angle) * R_OUT).toFixed(1)}
                 stroke={items[itemIndex].color}
-                strokeWidth="4.8"
+                strokeWidth={lifted ? 5.6 : 4.8}
                 strokeLinecap="butt"
-                style={{ opacity: dim ? 0.2 : 1, transition: 'opacity 0.12s ease', cursor: 'pointer' }}
-                onMouseEnter={() => setActive(itemIndex)}
-                onMouseLeave={() => setActive(null)}
+                style={{
+                  opacity: dim ? 0.2 : 1,
+                  cursor: 'pointer',
+                  transform: `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px)`,
+                }}
+                onMouseEnter={() => {
+                  setActive(itemIndex)
+                  if (hoverEffect === 'tick') setHoverTick(tick)
+                }}
+                onMouseLeave={() => {
+                  setActive(null)
+                  setHoverTick(null)
+                }}
+                onClick={() => setActive(groupActive ? null : itemIndex)}
               />
             )
           })}

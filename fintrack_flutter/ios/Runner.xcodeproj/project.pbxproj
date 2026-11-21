@@ -199,6 +199,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				D98D9196EE47792B24EA6A64 /* [CP] Embed Pods Frameworks */,
+				A1B2C3D4E5F60718293A4B5C /* Sign Native Assets */,
 			);
 			buildRules = (
 			);
@@ -270,6 +271,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A1B2C3D4E5F60718293A4B5C /* Sign Native Assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Sign Native Assets";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Flutter native-assets frameworks (objective_c) are embedded ad-hoc and\n# make iOS reject the app with \"invalid signature\". Re-sign any ad-hoc\n# framework with the app's identity before Xcode seals the bundle.\nif [ \"${CODE_SIGNING_ALLOWED}\" = \"NO\" ] || [ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n  exit 0\nfi\nFRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nif [ ! -d \"${FRAMEWORKS_DIR}\" ]; then\n  exit 0\nfi\nfind \"${FRAMEWORKS_DIR}\" -maxdepth 1 -name \"*.framework\" -type d | while IFS= read -r fw; do\n  if /usr/bin/codesign -dv \"$fw\" 2>&1 | /usr/bin/grep -q \"flags=0x2(adhoc)\"; then\n    echo \"Signing ad-hoc framework: $fw\"\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none \"$fw\" || exit 1\n  fi\ndone\n";
+		};
 		14AEF6F4ABB7FB3F72C493F0 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
