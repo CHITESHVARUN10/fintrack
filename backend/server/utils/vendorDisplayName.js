@@ -8,9 +8,7 @@ function upiName(label) {
   if (!upiPrefix.test(label)) return null;
   const parts = label.split('/').slice(1).map(part => part.trim());
   if (direction.test(parts[0])) parts.shift();
-  const hasReferencePrefix = reference.test(parts[0]);
-  if (hasReferencePrefix) parts.shift();
-  if (parts.length < 2 && !hasReferencePrefix) return null;
+  if (reference.test(parts[0])) parts.shift();
   const candidate = parts[0] || '';
   return /\p{L}{2}/u.test(candidate) && !paymentId.test(candidate) && !bank.test(candidate)
     ? candidate
@@ -28,4 +26,11 @@ function vendorDisplayName(recipient, savedLabel) {
   return upiName(original) || original || saved || 'Unknown';
 }
 
-module.exports = { vendorDisplayName, paymentId };
+function transactionCounterparty(tx) {
+  const party = tx.type === 'INCOME' && (tx.sender?.name?.trim() || tx.sender?.upiId?.trim())
+    ? tx.sender : tx.recipient;
+  const name = vendorDisplayName(party, party === tx.recipient ? tx.recipientVendorRef?.label : undefined);
+  return name === 'Unknown' ? tx.productName || tx.category || 'Transaction' : name;
+}
+
+module.exports = { vendorDisplayName, transactionCounterparty, paymentId };

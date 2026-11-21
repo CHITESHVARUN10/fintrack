@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../theme/finstack_theme.dart';
+import '../widgets/confirm_action.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
@@ -89,29 +90,17 @@ class _VendorsPageState extends State<VendorsPage> {
   }
 
   Future<void> remove(Map item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Archive vendor?'),
-        content: Text(
-          'Archive "${item['label']}"? Transactions remain but vendor is hidden.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
+    final ok = await confirmAction(
+      context,
+      title: 'Archive vendor?',
+      message:
+          'Archive "${item['label']}"? Its transactions will stay in Activity.',
+      action: 'Archive',
     );
-    if (ok != true) return;
+    if (!ok || !mounted) return;
     try {
       await ApiClient.dio.delete("/recipients/${item['_id'] ?? item['id']}");
-      await load(q: searchCtrl.text);
+      if (mounted) await load(q: searchCtrl.text);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -195,6 +195,208 @@ void main() {
     expect(request.data, {'role': 'receipt'});
   });
 
+  testWidgets('mobile filters use the selected type and saved merchant', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final requests = mockApi(
+      (options) => options.path == '/recipients'
+          ? {
+              'items': [
+                {
+                  '_id': 'vendor1',
+                  'label': 'UPI/Coffee Shop/HDFC/190012221111',
+                  'upiId': 'coffee@upi',
+                },
+              ],
+            }
+          : {'items': [], 'total': 0},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: finStackTheme(),
+        home: const Scaffold(body: TransactionsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Any type'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Income').last);
+    await tester.pumpAndSettle();
+    final search = find.widgetWithText(TextField, 'Search saved merchants');
+    await tester.ensureVisible(search);
+    await tester.enterText(search, 'Coff');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Coffee Shop'));
+    await tester.tap(find.text('Coffee Shop'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Apply filters'));
+    await tester.tap(find.text('Apply filters'));
+    await tester.pumpAndSettle();
+    final request = requests.lastWhere((r) => r.path == '/transactions');
+    expect(request.queryParameters['type'], 'INCOME');
+    expect(request.queryParameters['vendorId'], 'vendor1');
+    expect(request.queryParameters['vendor'], 'coffee@upi');
+  });
+
+  testWidgets(
+    'deleting income closes the root dialog without popping the nested page',
+    (tester) async {
+      var deleted = false;
+      final requests = mockApi((options) {
+        if (options.method == 'DELETE') {
+          deleted = true;
+          return {'message': 'deleted'};
+        }
+        return [
+          if (!deleted)
+            {
+              '_id': 'pocket',
+              'title': 'Pocket money',
+              'amount': 500,
+              'category': 'Pocket Money',
+            },
+        ];
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: finStackTheme(),
+          home: Navigator(
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const IncomePage()),
+                  ),
+                  child: const Text('Open income'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open income'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pocket money'), findsOneWidget);
+      await tester.tap(find.byTooltip('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(IncomePage), findsOneWidget);
+      expect(find.text('Pocket money'), findsNothing);
+      expect(requests.where((request) => request.method == 'DELETE').length, 1);
+    },
+  );
+
+  testWidgets(
+    'Activity shows a concise merchant, saved category and an offset pair',
+    (tester) async {
+      final credit = <String, Object?>{
+        '_id': 'credit',
+        'type': 'INCOME',
+        'mode': 'BANK',
+        'status': 'ACTIVE',
+        'occurredAt': DateTime.now().toIso8601String(),
+        'amountPaise': 60050,
+        'recipient': {'name': 'UPI/Maya/HDFC/901829191919'},
+        'category': 'Other',
+      };
+      final debit = {
+        '_id': 'debit',
+        'type': 'EXPENSE',
+        'mode': 'UPI',
+        'status': 'ACTIVE',
+        'occurredAt': DateTime.now().toIso8601String(),
+        'amountPaise': 60050,
+        'recipient': {'name': 'UPI/Dinner House/AXIS/918192919191'},
+        'category': 'Food',
+      };
+      Map? offset;
+      final requests = mockApi((options) {
+        if (options.method == 'PATCH') {
+          credit.addAll(
+            Map<String, Object?>.from(options.data as Map)
+              ..removeWhere((key, value) => value == null),
+          );
+          return {'transaction': credit};
+        }
+        if (options.method == 'PUT') {
+          offset = {'purpose': options.data['purpose'], 'transaction': debit};
+          return {'offset': offset};
+        }
+        return switch (options.path) {
+          '/transactions/credit' => {
+            'transaction': {...credit, 'isOffset': offset != null},
+            'canModify': true,
+            'offset': ?offset,
+          },
+          '/transactions/credit/offset-candidates' => {
+            'items': [debit],
+          },
+          '/recipients/categories' => {
+            'categories': ['Income', 'Other'],
+          },
+          _ => {
+            'items': [credit],
+            'total': 1,
+          },
+        };
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: finStackTheme(),
+          home: const Scaffold(body: TransactionsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Maya'));
+      expect(find.text('BANK'), findsOneWidget);
+      expect(find.text('UPI/Maya/HDFC/901829191919'), findsNothing);
+      await tester.tap(find.text('Maya'));
+      await tester.pumpAndSettle();
+
+      final saveCategory = find.text('Save category');
+      await tester.ensureVisible(saveCategory);
+      await tester.tap(saveCategory);
+      await tester.pumpAndSettle();
+      expect(find.text('Saved ✓'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Save category'), findsOneWidget);
+      final findMatch = find.text('Find matching transaction');
+      await tester.ensureVisible(findMatch);
+      await tester.tap(findMatch);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dinner House'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'e.g. Dinner reimbursement'),
+        'Tuesday dinner',
+      );
+      final saveOffset = find.text('SAVE OFFSET PAIR');
+      await tester.ensureVisible(saveOffset);
+      await tester.tap(saveOffset);
+      await tester.pumpAndSettle();
+      expect(requests.singleWhere((r) => r.method == 'PUT').data, {
+        'transactionId': 'debit',
+        'purpose': 'Tuesday dinner',
+      });
+      await tester.ensureVisible(find.text('Tuesday dinner'));
+      expect(find.text('Tuesday dinner'), findsOneWidget);
+    },
+  );
+
   testWidgets('Payment feedback runs once and details update the saved entry', (
     tester,
   ) async {

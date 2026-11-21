@@ -152,6 +152,7 @@ export interface Investment {
   buyPrice?: number
   currentPrice?: number
   quantity?: number
+  hasSaleHistory?: boolean
   units?: number
   nav?: number
   sipAmount?: number

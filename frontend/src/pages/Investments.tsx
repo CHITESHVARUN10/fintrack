@@ -1,10 +1,10 @@
 import { FinanceTransactions } from '../components/payments/FinanceTransactions'
 import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
 import { toApiError } from '../lib/apiError'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
-import { formatCompact, formatCurrency } from '../lib/format'
+import { calendarDateLabel, formatCompact, formatCurrency, parseCalendarDate } from '../lib/format'
 import {
   PaymentsEmpty,
   PaymentsLoading,
@@ -60,6 +60,9 @@ function pickName(raw: Record<string, unknown>): string {
 }
 
 function normalizeInvestment(raw: Record<string, unknown>): Investment {
+  const quantity = raw.quantity as number | undefined
+  const stock = raw.investmentType === 'stock' && quantity != null
+  const fd = raw.investmentType === 'fd'
   return {
     taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
@@ -70,7 +73,8 @@ function normalizeInvestment(raw: Record<string, unknown>): Investment {
     fundHouse: raw.fundHouse as string | undefined,
     buyPrice: raw.buyPrice as number | undefined,
     currentPrice: raw.currentPrice as number | undefined,
-    quantity: raw.quantity as number | undefined,
+    quantity,
+    hasSaleHistory: Array.isArray(raw.sales) && raw.sales.length > 0,
     units: raw.units as number | undefined,
     nav: raw.nav as number | undefined,
     sipAmount: raw.sipAmount as number | undefined,
@@ -88,8 +92,10 @@ function normalizeInvestment(raw: Record<string, unknown>): Investment {
     interestType: raw.interestType as 'Simple' | 'Compound' | undefined,
     taxableInterest: raw.taxableInterest as boolean | undefined,
     assetType: raw.assetType as string | undefined,
-    totalInvested: Number(raw.investmentType === 'fd' ? raw.principalAmount ?? raw.totalInvested ?? 0 : raw.totalInvested ?? 0),
-    currentValue: Number(raw.investmentType === 'fd' ? raw.maturityAmount ?? raw.principalAmount ?? raw.currentValue ?? 0 : raw.currentValue ?? 0),
+    totalInvested: stock && raw.buyPrice != null ? Number(raw.buyPrice) * quantity
+      : Number(fd ? raw.principalAmount ?? raw.totalInvested ?? 0 : raw.totalInvested ?? 0),
+    currentValue: stock && raw.currentPrice != null ? Number(raw.currentPrice) * quantity
+      : Number(fd ? raw.maturityAmount ?? raw.principalAmount ?? raw.currentValue ?? 0 : raw.currentValue ?? 0),
     startDate: raw.startDate ? String(raw.startDate) : '',
     endDate: raw.endDate ? String(raw.endDate) : null,
     status: ((raw.status as string) ?? 'Active'),
@@ -116,6 +122,47 @@ function toDateInput(value: string | null | undefined): string {
   return value ? String(value).slice(0, 10) : ''
 }
 
+function InvestmentDate({
+  id, value, onChange, required, describedBy,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+  describedBy?: string
+}) {
+  const picker = useRef<HTMLInputElement>(null)
+  const [hasPicker] = useState(() =>
+    typeof HTMLInputElement !== 'undefined' && 'showPicker' in HTMLInputElement.prototype,
+  )
+  return <div className="pmt-date-entry">
+    <input
+      id={id}
+      className="pmt-input pmt-mono"
+      type="text"
+      inputMode="numeric"
+      placeholder="DD/MM/YYYY"
+      autoComplete="off"
+      required={required}
+      aria-describedby={describedBy}
+      value={value}
+      onChange={event => {
+        const digits = event.target.value.replace(/\D/g, '').slice(0, 8)
+        onChange([digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join('/'))
+      }}
+    />
+    {hasPicker && <>
+      <input ref={picker} type="date" className="pmt-date-picker" aria-hidden="true" tabIndex={-1}
+        value={parseCalendarDate(value) ?? ''}
+        onChange={event => onChange(calendarDateLabel(event.target.value))} />
+      <button type="button" className="pmt-icon-btn" aria-label="Open calendar"
+        onClick={() => picker.current?.showPicker()}>
+        <Icon name="calendar_today" className="text-base" />
+      </button>
+    </>}
+  </div>
+}
+
 interface InvestmentFormProps {
   formId: string
   initial?: Investment | null
@@ -132,8 +179,8 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
   const [currentValue, setCurrentValue] = useState(
     initial ? String(initial.currentValue) : '',
   )
-  const [startDate, setStartDate] = useState(toDateInput(initial?.startDate))
-  const [endDate, setEndDate] = useState(toDateInput(initial?.endDate))
+  const [startDate, setStartDate] = useState(calendarDateLabel(initial?.startDate))
+  const [endDate, setEndDate] = useState(calendarDateLabel(initial?.endDate))
   const [status, setStatus] = useState(initial?.status ?? 'Active')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [taxPayments, setTaxPayments] = useState(initial?.taxPayments || [])
@@ -166,7 +213,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
   const [tenureDays, setTenureDays] = useState(initial?.tenureDays?.toString() ?? '')
   const [maturityAction, setMaturityAction] = useState<FdMaturityAction | ''>(initial?.maturityAction ?? '')
   const [payoutAccount, setPayoutAccount] = useState(initial?.payoutAccount ?? '')
-  const [maturityDate, setMaturityDate] = useState(toDateInput(initial?.maturityDate))
+  const [maturityDate, setMaturityDate] = useState(calendarDateLabel(initial?.maturityDate))
   const [maturityAmount, setMaturityAmount] = useState(
     initial?.maturityAmount != null ? String(initial.maturityAmount) : '',
   )
@@ -183,6 +230,14 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const opened = parseCalendarDate(startDate)
+    const end = parseCalendarDate(endDate)
+    const maturity = parseCalendarDate(maturityDate)
+    if ((startDate && !opened) || (type !== 'fd' && endDate && !end) ||
+        (type === 'fd' && maturityDate && !maturity)) {
+      setError('Enter a valid date in DD/MM/YYYY format.')
+      return
+    }
     if (type === 'fd' && Number(tenureMonths) + Number(tenureDays) <= 0) {
       setError('Enter the deposit term in months, days, or both.')
       return
@@ -193,8 +248,8 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
       investmentType: type,
       totalInvested: Number(totalInvested),
       currentValue: numOrUndef(currentValue),
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
+      startDate: opened,
+      endDate: end,
       status,
       notes: notes || undefined,
       taxPayments,
@@ -206,7 +261,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
     if (type === 'stock') {
       payload.ticker = ticker || undefined
       payload.buyPrice = numOrUndef(buyPrice)
-      payload.quantity = numOrUndef(quantity)
+      if (!initial?.hasSaleHistory) payload.quantity = numOrUndef(quantity)
       payload.currentPrice = numOrUndef(currentPrice)
     } else if (type === 'mf_sip') {
       payload.fundHouse = fundHouse || undefined
@@ -225,7 +280,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
       payload.tenureDays = Number(tenureDays)
       payload.maturityAction = maturityAction
       payload.payoutAccount = maturityAction === 'renew_full' ? null : payoutAccount.trim() || null
-      payload.maturityDate = maturityDate || null
+      payload.maturityDate = maturity ?? null
       payload.maturityAmount = numOrUndef(maturityAmount) ?? null
       payload.interestType = interestType || undefined
       payload.taxableInterest = taxableInterest
@@ -271,6 +326,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
             id="inv-type"
             className="pmt-select pmt-mono"
             value={type}
+            disabled={initial?.hasSaleHistory}
             onChange={(e) => setType(e.target.value as InvestmentType)}
           >
             {TYPES.map((t) => (
@@ -348,6 +404,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
                 type="number"
                 placeholder="0"
                 value={quantity}
+                disabled={initial?.hasSaleHistory}
                 onChange={(e) => setQuantity(e.target.value)}
               />
             </div>
@@ -491,9 +548,9 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
             </div>
             <div className="pmt-field">
               <label className="pmt-label" htmlFor="inv-fd-open">Opened on</label>
-              <input id="inv-fd-open" className="pmt-input pmt-mono" type="date" required
-                value={startDate} onChange={event => {
-                  setStartDate(event.target.value)
+              <InvestmentDate id="inv-fd-open" required
+                value={startDate} onChange={value => {
+                  setStartDate(value)
                   setMaturityDate('')
                 }} />
             </div>
@@ -522,14 +579,7 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
           <div className="pmt-form-grid">
             <div className="pmt-field">
               <label className="pmt-label" htmlFor="inv-maturity">Maturity date</label>
-              <input
-                id="inv-maturity"
-                className="pmt-input pmt-mono"
-                type="date"
-                aria-describedby="inv-maturity-help"
-                value={maturityDate}
-                onChange={(e) => setMaturityDate(e.target.value)}
-              />
+              <InvestmentDate id="inv-maturity" value={maturityDate} onChange={setMaturityDate} describedBy="inv-maturity-help" />
               <small id="inv-maturity-help" className="pmt-tiny">Leave blank to calculate from the opening date and term.</small>
             </div>
             <div className="pmt-field">
@@ -623,23 +673,11 @@ function InvestmentForm({ formId, initial, onSaved, onBusyChange }: InvestmentFo
         {type !== 'fd' && <>
         <div className="pmt-field">
           <label className="pmt-label" htmlFor="inv-start">Start date</label>
-          <input
-            id="inv-start"
-            className="pmt-input pmt-mono"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
+          <InvestmentDate id="inv-start" value={startDate} onChange={setStartDate} />
         </div>
         <div className="pmt-field">
           <label className="pmt-label" htmlFor="inv-end">End date</label>
-          <input
-            id="inv-end"
-            className="pmt-input pmt-mono"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
+          <InvestmentDate id="inv-end" value={endDate} onChange={setEndDate} />
         </div>
         </>}
         <div className="pmt-field">
@@ -756,7 +794,7 @@ function InvestmentCard({
         </div>
         {inv.investmentType === 'fd' && (
           <div className="pmt-inv-detail pmt-fd-details">
-            {inv.maturityDate && <span>Maturity: {toDateInput(inv.maturityDate)} · {inv.status === 'Active' &&
+            {inv.maturityDate && <span>Maturity: {calendarDateLabel(inv.maturityDate)} · {inv.status === 'Active' &&
               toDateInput(inv.maturityDate) <= today ? 'Due for confirmation' : inv.status}</span>}
             <span>{inv.maturityAction ? MATURITY_ACTIONS[inv.maturityAction] : 'Maturity instruction not set'}</span>
             {inv.payoutAccount && <span>Payout account: {inv.payoutAccount}</span>}

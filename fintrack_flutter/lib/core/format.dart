@@ -52,9 +52,21 @@ const _months = [
 String shortDateLabel(DateTime date) =>
     '${date.day} ${_months[date.month - 1]}';
 
-/// 20 Nov 2026
-String dateLabel(DateTime date) => '${shortDateLabel(date)} ${date.year}';
+/// 20/11/2026
+String dateLabel(DateTime date) => numericDateLabel(date);
 
 /// Nov 2026
 String monthYearLabel(DateTime date) =>
     '${_months[date.month - 1]} ${date.year}';
+
+/// 08/11/2026
+String numericDateLabel(DateTime date) =>
+    '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year.toString().padLeft(4, '0')}';
+
+/// Format an exact ledger amount without dropping its fractional rupees.
+String inrPaise(num paise) {
+  final total = paise.round();
+  final abs = total.abs();
+  final coins = abs % 100;
+  return "${total < 0 ? '-' : ''}${inr(abs ~/ 100)}${coins == 0 ? '' : '.${coins.toString().padLeft(2, '0')}'}";
+}

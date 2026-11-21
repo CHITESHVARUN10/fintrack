@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/finstack_theme.dart';
 import 'core/api_client.dart';
@@ -39,6 +40,9 @@ class _FinStackAppState extends ConsumerState<FinStackApp> {
     }
     return MaterialApp(
       title: 'FinStack',
+      locale: const Locale('en', 'GB'),
+      supportedLocales: const [Locale('en', 'GB')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
       theme: finStackTheme(),
       home: home,

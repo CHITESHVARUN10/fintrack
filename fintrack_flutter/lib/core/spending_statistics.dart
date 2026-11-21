@@ -357,6 +357,7 @@ Future<List<Map>> _expenses(
     for (final row in items.whereType<Map>()) {
       final id = _text(row['_id'], _text(row['id']));
       if (row['status'] != 'VOIDED' &&
+          row['isOffset'] != true &&
           const {'EXPENSE', 'CASH_EXPENSE'}.contains(row['type']) &&
           (id.isEmpty || seen.add(id))) {
         rows.add(row);

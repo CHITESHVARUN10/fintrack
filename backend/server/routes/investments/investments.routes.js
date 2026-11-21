@@ -1,7 +1,10 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Investment = require('../../models/investment.model');
+const Transaction = require('../../models/transaction.model');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
-const { buildListFilter, canModify } = require('../../utils/scope');
+const { buildListFilter, canModify, sameId } = require('../../utils/scope');
+const { parseSaleInput, detailPayload, dividendFilter, saleWrite } = require('../../services/stockSales');
 
 const { registerFinanceTransactions, requireUnlinked, clearRetiredLinks } = require('../financeTransactions');
 
@@ -77,11 +80,67 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+async function withDetails(req, item) {
+  const dividends = await Transaction.find(dividendFilter(item, req)).select('amountPaise').lean();
+  const totalDividendPaise = dividends.reduce((total, row) => total + (row.amountPaise || 0), 0);
+  return detailPayload(item, totalDividendPaise);
+}
+
+// GET /api/investments/:id — full position detail with sale and dividend history.
+router.get('/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const item = await Investment.findOne({ _id: req.params.id, familyAccountId: req.user.familyAccountId });
+    if (!item || (!sameId(item.memberId, req.user._id) && req.user.role !== 'admin')) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    res.json(await withDetails(req, item));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/investments/:id/sales — record an explicit stock sale.
+router.post('/:id/sales', async (req, res, next) => {
+  try {
+    if (!mongoose.isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const item = await Investment.findById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
+    if (item.investmentType !== 'stock') {
+      return res.status(409).json({ error: 'Only stock investments can record sales' });
+    }
+    const parsed = parseSaleInput(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const { sale } = parsed;
+
+    // A retried request returns the already-updated position without selling again.
+    if ((item.sales || []).some((row) => row.requestId === sale.requestId)) {
+      return res.json(await withDetails(req, item));
+    }
+
+    const { filter, update } = saleWrite(item, sale);
+    const updated = await Investment.findOneAndUpdate(filter, update, { returnDocument: 'after', updatePipeline: true });
+    if (!updated) {
+      const current = await Investment.findById(item._id);
+      if (!current) return res.status(404).json({ error: 'Not found' });
+      if ((current.sales || []).some((row) => row.requestId === sale.requestId)) {
+        return res.json(await withDetails(req, current));
+      }
+      return res.status(409).json({ error: 'Cannot sell more than the remaining quantity' });
+    }
+    res.json(await withDetails(req, updated));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/investments
 router.post('/', async (req, res, next) => {
   try {
+    const { sales, originalQuantity, ...body } = req.body;
     const item = new Investment({
-      ...req.body,
+      ...body,
       memberId: req.user._id,
       familyAccountId: req.user.familyAccountId,
     });
@@ -98,15 +157,27 @@ router.put('/:id', async (req, res, next) => {
     const item = await Investment.findById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Not found' });
     if (!canModify(req, item)) return res.status(403).json({ error: 'Forbidden' });
-    const { memberId, familyAccountId, _id, ...updates } = req.body;
+    // Sale history is server-managed; edits cannot rewrite it directly.
+    const { memberId, familyAccountId, _id, sales, originalQuantity, ...updates } = req.body;
     const previousType = item.investmentType;
     const typeChanged = Object.hasOwn(updates, 'investmentType') && updates.investmentType !== previousType;
+    const quantityChanged = Object.hasOwn(updates, 'quantity') && updates.quantity !== item.quantity;
+    if (typeChanged || quantityChanged) {
+      if (item.sales?.length) {
+        return res.status(409).json({ error: 'This holding has recorded sales. Update its price or record another sale to change the holding.' });
+      }
+      // A concurrent first sale takes precedence over an older edit form.
+      item.$where = { 'sales.0': { $exists: false } };
+    } else {
+      delete updates.quantity;
+    }
     if (typeChanged && !await requireUnlinked(res, 'investments', item)) return;
     Object.assign(item, updates);
     await item.save();
     if (typeChanged && previousType) await clearRetiredLinks('investments', item, previousType);
-    res.json(item);
+    res.json(await withDetails(req, item));
   } catch (err) {
+    if (err.name === 'DocumentNotFoundError') return res.status(409).json({ error: 'The holding changed. Reload it before editing.' });
     next(err);
   }
 });

@@ -32,6 +32,39 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const IST_OFFSET_MS = 330 * 60000;
+const DAY_MS = 86400000;
+
+// Search days follow the reader's local (IST) calendar, so a payment made late
+// in the evening still belongs to the day shown in the app.
+function localDayStart(value) {
+  const text = String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return null;
+  const start = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return new Date(start).toISOString().slice(0, 10) === text ? start - IST_OFFSET_MS : null;
+}
+
+// Both ends are inclusive whole local days; the end becomes an exclusive bound
+// on the following midnight so no same-day ledger entry is dropped.
+function localDayRange(from, to) {
+  if (!from && !to) return null;
+  const start = from ? localDayStart(from) : null;
+  const end = to ? localDayStart(to) : null;
+  if ((from && start == null) || (to && end == null) || (start != null && end != null && start > end)) {
+    return { error: 'Choose a valid date range' };
+  }
+  return {
+    ...(start != null ? { $gte: new Date(start) } : {}),
+    ...(end != null ? { $lt: new Date(end + DAY_MS) } : {}),
+  };
+}
+
+function parsePaise(value) {
+  const text = String(value).trim();
+  return /^\d{1,15}$/.test(text) ? Number(text) : null;
+}
+
 function payerOf(tx) {
   const sender = tx.sender || {};
   const recipient = tx.recipient || {};
@@ -110,6 +143,17 @@ function registerFinanceTransactions(router, Model, resource) {
         const value = { $regex: escapeRegex(search), $options: 'i' };
         filter.$and = [{ $or: ['sender.name', 'sender.upiId', 'recipient.name', 'recipient.upiId', 'productName']
           .map(field => ({ [field]: value })) }];
+      }
+      const range = localDayRange(req.query.from, req.query.to);
+      if (range?.error) return res.status(400).json({ error: range.error });
+      if (range) {
+        const days = { occurredAt: range };
+        filter.$and = [...(filter.$and || []), days];
+      }
+      if (req.query.amountPaise !== undefined && req.query.amountPaise !== '') {
+        const paise = parsePaise(req.query.amountPaise);
+        if (paise == null) return res.status(400).json({ error: 'Enter a valid amount' });
+        filter.amountPaise = paise;
       }
       const pageSize = 20;
       const page = Math.max(1, Math.min(100000, Number.parseInt(req.query.page, 10) || 1));

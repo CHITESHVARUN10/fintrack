@@ -3,6 +3,7 @@ const Subscription = require('../models/subscription.model');
 const Investment = require('../models/investment.model');
 const Transaction = require('../models/transaction.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
+const { activeOffsets } = require('./transactionOffsets');
 const { vendorDisplayName, paymentId } = require('../utils/vendorDisplayName');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
@@ -107,13 +108,15 @@ async function buildDashboard(userId) {
   let transactionCategoryEntries = [];
   let transactionVendorEntries = [];
   if (me?.familyAccountId) {
-    const txs = await Transaction.find({
-      familyId: me.familyAccountId,
-      createdBy: userId,
-      status: { $ne: 'VOIDED' },
-      type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
-      occurredAt: { $gte: monthStart, $lt: monthEnd },
-    }).lean();
+    const [entries, offsets] = await Promise.all([
+      Transaction.find({
+        familyId: me.familyAccountId, createdBy: userId, status: { $ne: 'VOIDED' },
+        type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
+        occurredAt: { $gte: monthStart, $lt: monthEnd },
+      }).lean(),
+      activeOffsets(me.familyAccountId, userId),
+    ]);
+    const txs = entries.filter(tx => !offsets.has(String(tx._id)));
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
     const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];

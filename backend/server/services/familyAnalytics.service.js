@@ -1,5 +1,6 @@
 const Transaction = require('../models/transaction.model');
-const User = require('../models/user.model');
+const { vendorDisplayName } = require('../utils/vendorDisplayName');
+const { activeOffsets } = require('./transactionOffsets');
 const { computeLedgerSummary } = require('./transactionEngine.service');
 
 async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, modes, types, requesterId, includePrivate = false }) {
@@ -20,8 +21,13 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   if (modes && modes.length) filter.mode = { $in: modes };
   if (types && types.length) filter.type = { $in: types };
 
-  const items = await Transaction.find(filter).populate('createdBy','name email').lean();
-  const summary = computeLedgerSummary(items);
+  const [entries, offsets] = await Promise.all([
+    Transaction.find(filter).populate('createdBy', 'name email')
+      .populate('recipientVendorRef', 'label upiId').lean(),
+    activeOffsets(familyId),
+  ]);
+  const summary = computeLedgerSummary(entries, offsets);
+  const items = entries.filter(tx => !offsets.has(String(tx._id)));
 
   // time series: daily buckets
   const byDay = new Map();
@@ -57,8 +63,9 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   const byVendor = new Map();
   for (const t of items) {
     if (t.type !== 'EXPENSE' && t.type !== 'CASH_EXPENSE') continue;
-    const k = String(t.recipient?.name||'Unknown').trim().slice(0,60) || 'Unknown';
-    const cur = byVendor.get(k) || { vendor: k, spendPaise: 0, count: 0 };
+    const vendor = vendorDisplayName(t.recipient, t.recipientVendorRef?.label);
+    const k = vendor.toLowerCase();
+    const cur = byVendor.get(k) || { vendor, spendPaise: 0, count: 0 };
     cur.spendPaise += t.amountPaise||0; cur.count++;
     byVendor.set(k, cur);
   }
@@ -135,8 +142,8 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
     if (t.type !== 'EXPENSE' && t.type !== 'CASH_EXPENSE') continue;
     const memberId = String(t.createdBy?._id || t.createdBy || 'unknown');
     const memberName = t.createdBy?.name || memberId.slice(0, 8);
-    const vendor = String(t.recipient?.name || 'Unknown').trim().slice(0, 60) || 'Unknown';
-    const key = `${memberId}__${vendor}`;
+    const vendor = vendorDisplayName(t.recipient, t.recipientVendorRef?.label);
+    const key = `${memberId}__${vendor.toLowerCase()}`;
     const cur = byMemberByVendorMap.get(key) || { memberId, memberName, vendor, spendPaise: 0, count: 0 };
     cur.spendPaise += t.amountPaise || 0;
     cur.count += 1;
@@ -158,7 +165,7 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
     highestDay,
     avgDailyPaise,
     avgDaily: avgDailyPaise / 100,
-    totalCount: items.length,
+    totalCount: entries.length,
     byMemberShare,
     byCategoryShare,
     byVendorShare,

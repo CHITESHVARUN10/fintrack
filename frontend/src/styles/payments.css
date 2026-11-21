@@ -1448,3 +1448,24 @@
   gap: 4px;
   white-space: normal;
 }
+
+.pmt-modal .pmt-date-entry {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.pmt-modal .pmt-date-entry > .pmt-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pmt-modal .pmt-date-picker {
+  position: absolute;
+  inset: auto 0 0 auto;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

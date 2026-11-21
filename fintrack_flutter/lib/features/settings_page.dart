@@ -104,7 +104,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       const BrutalCard(
         child: Center(
           child: Text(
-            'FinStack v1.0.0',
+            'FinStack v1.1.0',
             style: TextStyle(
               fontFamily: FinStackType.mono,
               fontSize: 12,

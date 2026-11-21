@@ -23,10 +23,24 @@ export function formatDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
+    day: '2-digit',
+    month: '2-digit',
     year: 'numeric',
   })
+}
+
+// Calendar-only fields preserve the stored day in every time zone.
+export function calendarDateLabel(iso: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '')
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
+}
+
+export function parseCalendarDate(value: string): string | undefined {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
+  if (!match || match[3] === '0000') return
+  const iso = `${match[3]}-${match[2]}-${match[1]}`
+  const date = new Date(`${iso}T00:00:00.000Z`)
+  if (!Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === iso) return iso
 }
 
 export function formatDay(d: number): string {

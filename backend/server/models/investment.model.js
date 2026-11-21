@@ -1,5 +1,16 @@
 const mongoose = require('mongoose');
 
+const stockSaleSchema = new mongoose.Schema(
+  {
+    quantity: { type: Number, required: true, min: 0 },
+    pricePerShare: { type: Number, required: true, min: 0 },
+    soldAt: { type: Date, required: true, default: Date.now },
+    // Client-supplied idempotency key so a retried sale is never applied twice.
+    requestId: { type: String, required: true, trim: true, maxlength: 100 },
+  },
+  { _id: true },
+);
+
 const investmentSchema = new mongoose.Schema(
   {
     memberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -14,6 +25,7 @@ const investmentSchema = new mongoose.Schema(
     buyPrice: { type: Number },
     quantity: { type: Number },
     currentPrice: { type: Number },
+    sales: { type: [stockSaleSchema], default: [] },
     // mutual fund / SIP
     fundName: { type: String },
     fundHouse: { type: String },

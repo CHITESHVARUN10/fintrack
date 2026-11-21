@@ -127,6 +127,8 @@ test('family admin cannot rotate another family invite code', async t => {
   assert.equal((await call(familyRoutes, 'post', '/:id/rotate-code', { user: outsider })).statusCode, 403);
 });
 test('transaction list paginates and reports the true total', async t => {
+  const TransactionOffset = require('../models/transactionoffset.model');
+  t.mock.method(TransactionOffset, 'find', () => ({ lean: async () => [] }));
   const chain = {
     sort() { return chain; },
     skip(n) { chain.skipped = n; return chain; },
@@ -381,6 +383,8 @@ test('legacy active users receive membership with insert-only defaults', async t
   assert.equal(upsert.mock.calls[0].arguments[1].$set, undefined);
 });
 test('weekly and yearly budgets use different bounded intervals', async t => {
+  const TransactionOffset = require('../models/transactionoffset.model');
+  t.mock.method(TransactionOffset, 'find', () => ({ lean: async () => [] }));
   const Budget = require('../models/budget.model');
   const router = require('./budgets/budgets.routes');
   t.mock.method(Budget, 'find', () => ({ sort: async () => [{ period: 'WEEKLY' }, { period: 'YEARLY' }] }));

@@ -1,5 +1,11 @@
 const express = require('express');
 const Joi = require('joi');
+const { isObjectIdOrHexString } = require('mongoose');
+const Investment = require('../../models/investment.model');
+const Income = require('../../models/income.model');
+const { activeOffsets, registerOffsetRoutes } = require('../../services/transactionOffsets');
+const { findStockSuggestions } = require('../../services/stockLinkSuggestions');
+const { transactionCounterparty } = require('../../utils/vendorDisplayName');
 const Transaction = require('../../models/transaction.model');
 let SourceRecord;
 try { SourceRecord = require('../../models/sourcerecord.model'); } catch {}
@@ -9,6 +15,7 @@ const { canModify, canModifyTransaction, buildTransactionVisibilityFilter } = re
 
 const router = express.Router();
 router.use(isAuthenticated);
+registerOffsetRoutes(router);
 
 function requireFamily(req, res) {
   if (!req.user.familyAccountId) { res.status(400).json({ error: 'Join or create a family first' }); return false; }
@@ -37,14 +44,14 @@ router.get('/', async (req, res, next) => {
     if (req.query.category) filter.category = req.query.category;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.mode) filter.mode = req.query.mode;
-    if (req.query.vendor) {
-      const v = String(req.query.vendor).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // case-insensitive substring on recipient.name or upiId/utr
-      filter.$or = [
-        { 'recipient.name': { $regex: v, $options: 'i' } },
-        { upiId: { $regex: v, $options: 'i' } },
-        { utr: { $regex: v, $options: 'i' } },
-      ];
+    if (req.query.vendor || req.query.vendorId) {
+      const q = String(req.query.vendor || '').trim().slice(0, 120);
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = { $regex: escaped, $options: 'i' };
+      const lookup = escaped ? ['recipient.name', 'recipient.upiId', 'sender.name', 'sender.upiId', 'upiId', 'utr']
+        .map(field => ({ [field]: regex })) : [];
+      if (isObjectIdOrHexString(req.query.vendorId)) lookup.push({ recipientVendorRef: req.query.vendorId });
+      if (lookup.length) filter.$or = lookup;
     }
     if (req.query.subscriptionRef) {
       filter.subscriptionRef = req.query.subscriptionRef;
@@ -73,7 +80,7 @@ router.get('/', async (req, res, next) => {
     const page = Math.max(1, Number(pageParam) || 1);
     const skip = paginated ? (page - 1) * limit : 0;
 
-    const [total, items] = await Promise.all([
+    const [total, items, offsets] = await Promise.all([
       Transaction.countDocuments(filter),
       Transaction.find(filter)
         .sort({ occurredAt: -1, _id: -1 })
@@ -83,7 +90,9 @@ router.get('/', async (req, res, next) => {
         .populate('familyTransfer.fromUserId', 'name email')
         .populate('familyTransfer.toUserId', 'name email')
         .populate('subscriptionRef')
+        .populate('recipientVendorRef', 'label upiId')
         .lean(),
+      activeOffsets(req.user.familyAccountId, familyView ? undefined : req.user._id),
     ]);
 
     // The summary covers every matching row, not just the current page, so the
@@ -94,11 +103,15 @@ router.get('/', async (req, res, next) => {
       const all = paginated
         ? await Transaction.find(filter).select('amountPaise type status').lean()
         : items;
-      summary = computeLedgerSummary(all);
+      summary = computeLedgerSummary(all, offsets);
     }
 
     res.json({
-      items,
+      items: items.map(tx => ({
+        ...tx,
+        counterpartyName: transactionCounterparty(tx),
+        ...(offsets.has(String(tx._id)) ? { isOffset: true } : {}),
+      })),
       summary,
       total,
       page,
@@ -146,7 +159,11 @@ router.get('/duplicate-groups', async (req, res, next) => {
         filter.occurredAt.$lte = to;
       }
     }
-    const items = await Transaction.find(filter).sort({ occurredAt: 1 }).limit(1000).lean();
+    const offsets = await activeOffsets(req.user.familyAccountId, familyView ? undefined : req.user._id);
+    filter._id = { $nin: [...offsets.keys()] };
+    const items = await Transaction.find(filter).sort({ occurredAt: -1 }).limit(1000)
+      .populate('recipientVendorRef', 'label upiId').lean();
+    items.reverse();
     const WINDOW_MS = 2 * 86400000;
     const byKey = new Map();
     for (const t of items) {
@@ -174,7 +191,7 @@ router.get('/duplicate-groups', async (req, res, next) => {
               occurredAt: t.occurredAt,
               status: t.status,
               candidateOf: t.candidateOf ? String(t.candidateOf) : undefined,
-              recipient: t.recipient?.name || undefined,
+              recipient: transactionCounterparty(t),
             })),
           });
         }
@@ -196,6 +213,24 @@ router.get('/duplicate-groups', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/transactions/investment-suggestions — suggestions for the owner's ledger.
+router.get('/investment-suggestions', async (req, res, next) => {
+  try {
+    if (!requireFamily(req, res)) return;
+    const from = req.query.from && new Date(req.query.from);
+    const to = req.query.to && new Date(req.query.to);
+    if ((from && Number.isNaN(+from)) || (to && Number.isNaN(+to)) || (from && to && from > to)) {
+      return res.status(400).json({ error: 'Choose a valid date range' });
+    }
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) to.setUTCHours(23, 59, 59, 999);
+    const page = Math.max(1, Math.min(10000, Number.parseInt(req.query.page, 10) || 1));
+    const result = await findStockSuggestions({
+      familyId: req.user.familyAccountId, ownerId: req.user._id, from, to, page,
+    });
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
   // GET /api/transactions/:id
   router.get('/:id', async (req, res, next) => {
     try {
@@ -205,12 +240,37 @@ router.get('/duplicate-groups', async (req, res, next) => {
       if (tx.visibility === 'PRIVATE' && String(tx.createdBy?._id || tx.createdBy) !== String(req.user._id)) {
         return res.status(403).json({ error: 'Private transaction' });
       }
-      const sources = await SourceRecord.find({ transactionId: tx._id });
+      const canModify = canModifyTransaction(req, tx);
+      const recordModel = tx.financeLink?.resource === 'investments' ? Investment : Income;
+      const [sources, offsets, financeRecord] = await Promise.all([
+        SourceRecord.find({ transactionId: tx._id }),
+        activeOffsets(tx.familyId, tx.createdBy?._id),
+        tx.financeLink && canModify
+          ? recordModel.findOne({ _id: tx.financeLink.recordId, familyAccountId: tx.familyId, memberId: tx.createdBy?._id })
+            .select('assetName stockName ticker fundName title').lean()
+          : null,
+      ]);
+      const offset = offsets.get(String(tx._id));
+      let counterEntry;
+      if (offset && canModify) {
+        const other = offset.transactionIds.find(id => String(id) !== String(tx._id));
+        counterEntry = await Transaction.findOne({ _id: other, familyId: tx.familyId, createdBy: req.user._id })
+          .select('type amountPaise occurredAt sender recipient mode recipientVendorRef')
+          .populate('recipientVendorRef', 'label upiId').lean();
+      }
       let candidateOfTx = null;
       if (tx.candidateOf) {
         candidateOfTx = await Transaction.findOne({ _id: tx.candidateOf, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
       }
-      res.json({ transaction: tx, sources, candidateOfTx, canModify: canModifyTransaction(req, tx) });
+      res.json({
+        transaction: { ...tx.toObject(), counterpartyName: transactionCounterparty(tx), ...(offset ? { isOffset: true } : {}) },
+        sources, candidateOfTx, canModify,
+        ...(financeRecord ? { financeRecordName: financeRecord.stockName || financeRecord.assetName ||
+          financeRecord.fundName || financeRecord.title || financeRecord.ticker } : {}),
+        ...(offset && counterEntry ? { offset: { purpose: offset.purpose, transaction: {
+          ...counterEntry, counterpartyName: transactionCounterparty(counterEntry),
+        } } } : {}),
+      });
     } catch (err) { next(err); }
   });
 
@@ -372,6 +432,10 @@ router.post('/bulk-categorize', async (req, res, next) => {
       )) {
         return res.status(409).json({ error: 'Unlink this transaction from its investment or income source before reclassifying it' });
       }
+      if (Object.hasOwn(req.body, 'type') && req.body.type !== tx.type) {
+        const offsets = await activeOffsets(tx.familyId, req.user._id);
+        if (offsets.has(String(tx._id))) return res.status(409).json({ error: 'Remove the offset pair before changing the transaction type' });
+      }
       // Validate subscriptionRef belongs to same family if provided
       if (req.body.subscriptionRef) {
         const Subscription = require('../../models/subscription.model');
@@ -473,6 +537,10 @@ router.post('/bulk-merge-duplicates', async (req, res, next) => {
     });
     const { error, value } = schema.validate(req.body || {});
     if (error) return res.status(400).json({ error: error.message });
+    const offsets = await activeOffsets(req.user.familyAccountId, req.user._id);
+    if (value.ids.some(id => offsets.has(id))) {
+      return res.status(409).json({ error: 'Remove the offset pair before merging one of its transactions' });
+    }
     const docs = await Transaction.find({
       _id: { $in: value.ids },
       createdBy: req.user._id,

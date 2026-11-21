@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../widgets/confirm_action.dart';
 import '../widgets/brutal.dart';
 import '../core/format.dart';
 import '../widgets/finance_transactions.dart';
@@ -50,24 +51,13 @@ class _IncomePageState extends State<IncomePage> {
   }
 
   Future<void> remove(Map item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Delete "${item['title']}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirmAction(
+      context,
+      title: 'Delete income?',
+      message: 'Delete "${item['title']}"?',
+      action: 'Delete',
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return;
     try {
       await ApiClient.dio.delete("/income/${item['_id'] ?? item['id']}");
       if (mounted) await load();

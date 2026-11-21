@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
@@ -581,7 +582,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                       children: [
                         Expanded(
                           child: Text(
-                            v['vendor'].toString(),
+                            readableVendorName(v['vendor'].toString()),
                             style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,

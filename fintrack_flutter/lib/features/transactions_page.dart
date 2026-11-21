@@ -1,10 +1,15 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
+import 'activity_review.dart';
 
 const _allCategories = [
   'Groceries',
@@ -123,6 +128,14 @@ const _types = [
   'CASH_WITHDRAWAL',
   'CASH_EXPENSE',
 ];
+
+const _typeLabels = {
+  'INCOME': 'Income',
+  'EXPENSE': 'Expense',
+  'INTERNAL_TRANSFER': 'Internal transfer',
+  'CASH_WITHDRAWAL': 'Cash withdrawal',
+  'CASH_EXPENSE': 'Cash expense',
+};
 
 const _modes = ['UPI', 'BANK', 'CASH', 'CARD', 'OTHER'];
 
@@ -251,7 +264,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
   };
   DateTime? fromDate;
   DateTime? toDate;
+  String typeFilter = '';
   String modeFilter = '';
+  String vendorId = '';
+  String vendorQuery = '';
   String statusFilter = '';
   String categoryFilter = '';
   final categories = <String>{..._allCategories};
@@ -323,6 +339,34 @@ class _TransactionsPageState extends State<TransactionsPage> {
     await _fetch(reset: false, version: _requestVersion);
   }
 
+  Map<String, String> _dateParams() {
+    final qp = <String, String>{};
+    final (from, to) = _dateRange;
+    if (from != null) qp['from'] = from.toUtc().toIso8601String();
+    if (to != null) {
+      final nextDay = DateTime(to.year, to.month, to.day + 1);
+      qp['to'] = nextDay
+          .subtract(const Duration(milliseconds: 1))
+          .toUtc()
+          .toIso8601String();
+    }
+    return qp;
+  }
+
+  void _openReview() {
+    dismissKeyboard(context);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ActivityReviewSheet(
+        dateParams: _dateParams(),
+        onChanged: load,
+        onOpenTransaction: _showDetail,
+      ),
+    );
+  }
+
   Future<void> _fetch({required bool reset, required int version}) async {
     try {
       final nextPage = reset ? 1 : page + 1;
@@ -330,23 +374,19 @@ class _TransactionsPageState extends State<TransactionsPage> {
         'familyView': familyView,
         'page': nextPage,
         'limit': _pageSize,
+        ..._dateParams(),
       };
-      final (from, to) = _dateRange;
-      if (from != null) qp['from'] = from.toUtc().toIso8601String();
-      if (to != null) {
-        final nextDay = DateTime(to.year, to.month, to.day + 1);
-        qp['to'] = nextDay
-            .subtract(const Duration(milliseconds: 1))
-            .toUtc()
-            .toIso8601String();
-      }
+      if (typeFilter.isNotEmpty) qp['type'] = typeFilter;
       if (modeFilter.isNotEmpty) qp['mode'] = modeFilter;
       if (statusFilter.isNotEmpty) qp['status'] = statusFilter;
       if (categoryFilter.isNotEmpty) qp['category'] = categoryFilter;
       if (vendorCtrl.text.trim().isNotEmpty) {
-        qp['vendor'] = vendorCtrl.text.trim();
+        qp['vendor'] = vendorQuery.isEmpty
+            ? vendorCtrl.text.trim()
+            : vendorQuery;
       }
 
+      if (vendorId.isNotEmpty) qp['vendorId'] = vendorId;
       final res = await ApiClient.dio.get('/transactions', queryParameters: qp);
       if (!mounted || version != _requestVersion) return;
       final raw = (res.data['items'] as List?) ?? [];
@@ -391,7 +431,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
     if (q.isEmpty) return items;
     return items.where((t) {
       final hay =
-          '${t['type'] ?? ''} ${t['category'] ?? ''} ${t['mode'] ?? ''} ${t['status'] ?? ''} ${t['recipient']?['name'] ?? ''} ${t['productName'] ?? ''}'
+          '${t['type'] ?? ''} ${t['category'] ?? ''} ${t['mode'] ?? ''} ${t['status'] ?? ''} ${transactionDisplayName(t)} ${t['recipient']?['name'] ?? ''} ${t['productName'] ?? ''}'
               .toLowerCase();
       return hay.contains(q);
     }).toList();
@@ -425,11 +465,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
         period: period,
         fromDate: _dateRange.$1,
         toDate: _dateRange.$2,
+        type: typeFilter,
         mode: modeFilter,
         status: statusFilter,
         category: categoryFilter,
         categories: categories,
         vendor: vendorCtrl.text,
+        vendorId: vendorId,
+        vendorQuery: vendorQuery,
       ),
     );
     if (result == null || !mounted) return;
@@ -437,16 +480,20 @@ class _TransactionsPageState extends State<TransactionsPage> {
       period = result['period'] as _Period;
       fromDate = result['from'] as DateTime?;
       toDate = result['to'] as DateTime?;
+      typeFilter = '${result['type'] ?? ''}';
       modeFilter = '${result['mode'] ?? ''}';
       statusFilter = '${result['status'] ?? ''}';
       categoryFilter = '${result['category'] ?? ''}';
       vendorCtrl.text = '${result['vendor'] ?? ''}';
+      vendorId = '${result['vendorId'] ?? ''}';
+      vendorQuery = '${result['vendorQuery'] ?? ''}';
     });
     load();
   }
 
   List<String> get _filters => [
-    if (modeFilter.isNotEmpty) modeFilter,
+    if (typeFilter.isNotEmpty) _typeLabels[typeFilter] ?? typeFilter,
+    if (modeFilter.isNotEmpty) transactionModeLabel(modeFilter),
     if (statusFilter.isNotEmpty) _filterStatuses[statusFilter] ?? statusFilter,
     if (categoryFilter.isNotEmpty) categoryFilter,
     if (vendorCtrl.text.trim().isNotEmpty) vendorCtrl.text.trim(),
@@ -455,7 +502,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
   void _clearFilters() {
     dismissKeyboard(context);
     setState(() {
+      typeFilter = '';
       modeFilter = '';
+      vendorId = '';
+      vendorQuery = '';
       statusFilter = '';
       categoryFilter = '';
       vendorCtrl.clear();
@@ -482,10 +532,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
     }
   }
 
-  void _showDetail(Map<String, dynamic> txn) {
+  Future<void> _showDetail(Map<String, dynamic> txn) async {
     dismissKeyboard(context);
     final id = '${txn['_id'] ?? txn['id']}';
-    showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _TxDetailSheet(
@@ -758,6 +808,15 @@ class _TransactionsPageState extends State<TransactionsPage> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: const Text('Review transactions'),
+              onPressed: _openReview,
+            ),
+          ),
         ],
       ),
     );
@@ -955,9 +1014,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
   Widget _txnCard(Map<String, dynamic> t) {
     final type = '${t['type'] ?? ''}';
     final isIncome = type == 'INCOME';
-    final paise = ((t['amountPaise'] ?? 0) as num) / 100;
-    final vendor =
-        '${t['recipient']?['name'] ?? t['productName'] ?? t['category'] ?? 'Transaction'}';
+    final paise = (t['amountPaise'] as num?) ?? 0;
+    final vendor = transactionDisplayName(t);
+    final mode = transactionModeLabel(t['mode']);
+    final offset = t['isOffset'] == true;
     final status = '${t['status'] ?? ''}';
     final category = '${t['category'] ?? ''}';
     final subcategory = '${t['subcategory'] ?? ''}';
@@ -965,15 +1025,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
         _financeSubcategories.containsKey(category) && subcategory.isNotEmpty
         ? '$category / $subcategory'
         : category;
-    final mode = '${t['mode'] ?? ''}';
     final creator = (t['createdBy'] as Map?)?['name'];
     final meta = [
       if (categoryLabel.isNotEmpty) categoryLabel,
-      if (mode.isNotEmpty) mode,
+      if (offset) 'Offset pair',
       if ('${t['visibility'] ?? ''}' == 'PRIVATE') 'PRIVATE',
       if (familyView && creator != null) 'by $creator',
     ].join(' · ');
-    final amount = '${isIncome ? '+' : ''}${inr(paise)}';
+    final amount = '${isIncome ? '+' : ''}${inrPaise(paise)}';
     final statusLabel = (status.isEmpty ? type : status).replaceAll('_', ' ');
     final (tagBg, tagFg) = status == 'RECONCILED'
         ? (FinStackColors.tertiary, FinStackColors.onSurface)
@@ -986,7 +1045,8 @@ class _TransactionsPageState extends State<TransactionsPage> {
         onTap: () => _showDetail(t),
         shadow: 3,
         padding: const EdgeInsets.all(12),
-        semanticLabel: '$vendor, $amount, $statusLabel',
+        semanticLabel:
+            '$vendor, $mode, $amount, ${offset ? 'Offset pair' : statusLabel}',
         child: Row(
           children: [
             Container(
@@ -1048,11 +1108,18 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   ),
                 ),
                 const SizedBox(height: 5),
-                BrutalTag(
-                  label: statusLabel.isEmpty ? '—' : statusLabel,
-                  color: tagBg,
-                  textColor: tagFg,
-                ),
+                BrutalTag(label: mode, color: tagBg, textColor: tagFg),
+                if (status == 'PENDING_REVIEW')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 3),
+                    child: Text(
+                      'Needs review',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ],
@@ -1564,20 +1631,26 @@ class _FiltersSheet extends StatefulWidget {
   final _Period period;
   final DateTime? fromDate;
   final DateTime? toDate;
+  final String type;
   final String mode;
   final String status;
   final String category;
   final String vendor;
+  final String vendorId;
+  final String vendorQuery;
   final Set<String> categories;
   const _FiltersSheet({
     required this.period,
     this.fromDate,
     this.toDate,
+    required this.type,
     required this.mode,
     required this.status,
     required this.category,
     required this.categories,
     required this.vendor,
+    required this.vendorId,
+    required this.vendorQuery,
   });
 
   @override
@@ -1589,6 +1662,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
   late _Period period = widget.period;
   late DateTime from = widget.fromDate ?? DateTime(_today.year, _today.month);
   late DateTime to = widget.toDate ?? _today;
+  late String type = widget.type;
   late String mode = widget.mode;
   late String status = widget.status;
   late String category = widget.category;
@@ -1596,10 +1670,70 @@ class _FiltersSheetState extends State<_FiltersSheet> {
     text: widget.vendor,
   );
 
+  late String vendorId = widget.vendorId;
+  late String vendorQuery = widget.vendorQuery;
+  Timer? vendorDebounce;
+  CancelToken? vendorRequest;
+  List<Map> vendors = [];
+  bool lookingUp = false;
+
   @override
   void dispose() {
+    vendorDebounce?.cancel();
+    vendorRequest?.cancel();
     vendorCtrl.dispose();
     super.dispose();
+  }
+
+  void _lookupVendor(String text) {
+    vendorDebounce?.cancel();
+    vendorRequest?.cancel();
+    final query = text.trim();
+    setState(() {
+      vendorId = '';
+      vendorQuery = '';
+      vendors = [];
+      lookingUp = query.length >= 2;
+    });
+    if (!lookingUp) return;
+    vendorDebounce = Timer(const Duration(milliseconds: 260), () async {
+      final token = vendorRequest = CancelToken();
+      try {
+        final response = await ApiClient.dio.get(
+          '/recipients',
+          queryParameters: {'q': query, 'limit': 6},
+          cancelToken: token,
+        );
+        if (!mounted || token.isCancelled) return;
+        final data = response.data;
+        if (data is Map && data['items'] is List) {
+          setState(
+            () => vendors = (data['items'] as List).whereType<Map>().toList(),
+          );
+        }
+      } catch (_) {
+        // Apply filters still accepts a typed merchant or UPI ID.
+      } finally {
+        if (mounted && !token.isCancelled) setState(() => lookingUp = false);
+      }
+    });
+  }
+
+  void _chooseVendor(Map vendor) {
+    vendorDebounce?.cancel();
+    vendorRequest?.cancel();
+    dismissKeyboard(context);
+    final upi = '${vendor['upiId'] ?? ''}';
+    final name = readableVendorName(
+      '${vendor['label'] ?? vendor['vendorKey'] ?? upi}',
+    );
+    setState(() {
+      vendorCtrl.text = name;
+      vendorId = '${vendor['_id'] ?? ''}';
+      vendorQuery = upi.isNotEmpty ? upi : name;
+      vendors = [];
+      lookingUp = false;
+    });
   }
 
   Future<void> _pick(bool isFrom) async {
@@ -1627,10 +1761,13 @@ class _FiltersSheetState extends State<_FiltersSheet> {
       'period': reset ? _Period.thisMonth : period,
       'from': reset ? null : from,
       'to': reset ? null : to,
+      'type': reset ? '' : type,
       'mode': reset ? '' : mode,
       'status': reset ? '' : status,
       'category': reset ? '' : category,
       'vendor': reset ? '' : vendorCtrl.text.trim(),
+      'vendorId': reset ? '' : vendorId,
+      'vendorQuery': reset ? '' : vendorQuery,
     });
   }
 
@@ -1700,6 +1837,13 @@ class _FiltersSheetState extends State<_FiltersSheet> {
               ],
               const SizedBox(height: 13),
               _SheetSelect(
+                label: 'Transaction type',
+                initialValue: type,
+                options: const {'': 'Any type', ..._typeLabels},
+                onChanged: (value) => setState(() => type = value),
+              ),
+              const SizedBox(height: 13),
+              _SheetSelect(
                 label: 'Payment method',
                 initialValue: mode,
                 options: const {
@@ -1731,11 +1875,32 @@ class _FiltersSheetState extends State<_FiltersSheet> {
               ),
               const SizedBox(height: 13),
               BrutalField(
-                label: 'Vendor',
+                label: 'Merchant or UPI ID',
                 controller: vendorCtrl,
-                hint: 'Merchant name or UPI ID',
-                textInputAction: TextInputAction.done,
+                hint: 'Search saved merchants',
+                onChanged: _lookupVendor,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _apply(),
               ),
+              if (lookingUp)
+                const LinearProgressIndicator(
+                  semanticsLabel: 'Finding merchants',
+                ),
+              for (final vendor in vendors)
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  title: Text(
+                    readableVendorName(
+                      '${vendor['label'] ?? vendor['vendorKey'] ?? ''}',
+                    ),
+                  ),
+                  subtitle: vendor['upiId'] == null
+                      ? null
+                      : Text('${vendor['upiId']}'),
+                  leading: const Icon(Icons.storefront_outlined),
+                  onTap: () => _chooseVendor(vendor),
+                ),
               const SizedBox(height: 18),
               _SheetButton(label: 'Apply filters', onPressed: () => _apply()),
               const SizedBox(height: 9),
@@ -1948,11 +2113,19 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
   String editCategory = 'Other';
   String editSubcategory = '';
   bool busy = false;
+  bool categorySaved = false;
+  Timer? feedbackTimer;
 
   @override
   void initState() {
     super.initState();
     fetch();
+  }
+
+  @override
+  void dispose() {
+    feedbackTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> fetch() async {
@@ -1967,7 +2140,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
             (res.data['transaction']?['subcategory'] ?? '') as String;
       });
     } catch (_) {
-      if (mounted) setState(() => detail = {});
+      if (mounted && detail == null) setState(() => detail = {});
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -1979,6 +2152,13 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
       await ApiClient.dio.patch('/transactions/${widget.id}', data: body);
       await fetch();
       widget.onChanged();
+      if (mounted && body.containsKey('category')) {
+        feedbackTimer?.cancel();
+        setState(() => categorySaved = true);
+        feedbackTimer = Timer(const Duration(milliseconds: 1800), () {
+          if (mounted) setState(() => categorySaved = false);
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1988,6 +2168,39 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                 e,
                 'Could not save the change. Try again.',
               ),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _offset(Map tx) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => ActivityOffsetSheet(transaction: tx),
+    );
+    if (saved != true || !mounted) return;
+    await fetch();
+    widget.onChanged();
+  }
+
+  Future<void> _removeOffset() async {
+    setState(() => busy = true);
+    try {
+      await ApiClient.dio.delete('/transactions/${widget.id}/offset');
+      await fetch();
+      widget.onChanged();
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              ApiClient.errorMessage(err, 'Could not remove the offset pair.'),
             ),
           ),
         );
@@ -2087,8 +2300,15 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
         final firstSource = sources.isNotEmpty && sources.first is Map
             ? sources.first as Map
             : null;
-        final recipient = (tx['recipient'] as Map?)?['name'] ?? '—';
-        final upi = tx['upiId'] ?? firstSource?['upiId'] ?? '—';
+        final name = transactionDisplayName(tx);
+        final partyLabel = tx['type'] == 'INCOME' ? 'Payer' : 'Merchant';
+        final mode = transactionModeLabel(tx['mode']);
+        final upi =
+            tx['upiId'] ??
+            tx['recipient']?['upiId'] ??
+            tx['sender']?['upiId'] ??
+            firstSource?['upiId'] ??
+            '—';
         final utr = tx['utr'] ?? firstSource?['utr'] ?? '—';
         final subscription = tx['subscriptionRef'] is Map
             ? (tx['subscriptionRef'] as Map)['name'] ?? 'linked'
@@ -2096,7 +2316,24 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
             ? 'linked'
             : null;
         final financeLink = tx['financeLink'] as Map?;
+        final financeName = detail?['financeRecordName'];
+        final financeRole = switch (financeLink?['role']) {
+          'deposit' => 'Deposit funding',
+          'maturity' => 'Maturity payout',
+          'purchase' => 'Stock purchase',
+          'dividend' => 'Dividend',
+          'receipt' => 'Income received',
+          _ => null,
+        };
+        final offset = detail?['offset'] as Map?;
+        final counterEntry = offset?['transaction'] as Map?;
         final canEdit = detail?['canModify'] != false;
+        final canOffset =
+            canEdit &&
+            offset == null &&
+            tx['isOffset'] != true &&
+            const ['ACTIVE', 'RECONCILED'].contains(status) &&
+            const ['INCOME', 'EXPENSE', 'CASH_EXPENSE'].contains(tx['type']);
         final statusLabel = status.replaceAll('_', ' ');
         return SafeArea(
           top: false,
@@ -2105,9 +2342,10 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
             children: [
               _SheetHeader(
-                title: '${inr(paise / 100)} · ${tx['type'] ?? ''}',
+                title:
+                    '${inrPaise(paise)} · ${_typeLabels[tx['type']] ?? 'Transaction'}',
                 subtitle:
-                    '${_fmtDate('${tx['occurredAt'] ?? ''}')} · ${tx['mode'] ?? ''} · $statusLabel',
+                    '${_fmtDate('${tx['occurredAt'] ?? ''}')} · $mode · $statusLabel',
                 closeLabel: 'Close transaction',
               ),
               const SizedBox(height: 14),
@@ -2143,19 +2381,24 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                         onChanged: (parent, child) => setState(() {
                           editCategory = parent;
                           editSubcategory = child;
+                          categorySaved = false;
                         }),
                       ),
                       const SizedBox(height: 10),
                       Align(
                         alignment: Alignment.centerRight,
                         child: _SheetButton(
-                          label: busy ? 'Saving…' : 'Save category',
+                          label: busy
+                              ? 'Saving…'
+                              : categorySaved
+                              ? 'Saved ✓'
+                              : 'Save category',
                           fontSize: 11,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 9,
                           ),
-                          onPressed: busy
+                          onPressed: busy || categorySaved
                               ? null
                               : () => patch({
                                   'category': editCategory,
@@ -2238,16 +2481,23 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'LINKS',
+                      'Transaction details',
                       style: _labelStyle(color: FinStackColors.onSurface),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       [
-                        'Recipient: $recipient',
+                        '$partyLabel: $name',
+                        'Method: $mode',
                         'UPI: $upi',
                         'UTR: $utr',
                         if (subscription != null) 'Subscription: $subscription',
+                        if (financeLink?['resource'] == 'investments')
+                          'Investment: ${financeName ?? 'Linked'}${financeRole == null ? '' : ' · $financeRole'}'
+                        else if (financeLink?['resource'] == 'income')
+                          'Income source: ${financeName ?? 'Linked'}'
+                        else
+                          'Investment: Unlinked',
                         'Sources: ${sources.length}',
                       ].join('\n'),
                       style: _numStyle(
@@ -2260,7 +2510,46 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                   ],
                 ),
               ),
-              if (status == 'PENDING_REVIEW') ...[
+              if (canOffset || tx['isOffset'] == true) ...[
+                const SizedBox(height: 12),
+                BrutalCard(
+                  border: 2.5,
+                  shadow: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 8,
+                    children: [
+                      Text(
+                        offset != null
+                            ? 'Offset pair'
+                            : 'Offset this transaction',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      if (offset != null) Text('${offset['purpose']}'),
+                      if (counterEntry != null)
+                        Text(
+                          "${counterEntry['type'] == 'INCOME' ? 'Incoming' : 'Outgoing'} · ${transactionDisplayName(counterEntry)} · ${_fmtDate('${counterEntry['occurredAt']}')}",
+                          style: FinStackType.caption,
+                        ),
+                      if (canOffset) ...[
+                        const Text(
+                          'Match an incoming and outgoing entry with the same amount.',
+                        ),
+                        _SheetButton(
+                          label: 'Find matching transaction',
+                          icon: Icons.swap_horiz,
+                          onPressed: busy ? null : () => _offset(tx as Map),
+                        ),
+                      ] else if (canEdit && offset != null)
+                        TextButton(
+                          onPressed: busy ? null : _removeOffset,
+                          child: const Text('Remove offset pair'),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+              if (canEdit && status == 'PENDING_REVIEW') ...[
                 const SizedBox(height: 12),
                 BrutalCard(
                   color: FinStackColors.errorContainer,

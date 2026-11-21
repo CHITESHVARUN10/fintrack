@@ -209,12 +209,12 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
   return { transaction: tx, sourceRecord: sr, created: true, level: bestLevel };
 }
 
-function computeLedgerSummary(transactions) {
+function computeLedgerSummary(transactions, offsets = new Map()) {
   let actualExpenditurePaise = 0, internalTransfersPaise = 0, cashWithdrawalsPaise = 0, totalMovementPaise = 0, cashSpentPaise = 0, cashWithdrawnPaise = 0;
   for (const t of transactions) {
     if (t.status === 'VOIDED') continue;
     totalMovementPaise += t.amountPaise || 0;
-    if (t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE') actualExpenditurePaise += t.amountPaise || 0;
+    if ((t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE') && !offsets.has(String(t._id))) actualExpenditurePaise += t.amountPaise || 0;
     if (t.type === 'INTERNAL_TRANSFER') internalTransfersPaise += t.amountPaise || 0;
     if (t.type === 'CASH_WITHDRAWAL') { cashWithdrawalsPaise += t.amountPaise || 0; cashWithdrawnPaise += t.amountPaise || 0; }
     if (t.type === 'CASH_EXPENSE') cashSpentPaise += t.amountPaise || 0;

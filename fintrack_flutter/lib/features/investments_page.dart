@@ -3,9 +3,11 @@ import '../core/api_client.dart';
 import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
+import '../widgets/confirm_action.dart';
 import '../widgets/finance_transactions.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
+import 'investment_detail_page.dart';
 
 const _types = ['stock', 'mf_sip', 'fd', 'real_estate', 'other'];
 const _tabs = ['all', ..._types];
@@ -80,28 +82,18 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
     }
   }
 
-  Future<void> remove(Map item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Delete "${_nameOf(item)}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+  Future<bool> remove(Map item) async {
+    final ok = await confirmAction(
+      context,
+      title: 'Delete investment?',
+      message: 'Delete "${_nameOf(item)}"?',
+      action: 'Delete',
     );
-    if (ok != true || !mounted) return;
+    if (!ok || !mounted) return false;
     try {
       await ApiClient.dio.delete("/investments/${item['_id'] ?? item['id']}");
       if (mounted) await load();
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -112,22 +104,41 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
           ),
         );
       }
+      return false;
     }
   }
 
-  void openForm({Map? initial}) {
-    showModalBottomSheet(
+  Future<bool> openForm({Map? initial}) async {
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) => _InvestmentForm(
         initial: initial,
-        onSaved: () {
-          Navigator.pop(sheetContext);
-          if (mounted) load();
-        },
+        onSaved: () => Navigator.pop(sheetContext, true),
       ),
     );
+    if (saved == true && mounted) await load();
+    return saved == true;
+  }
+
+  void openDetail(Map item) {
+    Future<void> refresh() async {
+      if (mounted) await load();
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => InvestmentDetailPage(
+          id: '${item['_id'] ?? item['id']}',
+          initial: Map<String, dynamic>.from(item),
+          onEdit: (detail) => openForm(initial: detail),
+          onDelete: (detail) => remove(detail),
+          onChanged: refresh,
+        ),
+      ),
+    ).then((_) => refresh());
   }
 
   @override
@@ -270,20 +281,25 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
   Widget _investmentCard(Map item) {
     final kind = '${item['investmentType'] ?? 'other'}';
     final isFd = kind == 'fd';
-    final invested =
-        ((isFd
-                ? item['principalAmount'] ?? item['totalInvested']
-                : item['totalInvested'])
-            as num?) ??
-        0;
-    final current =
-        ((isFd
-                ? item['maturityAmount'] ??
-                      item['principalAmount'] ??
-                      item['currentValue']
-                : item['currentValue'])
-            as num?) ??
-        0;
+    final quantity = item['quantity'] as num?;
+    final buyPrice = item['buyPrice'] as num?;
+    final currentPrice = item['currentPrice'] as num?;
+    final invested = kind == 'stock' && quantity != null && buyPrice != null
+        ? quantity * buyPrice
+        : (isFd
+                      ? item['principalAmount'] ?? item['totalInvested']
+                      : item['totalInvested'])
+                  as num? ??
+              0;
+    final current = kind == 'stock' && quantity != null && currentPrice != null
+        ? quantity * currentPrice
+        : (isFd
+                      ? item['maturityAmount'] ??
+                            item['principalAmount'] ??
+                            item['currentValue']
+                      : item['currentValue'])
+                  as num? ??
+              0;
     final gain = current - invested;
     final maturity = DateTime.tryParse('${item['maturityDate'] ?? ''}');
     final status = '${item['status'] ?? 'Active'}';
@@ -297,122 +313,164 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: 8,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
+          InkWell(
+            onTap: () => openDetail(item),
+            splashColor: FinStackColors.brandYellow.withValues(alpha: 0.25),
+            highlightColor: Colors.transparent,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 8,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 4,
                   children: [
-                    Text(
-                      _nameOf(item),
-                      style: Theme.of(context).textTheme.titleMedium,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 4,
+                        children: [
+                          Text(
+                            _nameOf(item),
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          BrutalTag(
+                            label: type,
+                            color: FinStackColors.surfaceContainer,
+                          ),
+                          if (item['ticker'] != null)
+                            Text(
+                              '${item['ticker']}',
+                              style: FinStackType.caption,
+                            ),
+                        ],
+                      ),
                     ),
-                    BrutalTag(
-                      label: type,
-                      color: FinStackColors.surfaceContainer,
+                    WorkspaceItemActions(
+                      onEdit: () =>
+                          openForm(initial: Map<String, dynamic>.from(item)),
+                      onRemove: () => remove(item),
                     ),
-                    if (item['ticker'] != null)
-                      Text('${item['ticker']}', style: FinStackType.caption),
                   ],
                 ),
-              ),
-              WorkspaceItemActions(
-                onEdit: () =>
-                    openForm(initial: Map<String, dynamic>.from(item)),
-                onRemove: () => remove(item),
-              ),
-            ],
-          ),
-          Wrap(
-            spacing: 10,
-            runSpacing: 3,
-            children: [
-              if (item['quantity'] != null)
-                Text('Qty: ${item['quantity']}', style: FinStackType.caption),
-              if (item['units'] != null)
-                Text('Units: ${item['units']}', style: FinStackType.caption),
-              if (item['nav'] != null)
-                Text('NAV: ${item['nav']}', style: FinStackType.caption),
-              if (item['interestRate'] != null)
-                Text(
-                  'Interest: ${item['interestRate']}%',
-                  style: FinStackType.caption,
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 3,
+                  children: [
+                    if (item['quantity'] != null)
+                      Text(
+                        'Qty: ${item['quantity']}',
+                        style: FinStackType.caption,
+                      ),
+                    if (item['units'] != null)
+                      Text(
+                        'Units: ${item['units']}',
+                        style: FinStackType.caption,
+                      ),
+                    if (item['nav'] != null)
+                      Text('NAV: ${item['nav']}', style: FinStackType.caption),
+                    if (item['interestRate'] != null)
+                      Text(
+                        'Interest: ${item['interestRate']}%',
+                        style: FinStackType.caption,
+                      ),
+                    if (item['sipAmount'] is num)
+                      Text(
+                        'SIP: ${inr(item['sipAmount'] as num)}/mo',
+                        style: FinStackType.caption,
+                      ),
+                    if (item['bankName'] != null)
+                      Text(
+                        'Bank: ${item['bankName']}',
+                        style: FinStackType.caption,
+                      ),
+                  ],
                 ),
-              if (item['sipAmount'] is num)
-                Text(
-                  'SIP: ${inr(item['sipAmount'] as num)}/mo',
-                  style: FinStackType.caption,
+                if (isFd) ...[
+                  if (maturity != null)
+                    Text(
+                      'Maturity: ${dateLabel(maturity)} · ${due ? 'Due for confirmation' : status}',
+                    ),
+                  if (item['tenureMonths'] != null ||
+                      item['tenureDays'] != null)
+                    Text(
+                      [
+                        if ((item['tenureMonths'] ?? 0) != 0)
+                          "${item['tenureMonths']} mo",
+                        if ((item['tenureDays'] ?? 0) != 0)
+                          "${item['tenureDays']} d",
+                      ].join(' '),
+                      style: FinStackType.caption,
+                    ),
+                  Text(switch (item['maturityAction']) {
+                    'renew_principal' =>
+                      'Renew principal for the same term and pay out interest',
+                    'renew_full' =>
+                      'Renew principal and interest for the same term',
+                    final action =>
+                      _maturityActions[action] ??
+                          'Maturity instruction not set',
+                  }, style: FinStackType.caption),
+                  if (item['payoutAccount'] != null)
+                    Text(
+                      "Payout account: ${item['payoutAccount']}",
+                      style: FinStackType.caption,
+                    ),
+                ],
+                const Divider(height: 7, thickness: 1),
+                Row(
+                  spacing: 8,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _positionValue(
+                        isFd ? 'Maturity value' : 'Current',
+                        current,
+                      ),
+                    ),
+                    Expanded(child: _positionValue('Invested', invested)),
+                    Expanded(
+                      child: _positionValue(
+                        'Gain / loss',
+                        gain,
+                        color: gain >= 0
+                            ? FinStackColors.successInk
+                            : FinStackColors.onErrorContainer,
+                      ),
+                    ),
+                  ],
                 ),
-              if (item['bankName'] != null)
-                Text('Bank: ${item['bankName']}', style: FinStackType.caption),
-            ],
+              ],
+            ),
           ),
-          if (isFd) ...[
-            if (maturity != null)
-              Text(
-                'Maturity: ${maturity.toIso8601String().split('T').first} · ${due ? 'Due for confirmation' : status}',
-              ),
-            if (item['tenureMonths'] != null || item['tenureDays'] != null)
-              Text(
-                [
-                  if ((item['tenureMonths'] ?? 0) != 0)
-                    "${item['tenureMonths']} mo",
-                  if ((item['tenureDays'] ?? 0) != 0) "${item['tenureDays']} d",
-                ].join(' '),
-                style: FinStackType.caption,
-              ),
-            Text(switch (item['maturityAction']) {
-              'renew_principal' =>
-                'Renew principal for the same term and pay out interest',
-              'renew_full' => 'Renew principal and interest for the same term',
-              final action =>
-                _maturityActions[action] ?? 'Maturity instruction not set',
-            }, style: FinStackType.caption),
-            if (item['payoutAccount'] != null)
-              Text(
-                "Payout account: ${item['payoutAccount']}",
-                style: FinStackType.caption,
-              ),
-          ],
-          const Divider(height: 7, thickness: 1),
           Row(
             spacing: 8,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _positionValue(
-                  isFd ? 'Maturity value' : 'Current',
-                  current,
+              BrutalButton(
+                label: 'Details',
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
                 ),
+                onPressed: () => openDetail(item),
               ),
-              Expanded(child: _positionValue('Invested', invested)),
-              Expanded(
-                child: _positionValue(
-                  'Gain / loss',
-                  gain,
-                  color: gain >= 0
-                      ? FinStackColors.successInk
-                      : FinStackColors.onErrorContainer,
+              if (isFd || kind == 'stock')
+                BrutalButton(
+                  label: 'Transactions',
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  onPressed: () => showFinanceTransactions(
+                    context,
+                    kind: kind,
+                    id: "${item['_id'] ?? item['id']}",
+                    name: _nameOf(item),
+                  ),
                 ),
-              ),
             ],
           ),
-          if (isFd || kind == 'stock')
-            Align(
-              alignment: Alignment.centerLeft,
-              child: BrutalButton(
-                label: 'Transactions',
-                color: Colors.white,
-                onPressed: () => showFinanceTransactions(
-                  context,
-                  kind: kind,
-                  id: "${item['_id'] ?? item['id']}",
-                  name: _nameOf(item),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -474,6 +532,8 @@ class _InvestmentFormState extends State<_InvestmentForm> {
   String? maturityAction;
   bool taxableInterest = false;
   bool busy = false;
+  bool get saleHistory =>
+      (widget.initial?['sales'] as List?)?.isNotEmpty == true;
   String? error;
 
   @override
@@ -591,7 +651,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     if (chosen == null || !mounted) return;
     setState(() {
       controller.text = chosen.toIso8601String().split('T').first;
-      if (controller == startCtrl) maturityDateCtrl.clear();
+      if (type == 'fd' && controller == startCtrl) maturityDateCtrl.clear();
     });
   }
 
@@ -612,13 +672,19 @@ class _InvestmentFormState extends State<_InvestmentForm> {
             icon: const Icon(Icons.calendar_today_outlined, size: 16),
             label: Align(
               alignment: Alignment.centerLeft,
-              child: Text(controller.text.isEmpty ? hint : controller.text),
+              child: Text(switch (DateTime.tryParse(controller.text)) {
+                final date? => dateLabel(date),
+                null => hint,
+              }),
             ),
           ),
         ),
-        if (controller == maturityDateCtrl && controller.text.isNotEmpty)
+        if ((type != 'fd' || controller == maturityDateCtrl) &&
+            controller.text.isNotEmpty)
           IconButton(
-            tooltip: 'Calculate maturity date from term',
+            tooltip: controller == maturityDateCtrl
+                ? 'Calculate maturity date from term'
+                : 'Clear date',
             icon: const Icon(Icons.clear),
             onPressed: () => setState(controller.clear),
           ),
@@ -699,7 +765,9 @@ class _InvestmentFormState extends State<_InvestmentForm> {
         payload['ticker'] = tickerCtrl.text.trim();
       }
       if (_num(buyCtrl.text) != null) payload['buyPrice'] = _num(buyCtrl.text);
-      if (_num(qtyCtrl.text) != null) payload['quantity'] = _num(qtyCtrl.text);
+      if (!saleHistory && _num(qtyCtrl.text) != null) {
+        payload['quantity'] = _num(qtyCtrl.text);
+      }
       if (_num(curPriceCtrl.text) != null) {
         payload['currentPrice'] = _num(curPriceCtrl.text);
       }
@@ -770,7 +838,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
     String label,
     String value,
     List<String> options,
-    ValueChanged<String?> onChanged, {
+    ValueChanged<String?>? onChanged, {
     bool allowEmpty = false,
     Map<String, String> labels = const {},
   }) {
@@ -833,7 +901,7 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               'Type',
               type,
               _types,
-              (v) => setState(() => type = v!),
+              saleHistory ? null : (v) => setState(() => type = v!),
               labels: _typeLabels,
             ),
             const SizedBox(height: 8),
@@ -883,7 +951,8 @@ class _InvestmentFormState extends State<_InvestmentForm> {
                 children: [
                   Expanded(
                     child: BrutalField(
-                      label: 'Quantity',
+                      label: saleHistory ? 'Remaining shares' : 'Quantity',
+                      enabled: !saleHistory,
                       controller: qtyCtrl,
                       hint: '0',
                     ),
@@ -1117,27 +1186,12 @@ class _InvestmentFormState extends State<_InvestmentForm> {
               ),
               const SizedBox(height: 8),
             ],
-            if (type != 'fd')
-              Row(
-                children: [
-                  Expanded(
-                    child: BrutalField(
-                      label: 'Start date',
-                      controller: startCtrl,
-                      hint: '2026-01-01',
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: BrutalField(
-                      label: 'End date',
-                      controller: endCtrl,
-                      hint: '—',
-                    ),
-                  ),
-                ],
-              ),
-            const SizedBox(height: 8),
+            if (type != 'fd') ...[
+              dateControl('Start date', startCtrl, 'Choose a date'),
+              const SizedBox(height: 10),
+              dateControl('End date', endCtrl, 'Choose a date'),
+              const SizedBox(height: 8),
+            ],
             _drop(
               'Status',
               status,

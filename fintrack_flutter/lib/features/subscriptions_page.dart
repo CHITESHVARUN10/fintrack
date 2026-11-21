@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../theme/finstack_theme.dart';
+import '../widgets/confirm_action.dart';
 import '../widgets/brutal.dart';
 import '../widgets/states.dart';
 import '../widgets/workspace.dart';
@@ -136,27 +137,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   }
 
   Future<void> remove(Map item) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete?'),
-        content: Text('Delete "${item['name']}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirmAction(
+      context,
+      title: 'Delete subscription?',
+      message: 'Delete "${item['name']}"?',
+      action: 'Delete',
     );
-    if (ok != true) return;
+    if (!ok || !mounted) return;
     try {
       await ApiClient.dio.delete("/subscriptions/${item['_id'] ?? item['id']}");
-      await load();
+      if (mounted) await load();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import 'brutal.dart';
 import 'states.dart';
@@ -44,8 +45,12 @@ class _FinanceTransactions extends StatefulWidget {
 
 class _FinanceTransactionsState extends State<_FinanceTransactions> {
   final search = TextEditingController();
+  final amount = TextEditingController();
   String view = 'linked';
   String query = '';
+  DateTime? from;
+  DateTime? to;
+  int? amountPaise;
   int page = 1;
   int requestVersion = 0;
   List<Map> items = [];
@@ -57,6 +62,8 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
   String? feedback;
 
   bool get linked => view == 'linked';
+  bool get filtered => query.isNotEmpty || from != null || to != null || amountPaise != null;
+  bool get canFilter => !linked && !busy;
   Map<String, String> get roles => _purposes[widget.kind]!;
   String get path =>
       "/${widget.kind == 'income' ? 'income' : 'investments'}/${widget.id}/transactions";
@@ -70,6 +77,7 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
   @override
   void dispose() {
     search.dispose();
+    amount.dispose();
     super.dispose();
   }
 
@@ -87,6 +95,9 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
           'role': view,
           'page': page,
           if (query.isNotEmpty) 'q': query,
+          if (from != null) 'from': _day(from!),
+          if (to != null) 'to': _day(to!),
+          'amountPaise': ?amountPaise,
         },
       );
       if (!mounted || version != requestVersion) return;
@@ -108,11 +119,79 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
     }
   }
 
+  static String _day(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  /// Rupees typed by the reader, stored as exact integer paise so the match is
+  /// never off by a paisa through floating-point rounding.
+  int? parsePaise(String value) {
+    final text = value.trim().replaceAll(',', '').replaceAll('₹', '');
+    final match = RegExp(r'^(\d{1,12})(?:\.(\d{0,2}))?$').firstMatch(text);
+    if (match == null) return null;
+    final rupees = int.parse(match.group(1)!);
+    final fraction = (match.group(2) ?? '').padRight(2, '0');
+    final paise = rupees * 100 + int.parse(fraction);
+    return paise > 0 ? paise : null;
+  }
+
   void updateSearch(String value) {
     FocusScope.of(context).unfocus();
     query = value.trim();
     page = 1;
     load();
+  }
+
+  void applyAmount(String value) {
+    final parsed = parsePaise(value);
+    final blank = value.trim().isEmpty;
+    if (!blank && parsed == null) return;
+    amountPaise = parsed;
+    page = 1;
+    load();
+  }
+
+  Future<void> pickDay({required bool start}) async {
+    dismissKeyboard(context);
+    final now = DateUtils.dateOnly(DateTime.now());
+    final lower = start ? DateTime(1950) : (from ?? DateTime(1950));
+    final upper = start ? (to ?? now) : now;
+    final anchor = start ? from : to;
+    final picked = await showDatePicker(
+      context: context,
+      helpText: start ? 'Choose start date' : 'Choose end date',
+      firstDate: lower,
+      lastDate: upper,
+      initialDate: anchor ?? upper,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (start) {
+        from = picked;
+        if (to != null && to!.isBefore(picked)) to = picked;
+      } else {
+        to = picked;
+        if (from != null && from!.isAfter(picked)) from = picked;
+      }
+      page = 1;
+    });
+    await load();
+  }
+
+  Future<void> clearFilters() async {
+    dismissKeyboard(context);
+    search.clear();
+    amount.clear();
+    setState(() {
+      query = '';
+      from = null;
+      to = null;
+      amountPaise = null;
+      page = 1;
+      feedback = null;
+    });
+    await load();
   }
 
   Future<void> changeLink(Map row) async {
@@ -153,17 +232,18 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
     final incoming = item['type'] == 'INCOME';
     final party = item[incoming ? 'sender' : 'recipient'] as Map?;
     final other = item[incoming ? 'recipient' : 'sender'] as Map?;
-    final label =
-        [
-          party?['name'],
-          party?['upiId'],
-          other?['name'],
-          other?['upiId'],
-          item['productName'],
-        ].whereType<String>().firstWhere(
-          (value) => value.trim().isNotEmpty,
-          orElse: () => 'Ledger entry',
-        );
+    final names = [
+      party?['name'],
+      party?['upiId'],
+      other?['name'],
+      other?['upiId'],
+      item['productName'],
+    ]
+        .whereType<String>()
+        .map((value) => readableVendorName(value).trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
+    final label = names.isEmpty ? 'Ledger entry' : names.first;
     final rawDate = '${item['occurredAt'] ?? ''}'.split('T').first;
     final amount = inr(((item['amountPaise'] as num?) ?? 0) / 100);
     final role = roles[(item['financeLink'] as Map?)?['role']];
@@ -242,6 +322,11 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                   : (value) {
                       view = value!;
                       search.clear();
+                      amount.clear();
+                      query = '';
+                      from = null;
+                      to = null;
+                      amountPaise = null;
                       feedback = null;
                       updateSearch('');
                     },
@@ -268,6 +353,70 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                   tooltip: 'Search transactions',
                 ),
               ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  BrutalButton(
+                    label: from == null
+                        ? 'Any start date'
+                        : 'From ${shortDateLabel(from!)}',
+                    color: Colors.white,
+                    fontSize: 11,
+                    onPressed: canFilter ? () => pickDay(start: true) : null,
+                  ),
+                  BrutalButton(
+                    label: to == null
+                        ? 'Any end date'
+                        : 'Through ${shortDateLabel(to!)}',
+                    color: Colors.white,
+                    fontSize: 11,
+                    onPressed: canFilter ? () => pickDay(start: false) : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              BrutalField(
+                label: 'Exact amount ₹',
+                controller: amount,
+                enabled: canFilter,
+                hint: '1250.50',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: applyAmount,
+                suffixIcon: IconButton(
+                  onPressed: canFilter ? () => applyAmount(amount.text) : null,
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Search by amount',
+                ),
+              ),
+              if (amount.text.trim().isNotEmpty && parsePaise(amount.text) == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Enter a rupee amount like 1250 or 1250.50.',
+                    style: FinStackType.caption.copyWith(
+                      color: FinStackColors.onErrorContainer,
+                    ),
+                  ),
+                ),
+              if (filtered)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: BrutalButton(
+                      label: 'Clear filters',
+                      color: Colors.white,
+                      fontSize: 11,
+                      onPressed: busy ? null : clearFilters,
+                    ),
+                  ),
+                ),
             ],
             if (feedback != null)
               Padding(
@@ -289,6 +438,8 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
               Text(
                 linked
                     ? 'No linked transactions yet.${canManage ? ' Choose a purpose above to link an existing ledger entry.' : ''}'
+                    : filtered
+                    ? 'No unlinked transactions match these filters. Clear them to see everything available.'
                     : 'No matching transactions.',
               )
             else
