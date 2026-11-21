@@ -3,6 +3,7 @@ const { isAuthenticated } = require('../middleware/auth.middleware');
 const RecipientDirectory = require('../models/recipientdirectory.model');
 const Transaction = require('../models/transaction.model');
 const { activeOffsets } = require('../services/transactionOffsets');
+const { buildTransactionVisibilityFilter } = require('../utils/scope');
 const { vendorDisplayName } = require('../utils/vendorDisplayName');
 const { normalizeVendorKey } = require('../services/recipient.service');
 const router = express.Router();
@@ -35,16 +36,16 @@ router.get('/:id/transactions', async (req,res,next)=>{
     const lim = Math.min(1000, Math.max(1, parseInt(String(limit||200),10)||200));
     const sk = Math.max(0, parseInt(String(skip||0),10)||0);
 
-    // Fetch transactions family-scoped; PRIVATE is invisible to others even in vendor aggregates
-    const baseFilter = { familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
+    // Fetch transactions family-scoped; unshared months and PRIVATE rows stay
+    // invisible to other members even in vendor aggregates.
+    const visibility = await buildTransactionVisibilityFilter(req, { familyId: req.user.familyAccountId });
+    const baseFilter = { familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, $and: [visibility] };
     if (hasDate) baseFilter.occurredAt = filterDate;
     if (memberId) {
       if (String(memberId) !== String(req.user._id) && req.user.role !== 'admin') {
         return res.status(403).json({ error: 'Only admin can filter by member' });
       }
       baseFilter.createdBy = memberId;
-      // when filtering by specific member, still respect PRIVATE: only that member's private visible to themselves or admin with include
-      // baseFilter already has $or, but if memberId is other user's, their PRIVATE will be excluded via $or (since createdBy != requester)
     }
     if (category) baseFilter.category = category;
     if (amountPaise !== undefined) baseFilter.amountPaise = Number(amountPaise);

@@ -81,7 +81,7 @@ router.get('/', async (req, res, next) => {
 });
 
 async function withDetails(req, item) {
-  const dividends = await Transaction.find(dividendFilter(item, req)).select('amountPaise').lean();
+  const dividends = await Transaction.find(await dividendFilter(item, req)).select('amountPaise').lean();
   const totalDividendPaise = dividends.reduce((total, row) => total + (row.amountPaise || 0), 0);
   return detailPayload(item, totalDividendPaise);
 }

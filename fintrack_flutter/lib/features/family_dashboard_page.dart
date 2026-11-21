@@ -139,6 +139,17 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 19, 26),
       children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text(
+            'Only months your family has shared are included. Manage yours in Profile → Privacy & sharing.',
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.4,
+              color: FinStackColors.onSurfaceVariant,
+            ),
+          ),
+        ),
         BrutalCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

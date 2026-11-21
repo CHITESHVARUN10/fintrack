@@ -37,8 +37,9 @@ router.get('/', async (req, res, next) => {
         }
         filter.createdBy = req.query.memberId;
       }
-      // hide PRIVATE transactions from other members in family view (completely invisible)
-      filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] }];
+      // Other members' rows require a month they have explicitly shared, and
+      // PRIVATE rows stay hidden even inside a shared month.
+      filter.$and = [await buildTransactionVisibilityFilter(req, { familyId: req.user.familyAccountId })];
     }
     if (req.query.type) filter.type = req.query.type;
     if (req.query.category) filter.category = req.query.category;
@@ -127,7 +128,8 @@ router.get('/compare', async (req, res, next) => {
     if (!requireFamily(req, res)) return;
     const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 4);
     if (ids.length < 2) return res.status(400).json({ error: 'Provide at least 2 ids' });
-    const items = await Transaction.find({ _id: { $in: ids }, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
+    const visibility = await buildTransactionVisibilityFilter(req);
+    const items = await Transaction.find({ _id: { $in: ids }, familyId: req.user.familyAccountId, ...visibility }).populate('createdBy', 'name email').lean();
     const sourcesByTx = {};
     for (const t of items) {
       sourcesByTx[String(t._id)] = await SourceRecord.find({ transactionId: t._id }).lean();
@@ -148,7 +150,7 @@ router.get('/duplicate-groups', async (req, res, next) => {
     if (!familyView) {
       filter.createdBy = req.user._id;
     } else {
-      filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] }];
+      filter.$and = [await buildTransactionVisibilityFilter(req)];
     }
     if (req.query.from || req.query.to) {
       filter.occurredAt = {};
@@ -237,9 +239,9 @@ router.get('/investment-suggestions', async (req, res, next) => {
       const tx = await Transaction.findById(req.params.id).populate('createdBy', 'name email').populate('familyTransfer.fromUserId', 'name email').populate('familyTransfer.toUserId', 'name email').populate('recipientVendorRef').populate('subscriptionRef');
       if (!tx) return res.status(404).json({ error: 'Not found' });
       if (String(tx.familyId) !== String(req.user.familyAccountId)) return res.status(403).json({ error: 'Forbidden' });
-      if (tx.visibility === 'PRIVATE' && String(tx.createdBy?._id || tx.createdBy) !== String(req.user._id)) {
-        return res.status(403).json({ error: 'Private transaction' });
-      }
+      const visibility = await buildTransactionVisibilityFilter(req, { familyId: tx.familyId });
+      const visible = await Transaction.exists({ _id: tx._id, ...visibility });
+      if (!visible) return res.status(403).json({ error: 'This transaction is not visible to you' });
       const canModify = canModifyTransaction(req, tx);
       const recordModel = tx.financeLink?.resource === 'investments' ? Investment : Income;
       const [sources, offsets, financeRecord] = await Promise.all([
@@ -261,7 +263,8 @@ router.get('/investment-suggestions', async (req, res, next) => {
       }
       let candidateOfTx = null;
       if (tx.candidateOf) {
-        candidateOfTx = await Transaction.findOne({ _id: tx.candidateOf, familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req) }).populate('createdBy', 'name email').lean();
+        const visibility = await buildTransactionVisibilityFilter(req);
+        candidateOfTx = await Transaction.findOne({ _id: tx.candidateOf, familyId: req.user.familyAccountId, ...visibility }).populate('createdBy', 'name email').lean();
       }
       res.json({
         transaction: { ...tx.toObject(), counterpartyName: transactionCounterparty(tx), ...(offset ? { isOffset: true } : {}) },
@@ -355,7 +358,6 @@ router.post('/bulk-categorize', async (req, res, next) => {
       financeLink: null,
       $and: [
         { $or: [{ category: 'Other' }, { category: '' }, { category: { $exists: false } }, { category: null }] },
-        { $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] },
       ],
     };
     // if not familyView and not admin, only own Others
@@ -363,7 +365,7 @@ router.post('/bulk-categorize', async (req, res, next) => {
     const doFamily = false;
     if (!doFamily) {
       filter.createdBy = req.user._id;
-      // remove the visibility $or and keep only category $or, since we already filter by own
+      // keep only the category clause, since we already filter by own
       filter.$and = [{ $or: [{ category: 'Other' }, { category: '' }, { category: { $exists: false } }, { category: null }] }];
     } else if (req.body.memberId && String(req.body.memberId) !== String(req.user._id)) {
       if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admin can bulk categorize for other member' });

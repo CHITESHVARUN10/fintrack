@@ -377,7 +377,8 @@ router.get('/:id/suggest', async (req,res,next)=>{
 router.post('/backfill', async (req,res,next)=>{
   try{
     if(!requireFamily(req,res)) return;
-    const txs = await Transaction.find({ familyId: req.user.familyAccountId, ...buildTransactionVisibilityFilter(req), status: { $ne:'VOIDED' } }).lean();
+    const visibility = await buildTransactionVisibilityFilter(req);
+    const txs = await Transaction.find({ familyId: req.user.familyAccountId, ...visibility, status: { $ne:'VOIDED' } }).lean();
     const grouped = new Map();
     for(const t of txs){
       const upi = String(t.upiId || t.recipient?.upiId || '').toLowerCase().trim();

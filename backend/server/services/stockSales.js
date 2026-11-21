@@ -68,7 +68,7 @@ function detailPayload(item, totalDividendPaise = 0) {
 // Confirmed dividend credits linked to this investment, restricted to the
 // investment owner and the requester's visibility rules.
 function dividendFilter(item, req) {
-  return {
+  return buildTransactionVisibilityFilter(req).then(visibility => ({
     'financeLink.resource': 'investments',
     'financeLink.recordId': item._id,
     'financeLink.role': 'dividend',
@@ -76,8 +76,8 @@ function dividendFilter(item, req) {
     createdBy: item.memberId,
     type: 'INCOME',
     status: settledStatuses,
-    ...buildTransactionVisibilityFilter(req),
-  };
+    ...visibility,
+  }));
 }
 
 // Atomic sale write: the filter refuses overselling and duplicate requestIds,

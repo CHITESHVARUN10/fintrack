@@ -7,6 +7,7 @@ import '../widgets/brutal.dart';
 import '../widgets/workspace.dart';
 import 'budgets_page.dart';
 import 'family_dashboard_page.dart';
+import 'family_sharing_page.dart';
 import 'import_page.dart';
 import 'income_page.dart';
 import 'investments_page.dart';
@@ -207,6 +208,18 @@ class ProfileHubPage extends ConsumerWidget {
           color: FinStackColors.accentOrange,
           onTap: () =>
               _push(context, 'NOTIFICATIONS', const NotificationsPage()),
+        ),
+        const SizedBox(height: 8),
+        _HubRow(
+          icon: Icons.lock_outline,
+          label: 'Privacy & sharing',
+          subtitle: 'Choose which months your family can see',
+          color: FinStackColors.accentPurple,
+          onTap: () => _push(
+            context,
+            'PRIVACY & SHARING',
+            const FamilySharingPage(),
+          ),
         ),
         const SizedBox(height: 8),
         _HubRow(

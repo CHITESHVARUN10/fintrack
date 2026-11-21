@@ -75,6 +75,7 @@ function registerOffsetRoutes(router) {
         _id: { $nin: [tx._id, ...occupied] },
         ...(currency === 'INR' ? { $or: [{ currency }, { currency: null }] } : { currency }),
       };
+      const and = [];
       const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
       if (query) {
         const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -82,8 +83,32 @@ function registerOffsetRoutes(router) {
         const matches = ['recipient.name', 'recipient.upiId', 'sender.name', 'sender.upiId', 'productName']
           .map(field => ({ [field]: regex }));
         if (/^\d{1,12}(?:\.\d{1,2})?$/.test(query)) matches.push({ amountPaise: Math.round(Number(query) * 100) });
-        filter.$and = [{ $or: matches }];
+        and.push({ $or: matches });
       }
+      const category = typeof req.query.category === 'string' ? req.query.category.trim().slice(0, 80) : '';
+      if (category) and.push({ category });
+      const minPaise = Number.parseInt(req.query.minAmountPaise, 10);
+      const maxPaise = Number.parseInt(req.query.maxAmountPaise, 10);
+      if (Number.isFinite(minPaise) || Number.isFinite(maxPaise)) {
+        const range = {};
+        if (Number.isFinite(minPaise)) range.$gte = minPaise;
+        if (Number.isFinite(maxPaise)) range.$lte = maxPaise;
+        and.push({ amountPaise: range });
+      }
+      const from = req.query.from ? new Date(req.query.from) : null;
+      const to = req.query.to ? new Date(req.query.to) : null;
+      const fromValid = from && Number.isFinite(from.getTime());
+      const toValid = to && Number.isFinite(to.getTime());
+      if (fromValid || toValid) {
+        const range = {};
+        if (fromValid) range.$gte = from;
+        if (toValid) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to))) to.setHours(23, 59, 59, 999);
+          range.$lte = to;
+        }
+        and.push({ occurredAt: range });
+      }
+      if (and.length) filter.$and = and;
       const items = await Transaction.find(filter).select(fields).populate('recipientVendorRef', 'label upiId')
         .sort({ occurredAt: -1, _id: -1 }).skip((page - 1) * 20).limit(21).lean();
       res.json({ items: items.slice(0, 20), hasMore: items.length > 20 });

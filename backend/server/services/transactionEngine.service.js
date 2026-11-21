@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const Transaction = require('../models/transaction.model');
 const SourceRecord = require('../models/sourcerecord.model');
 const { fingerprintCandidate, scoreCandidate, classifyConfidence } = require('./reconciliation.service');
+const { buildTransactionVisibilityFilter } = require('../utils/scope');
 const { normalizeVendorKey, resolveCategory, upsertFromCategory, resolveProduct, predictCategoryForAmount } = require('./recipient.service');
 const { predictCategory } = require('./categoryEngine.service');
 
@@ -57,16 +58,17 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
 
   // Search recent candidates for reconciliation. This is family-wide: a QR
   // payment can be made by one member and the bank CSV imported by another.
-  // Other members' PRIVATE transactions stay invisible.
+  // Other members' unshared months and PRIVATE transactions stay invisible.
   const windowFrom = new Date(new Date(candidate.occurredAt).getTime() - 2*86400000);
   const windowTo = new Date(new Date(candidate.occurredAt).getTime() + 2*86400000);
+  const visibility = await buildTransactionVisibilityFilter(null, { familyId, userId: createdBy });
   const recent = await Transaction.find({
     familyId,
     type: candidate.type,
     amountPaise: candidate.amountPaise,
     occurredAt: { $gte: windowFrom, $lte: windowTo },
     status: { $ne: 'VOIDED' },
-    $or: [{ createdBy }, { visibility: { $ne: 'PRIVATE' } }],
+    ...visibility,
   }).lean();
   // SourceRecord has no occurredAt — pull signals by the matching
   // transactions' ids instead (the old query could never match anything,

@@ -132,11 +132,12 @@ function registerFinanceTransactions(router, Model, resource) {
       const options = roles(resource, item);
       const role = typeof req.query.role === 'string' && Object.hasOwn(options, req.query.role) ? options[req.query.role] : null;
       if (candidates && (!canManage || !role)) return res.json({ items: [], hasMore: false, canManage });
+      const visibility = candidates ? {} : await buildTransactionVisibilityFilter(req);
       const filter = {
         ...scope,
         ...(candidates
           ? { financeLink: null, subscriptionRef: null, type: { $in: role[2] } }
-          : { ...linked, ...buildTransactionVisibilityFilter(req) }),
+          : { ...linked, ...visibility }),
       };
       const search = String(req.query.q || '').trim().slice(0, 100);
       if (search) {

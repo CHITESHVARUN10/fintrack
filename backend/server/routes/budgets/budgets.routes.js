@@ -3,6 +3,7 @@ const Joi = require('joi');
 const Budget = require('../../models/budget.model');
 const Transaction = require('../../models/transaction.model');
 const { activeOffsets } = require('../../services/transactionOffsets');
+const { buildTransactionVisibilityFilter } = require('../../utils/scope');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 
 const router = express.Router();
@@ -29,11 +30,12 @@ router.get('/', async (req,res,next)=>{
       activeOffsets(familyId),
     ]);
     const excludedIds = [...offsets.keys()];
-    // compute spent for current period — PRIVATE is invisible to others even in aggregates
+    // compute spent for current period — unshared months and PRIVATE rows are invisible
     const now = new Date();
+    const visibility = await buildTransactionVisibilityFilter(req, { familyId });
     for(const b of items){
       const { from, to } = budgetInterval(b.period, now);
-      const filter={ familyId, _id: { $nin: excludedIds }, status:{$ne:'VOIDED'}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from, $lt: to }, $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }] };
+      const filter={ familyId, _id: { $nin: excludedIds }, status:{$ne:'VOIDED'}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from, $lt: to }, $and: [visibility] };
       if(b.scope==='CATEGORY' && b.category) filter.category=b.category;
       if(b.scope==='MEMBER' && b.memberId) filter.createdBy=b.memberId;
       // for MEMBER scope, if filtering other member's budget, respect their PRIVATE? already via $or above

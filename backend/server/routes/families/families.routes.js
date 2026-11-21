@@ -3,6 +3,8 @@ const Joi = require('joi');
 const crypto = require('crypto');
 const FamilyAccount = require('../../models/familyaccount.model');
 const FamilyMembership = require('../../models/familymembership.model');
+const MonthShare = require('../../models/monthshare.model');
+const Transaction = require('../../models/transaction.model');
 const User = require('../../models/user.model');
 const { isAuthenticated, isAdmin } = require('../../middleware/auth.middleware');
 const { sanitizeUser } = require('../../utils/sanitize');
@@ -69,6 +71,68 @@ router.get('/me', async (req, res, next) => {
       ? await FamilyMembership.findOne({ userId: req.user._id, familyId: family._id })
       : null;
     res.json({ family, membership });
+  } catch (err) { next(err); }
+});
+
+// GET /api/families/me/sharing — months the member has shared with the family
+router.get('/me/sharing', async (req, res, next) => {
+  try {
+    const familyId = req.user.familyAccountId;
+    if (!familyId) return res.json({ months: [] });
+    const [rows, shares] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { familyId, createdBy: req.user._id, status: { $ne: 'VOIDED' } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$occurredAt', timezone: 'Asia/Kolkata' } },
+            count: { $sum: 1 },
+            privateCount: { $sum: { $cond: [{ $eq: ['$visibility', 'PRIVATE'] }, 1, 0] } },
+          },
+        },
+        { $sort: { _id: -1 } },
+      ]),
+      MonthShare.find({ userId: req.user._id, familyId }).select('month shared').lean(),
+    ]);
+    const shared = new Map(shares.map(row => [row.month, row.shared === true]));
+    const months = rows
+      .filter(row => row._id)
+      .map(row => ({
+        month: row._id,
+        shared: shared.get(row._id) === true,
+        count: row.count,
+        privateCount: row.privateCount,
+      }));
+    // Keep a month visible after its last transaction is deleted so the
+    // member can still see (and turn off) the explicit setting.
+    for (const row of shares) {
+      if (!months.some(month => month.month === row.month)) {
+        months.push({ month: row.month, shared: row.shared === true, count: 0, privateCount: 0 });
+      }
+    }
+    months.sort((a, b) => b.month.localeCompare(a.month));
+    res.json({ months });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/families/me/sharing/:month — share or hide one month
+router.put('/me/sharing/:month', async (req, res, next) => {
+  try {
+    const familyId = req.user.familyAccountId;
+    if (!familyId) return res.status(400).json({ error: 'Join or create a family first' });
+    const month = String(req.params.month || '');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return res.status(400).json({ error: 'Use a month like 2026-11' });
+    }
+    if (typeof req.body?.shared !== 'boolean') {
+      return res.status(400).json({ error: 'shared must be true or false' });
+    }
+    await MonthShare.init();
+    const row = await MonthShare.findOneAndUpdate(
+      { userId: req.user._id, familyId, month },
+      { $set: { shared: req.body.shared } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ month: row.month, shared: row.shared });
   } catch (err) { next(err); }
 });
 

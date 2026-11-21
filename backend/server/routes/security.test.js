@@ -312,6 +312,8 @@ test('a QR payment reconciles onto a bank row imported earlier', () => {
   assert.equal(classifyConfidence(scoreCandidate(appTx, bank).confidence), 'AUTO');
 });
 test('ingest persists accepted references and split amounts', async t => {
+  const MonthShare = require('../models/monthshare.model');
+  t.mock.method(MonthShare, 'find', () => ({ select: () => ({ lean: async () => [] }) }));
   t.mock.method(SourceRecord, 'findOne', () => ({ lean: async () => null, then: resolve => Promise.resolve(null).then(resolve) }));
   t.mock.method(Transaction, 'find', () => ({ lean: async () => [] }));
   const create = t.mock.method(Transaction, 'create', async fields => ({ ...fields, _id: id(), save: async () => {} }));
@@ -323,6 +325,8 @@ test('ingest persists accepted references and split amounts', async t => {
   assert.equal(stored.subscriptionRef, subscriptionRef); assert.equal(stored.categorySplit[0].amountPaise, 10000);
 });
 test('ingest links an imported bank row to an app QR payment instead of duplicating it', async t => {
+  const MonthShare = require('../models/monthshare.model');
+  t.mock.method(MonthShare, 'find', () => ({ select: () => ({ lean: async () => [] }) }));
   t.mock.method(SourceRecord, 'findOne', () => ({ lean: async () => null, then: resolve => Promise.resolve(null).then(resolve) }));
   const qrId = id();
   const qr = {
@@ -385,6 +389,8 @@ test('legacy active users receive membership with insert-only defaults', async t
 test('weekly and yearly budgets use different bounded intervals', async t => {
   const TransactionOffset = require('../models/transactionoffset.model');
   t.mock.method(TransactionOffset, 'find', () => ({ lean: async () => [] }));
+  const MonthShare = require('../models/monthshare.model');
+  t.mock.method(MonthShare, 'find', () => ({ select: () => ({ lean: async () => [] }) }));
   const Budget = require('../models/budget.model');
   const router = require('./budgets/budgets.routes');
   t.mock.method(Budget, 'find', () => ({ sort: async () => [{ period: 'WEEKLY' }, { period: 'YEARLY' }] }));

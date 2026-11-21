@@ -109,7 +109,8 @@ router.get('/:id/transactions', async (req, res, next) => {
     const familyId = item.familyAccountId || req.user.familyAccountId;
 
     // 1. Linked transactions
-    const linked = await Transaction.find({ subscriptionRef: item._id, familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, ...buildTransactionVisibilityFilter(req) })
+    const visibility = await buildTransactionVisibilityFilter(req);
+    const linked = await Transaction.find({ subscriptionRef: item._id, familyId: req.user.familyAccountId, status: { $ne: 'VOIDED' }, ...visibility })
       .sort({ occurredAt: -1 })
       .populate('createdBy', 'name email')
       .populate('recipient', 'name upiId');

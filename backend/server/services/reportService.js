@@ -8,6 +8,7 @@ const Investment = require('../models/investment.model');
 const AdHocExpense = require('../models/expense.model');
 const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
+const { buildTransactionVisibilityFilter } = require('../utils/scope');
 const Budget = require('../models/budget.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
 const ImportBatch = require('../models/importbatch.model');
@@ -561,7 +562,8 @@ async function buildFamilyData(familyId, from, to, requesterId) {
   const budgets = await Budget.find({ familyId }).lean();
   const vendors = await RecipientDirectory.find({ familyId, status: { $ne: 'ARCHIVED' } }).sort({ hits: -1 }).limit(20).lean();
   const recentBatches = await ImportBatch.find({ familyId }).sort({ createdAt: -1 }).limit(10).lean();
-  const txCount = await Transaction.countDocuments({ familyId, status: { $ne: 'VOIDED' } });
+  const visibility = await buildTransactionVisibilityFilter(null, { familyId, userId: requesterId });
+  const txCount = await Transaction.countDocuments({ familyId, status: { $ne: 'VOIDED' }, ...visibility });
   return { analytics, family: family || { name: 'Family' }, members, budgets, vendors, recentBatches, txCount, from, to };
 }
 

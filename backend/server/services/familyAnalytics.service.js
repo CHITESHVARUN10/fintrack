@@ -1,16 +1,18 @@
 const Transaction = require('../models/transaction.model');
+const { buildTransactionVisibilityFilter } = require('../utils/scope');
 const { vendorDisplayName } = require('../utils/vendorDisplayName');
 const { activeOffsets } = require('./transactionOffsets');
 const { computeLedgerSummary } = require('./transactionEngine.service');
 
 async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, modes, types, requesterId, includePrivate = false }) {
   const filter = { familyId, status: { $ne: 'VOIDED' } };
-  // PRIVATE is invisible to other members even in aggregates
-  if (!includePrivate && requesterId) {
-    filter.$and = [{ $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: requesterId }] }];
-  } else if (!includePrivate) {
-    filter.visibility = { $ne: 'PRIVATE' };
-  }
+  // Only the requester's own rows plus months other members explicitly shared
+  // are visible; PRIVATE rows stay hidden even inside a shared month.
+  filter.$and = [await buildTransactionVisibilityFilter(null, {
+    familyId,
+    userId: requesterId,
+    includePrivate,
+  })];
   if (from || to) {
     filter.occurredAt = {};
     if (from) filter.occurredAt.$gte = new Date(from);

@@ -2317,7 +2317,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                           ),
                           const SizedBox(height: 2),
                           const Text(
-                            'Private is hidden from other members.',
+                            'Private stays hidden even when the month is shared.',
                             style: TextStyle(
                               fontSize: 11,
                               height: 1.4,

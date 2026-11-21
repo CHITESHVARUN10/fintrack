@@ -267,6 +267,17 @@ export function FamilyDashboard() {
           </div>
         </div>
 
+        <p
+          className="fw-mono"
+          style={{
+            fontSize: 11,
+            color: 'var(--text-secondary)',
+            margin: '0 0 2px',
+          }}
+        >
+          Only months each member has shared are included in these totals.
+        </p>
+
         {loading && !data && <LoadingBlock label="Loading family analytics…" />}
 
         {data && (

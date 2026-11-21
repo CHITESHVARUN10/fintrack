@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/ledger_categories.dart';
 import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
@@ -358,11 +361,19 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
 
   final purpose = TextEditingController();
   final search = TextEditingController();
+  final minAmount = TextEditingController();
+  final maxAmount = TextEditingController();
   final selected = <String, Map>{};
   List<Map> items = [];
   late String side = isIncoming(widget.transaction) ? 'outgoing' : 'incoming';
   String kind = 'general';
   String query = '';
+  String category = '';
+  String month = '';
+  DateTime? fromDate;
+  DateTime? toDate;
+  bool filtersOpen = false;
+  Timer? amountDebounce;
   int page = 1;
   int request = 0;
   bool more = false;
@@ -396,7 +407,114 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
   void dispose() {
     purpose.dispose();
     search.dispose();
+    minAmount.dispose();
+    maxAmount.dispose();
+    amountDebounce?.cancel();
     super.dispose();
+  }
+
+  DateTime? get rangeFrom =>
+      month.isNotEmpty ? _monthStart(month) : fromDate;
+  DateTime? get rangeTo => month.isNotEmpty ? _monthEnd(month) : toDate;
+
+  int get activeFilters => [
+    category.isNotEmpty,
+    month.isNotEmpty,
+    fromDate != null || toDate != null,
+    minAmount.text.trim().isNotEmpty || maxAmount.text.trim().isNotEmpty,
+  ].where((active) => active).length;
+
+  static DateTime _monthStart(String key) {
+    final parts = key.split('-');
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
+  }
+
+  static DateTime _monthEnd(String key) {
+    final start = _monthStart(key);
+    return DateTime(start.year, start.month + 1, 0);
+  }
+
+  static String _dateParam(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  static const _monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  List<MapEntry<String, String>> get monthOptions {
+    final now = DateTime.now();
+    return [
+      for (var offset = 0; offset < 18; offset++)
+        () {
+          final date = DateTime(now.year, now.month - offset, 1);
+          final key =
+              '${date.year}-${date.month.toString().padLeft(2, '0')}';
+          return MapEntry(
+            key,
+            '${_monthNames[date.month - 1]} ${date.year}',
+          );
+        }(),
+    ];
+  }
+
+  void _resetPageAndLoad() {
+    page = 1;
+    load();
+  }
+
+  void _amountChanged() {
+    amountDebounce?.cancel();
+    amountDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _resetPageAndLoad();
+    });
+  }
+
+  Future<void> _pickDate({required bool from}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (from ? fromDate : toDate) ?? DateTime.now(),
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      month = '';
+      if (from) {
+        fromDate = picked;
+      } else {
+        toDate = picked;
+      }
+    });
+    _resetPageAndLoad();
+  }
+
+  void _clearFilters() {
+    amountDebounce?.cancel();
+    search.clear();
+    minAmount.clear();
+    maxAmount.clear();
+    setState(() {
+      query = '';
+      category = '';
+      month = '';
+      fromDate = null;
+      toDate = null;
+    });
+    _resetPageAndLoad();
   }
 
   Future<void> load() async {
@@ -406,6 +524,10 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
       loadError = null;
     });
     try {
+      final minPaise = parseRupeesToPaise(minAmount.text);
+      final maxPaise = parseRupeesToPaise(maxAmount.text);
+      final from = rangeFrom;
+      final to = rangeTo;
       final response = await ApiClient.dio.get<Map>(
         '$base/offset-candidates',
         queryParameters: {
@@ -413,6 +535,11 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
           'page': page,
           if (side.isNotEmpty) 'side': side,
           if (query.isNotEmpty) 'q': query,
+          if (category.isNotEmpty) 'category': category,
+          'minAmountPaise': ?minPaise,
+          'maxAmountPaise': ?maxPaise,
+          if (from != null) 'from': _dateParam(from),
+          if (to != null) 'to': _dateParam(to),
         },
       );
       if (!mounted || revision != request) return;
@@ -608,8 +735,8 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
                       load();
                     },
                     decoration: InputDecoration(
-                      labelText: 'Name or amount',
-                      hintText: 'e.g. 1499',
+                      labelText: 'Vendor, name or amount',
+                      hintText: 'e.g. Corner Coffee or 1499',
                       suffixIcon: IconButton(
                         tooltip: 'Search transactions',
                         icon: const Icon(Icons.search),
@@ -623,6 +750,183 @@ class _ActivityOffsetSheetState extends State<ActivityOffsetSheet> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () => setState(
+                                () => filtersOpen = !filtersOpen,
+                              ),
+                        icon: Icon(
+                          filtersOpen ? Icons.expand_less : Icons.expand_more,
+                          size: 18,
+                        ),
+                        label: Text(
+                          activeFilters == 0
+                              ? 'Filters'
+                              : 'Filters ($activeFilters)',
+                        ),
+                      ),
+                      if (activeFilters > 0 || query.isNotEmpty)
+                        TextButton(
+                          onPressed: saving ? null : _clearFilters,
+                          child: const Text('Clear'),
+                        ),
+                    ],
+                  ),
+                  if (filtersOpen) ...[
+                    const SizedBox(height: 2),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: category,
+                          items: [
+                            const DropdownMenuItem(
+                              value: '',
+                              child: Text('Any category'),
+                            ),
+                            for (final name in ledgerCategories)
+                              DropdownMenuItem(
+                                value: name,
+                                child: Text(name),
+                              ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  setState(() => category = value ?? '');
+                                  _resetPageAndLoad();
+                                },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Month',
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: month,
+                          items: [
+                            const DropdownMenuItem(
+                              value: '',
+                              child: Text('Any month'),
+                            ),
+                            for (final option in monthOptions)
+                              DropdownMenuItem(
+                                value: option.key,
+                                child: Text(option.value),
+                              ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    month = value ?? '';
+                                    if (month.isNotEmpty) {
+                                      fromDate = null;
+                                      toDate = null;
+                                    }
+                                  });
+                                  _resetPageAndLoad();
+                                },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: saving
+                                ? null
+                                : () => _pickDate(from: true),
+                            icon: const Icon(Icons.event, size: 16),
+                            label: Text(
+                              fromDate == null
+                                  ? 'From date'
+                                  : numericDateLabel(fromDate!),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: saving
+                                ? null
+                                : () => _pickDate(from: false),
+                            icon: const Icon(Icons.event, size: 16),
+                            label: Text(
+                              toDate == null
+                                  ? 'To date'
+                                  : numericDateLabel(toDate!),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: minAmount,
+                            enabled: !saving,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => _amountChanged(),
+                            decoration: const InputDecoration(
+                              labelText: 'Min ₹',
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: maxAmount,
+                            enabled: !saving,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: (_) => _amountChanged(),
+                            decoration: const InputDecoration(
+                              labelText: 'Max ₹',
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (month.isNotEmpty || fromDate != null || toDate != null)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: saving
+                              ? null
+                              : () {
+                                  setState(() {
+                                    month = '';
+                                    fromDate = null;
+                                    toDate = null;
+                                  });
+                                  _resetPageAndLoad();
+                                },
+                          child: const Text('Clear dates'),
+                        ),
+                      ),
+                  ],
                   const SizedBox(height: 8),
                   if (loading)
                     const LinearProgressIndicator(

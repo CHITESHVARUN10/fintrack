@@ -29,25 +29,65 @@ function canModifyTransaction(req, tx) {
   return Boolean(tx && sameId(tx.familyId, req.user.familyAccountId) && sameId(tx.createdBy, req.user._id));
 }
 
-// For Transaction ledger: PRIVATE transactions are only visible to creator (or admin via explicit include)
-// Returns a Mongo filter fragment to add to Transaction queries.
-function buildTransactionVisibilityFilter(req, options = {}) {
-  const { includePrivate = false } = options;
-  // includePrivate only makes sense for creator's own private in familyView
-  if (includePrivate) return {};
-  // Exclude PRIVATE from family aggregates unless it's the requester's own
-  // Use $or: visibility != PRIVATE OR createdBy == requester
+const MonthShare = require('../models/monthshare.model');
+
+// Family months are viewed in IST, so the stored UTC instants are bucketed
+// against IST month boundaries rather than UTC ones.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function monthRange(month) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(month || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const index = Number(match[2]) - 1;
   return {
-    $or: [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: req.user._id }],
+    $gte: new Date(Date.UTC(year, index, 1) - IST_OFFSET_MS),
+    $lt: new Date(Date.UTC(year, index + 1, 1) - IST_OFFSET_MS),
   };
 }
 
-function shouldIncludePrivate(req, tx) {
-  if (!tx) return false;
-  if (tx.visibility !== 'PRIVATE') return true;
-  if (String(tx.createdBy) === String(req.user._id)) return true;
-  if (String(tx.createdBy?._id) === String(req.user._id)) return true;
-  return false;
+// Pure clause builder so tests and callers with preloaded shares avoid a query.
+function visibilityClause({ userId = null, shares = [], includePrivate = false }) {
+  const shared = shares
+    .map(share => ({ userId: share.userId, range: monthRange(share.month) }))
+    .filter(share => share.userId && share.range);
+  const otherMonths = {
+    $and: [
+      ...(includePrivate ? [] : [{ visibility: { $ne: 'PRIVATE' } }]),
+      { $or: shared.map(share => ({ createdBy: share.userId, occurredAt: share.range })) },
+    ],
+  };
+  if (!userId) return shared.length ? otherMonths : { _id: null };
+  return { $or: [{ createdBy: userId }, ...(shared.length ? [otherMonths] : [])] };
 }
 
-module.exports = { buildListFilter, canModify, canModifyTransaction, sameId, buildTransactionVisibilityFilter, shouldIncludePrivate };
+async function loadSharedMonths(familyId, excludeUserId) {
+  if (!familyId) return [];
+  return MonthShare.find({
+    familyId,
+    shared: true,
+    ...(excludeUserId ? { userId: { $ne: excludeUserId } } : {}),
+  }).select('userId month').lean();
+}
+
+// For Transaction ledger: a member's rows are always visible to them. Rows
+// created by others require BOTH a shared month and a non-private visibility.
+// Returns a Mongo filter fragment to add to Transaction queries.
+async function buildTransactionVisibilityFilter(req, options = {}) {
+  const { includePrivate = false, familyId, shares } = options;
+  const userId = options.userId || req?.user?._id || null;
+  const family = familyId || req?.user?.familyAccountId || null;
+  const rows = shares || (await loadSharedMonths(family, userId));
+  return visibilityClause({ userId, shares: rows, includePrivate });
+}
+
+module.exports = {
+  buildListFilter,
+  canModify,
+  canModifyTransaction,
+  sameId,
+  monthRange,
+  visibilityClause,
+  loadSharedMonths,
+  buildTransactionVisibilityFilter,
+};

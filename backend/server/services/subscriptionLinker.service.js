@@ -1,6 +1,7 @@
 const Transaction = require('../models/transaction.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
+const { buildTransactionVisibilityFilter } = require('../utils/scope');
 
 // Helper: fuzzy name match (contains, case-insensitive, normalized)
 function nameMatches(subName, recipientName) {
@@ -31,9 +32,10 @@ async function findMatches({ familyId, createdBy, name, amount, dueDay, type = '
   // look at last 6 months
   const since = new Date();
   since.setMonth(since.getMonth() - 6);
+  const visibility = createdBy ? null : await buildTransactionVisibilityFilter(null, { familyId, userId: null });
   const filter = {
     familyId,
-    ...(createdBy ? { createdBy } : { visibility: { $ne: 'PRIVATE' } }),
+    ...(createdBy ? { createdBy } : visibility),
     status: { $ne: 'VOIDED' },
     type: { $in: ['EXPENSE', 'CASH_EXPENSE'] },
     amountPaise: { $gte: minPaise, $lte: maxPaise },

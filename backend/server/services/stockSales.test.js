@@ -61,20 +61,39 @@ test('detail payload reports null quantities for non-stock records', () => {
   assert.deepEqual(detail.sales, []);
 });
 
-test('dividend filter is owner, family, status, and visibility scoped', () => {
+test('dividend filter is owner, family, status, and visibility scoped', async (t) => {
+  const MonthShare = require('../models/monthshare.model');
+  t.mock.method(MonthShare, 'find', () => ({
+    select: () => ({ lean: async () => [] }),
+  }));
   const ownerId = oid();
   const familyId = oid();
   const investment = { _id: oid(), memberId: ownerId, familyAccountId: familyId };
-  const ownerFilter = dividendFilter(investment, { user: { _id: ownerId, familyAccountId: familyId } });
+  const ownerFilter = await dividendFilter(investment, { user: { _id: ownerId, familyAccountId: familyId } });
   assert.equal(String(ownerFilter['financeLink.recordId']), String(investment._id));
   assert.equal(ownerFilter['financeLink.role'], 'dividend');
   assert.equal(String(ownerFilter.createdBy), String(ownerId));
   assert.deepEqual(ownerFilter.status, { $in: ['ACTIVE', 'RECONCILED'] });
-  assert.ok(ownerFilter.$or);
+  assert.deepEqual(ownerFilter.$or, [{ createdBy: ownerId }]);
 
   const adminId = oid();
-  const adminFilter = dividendFilter(investment, { user: { _id: adminId, role: 'admin', familyAccountId: familyId } });
-  assert.deepEqual(adminFilter.$or, [{ visibility: { $ne: 'PRIVATE' } }, { createdBy: adminId }]);
+  const adminFilter = await dividendFilter(investment, { user: { _id: adminId, role: 'admin', familyAccountId: familyId } });
+  assert.deepEqual(adminFilter.$or, [{ createdBy: adminId }]);
+});
+
+test('dividend visibility opens shared months to other members', async (t) => {
+  const MonthShare = require('../models/monthshare.model');
+  const ownerId = oid();
+  const familyId = oid();
+  t.mock.method(MonthShare, 'find', () => ({
+    select: () => ({ lean: async () => [{ userId: ownerId, month: '2026-11' }] }),
+  }));
+  const filter = await dividendFilter(
+    { _id: oid(), memberId: ownerId, familyAccountId: familyId },
+    { user: { _id: oid(), role: 'admin', familyAccountId: familyId } },
+  );
+  assert.equal(filter.$or.length, 2);
+  assert.equal(String(filter.$or[1].$and[1].$or[0].createdBy), String(ownerId));
 });
 
 test('sale write decrements atomically and guards overselling and retries', () => {
