@@ -11,6 +11,7 @@ function toRegimeResult(trace) {
     regime: trace.regime,
     grossIncome: trace.grossIncome,
     deductions: trace.totalDeductions,
+    standardDeduction: trace.deductions.find(item => item.key === 'standardDeduction')?.claimed ?? 0,
     taxableIncome: trace.taxableIncome,
     taxBeforeCess: trace.incomeTaxAfterRebate,
     cess: trace.cess,

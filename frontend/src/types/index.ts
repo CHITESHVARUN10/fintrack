@@ -132,6 +132,7 @@ export interface Subscription {
   renewalReminderDays: number
   paymentMethod: string
   autoRenew: boolean
+  priceHistory?: { amount: number; effectiveFrom: string; source?: string }[]
   status: SubscriptionStatus
   notes?: string
 }
@@ -231,6 +232,7 @@ export interface TaxRegimeResult {
   cess: number
   totalTax: number
   effectiveRate: number
+  standardDeduction?: number
 }
 
 export interface TaxDeductions {
@@ -261,6 +263,8 @@ export interface DashboardSummary {
   monthlyObligations: number
   netMonthlyFlow: number
   receivedIncomeThisMonth?: number
+  incomeExcludingRefundsThisMonth?: number
+  refundsThisMonth?: number
   plannedIncomeThisMonth?: number
   spentThisMonth?: number
   savingsRatePct?: number

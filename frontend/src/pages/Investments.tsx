@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import { FinanceTransactions } from '../components/payments/FinanceTransactions'
 import { TaxPaymentsEditor } from '../components/ui/TaxPaymentsEditor'
 import { toApiError } from '../lib/apiError'
@@ -63,6 +64,7 @@ function normalizeInvestment(raw: Record<string, unknown>): Investment {
   const quantity = raw.quantity as number | undefined
   const stock = raw.investmentType === 'stock' && quantity != null
   const fd = raw.investmentType === 'fd'
+  const property = raw.investmentType === 'real_estate'
   return {
     taxPayments: (raw.taxPayments as import('../types').TaxPayment[]) || [],
     id: String(raw._id ?? raw.id),
@@ -92,10 +94,10 @@ function normalizeInvestment(raw: Record<string, unknown>): Investment {
     interestType: raw.interestType as 'Simple' | 'Compound' | undefined,
     taxableInterest: raw.taxableInterest as boolean | undefined,
     assetType: raw.assetType as string | undefined,
-    totalInvested: stock && raw.buyPrice != null ? Number(raw.buyPrice) * quantity
-      : Number(fd ? raw.principalAmount ?? raw.totalInvested ?? 0 : raw.totalInvested ?? 0),
-    currentValue: stock && raw.currentPrice != null ? Number(raw.currentPrice) * quantity
-      : Number(fd ? raw.maturityAmount ?? raw.principalAmount ?? raw.currentValue ?? 0 : raw.currentValue ?? 0),
+    totalInvested: Number(raw.investedAmount ?? (stock && raw.buyPrice != null ? Number(raw.buyPrice) * quantity
+      : (fd ? raw.principalAmount : property ? raw.purchaseValue : null) ?? raw.totalInvested ?? 0)),
+    currentValue: Number(raw.valuedAmount ?? (stock && raw.currentPrice != null ? Number(raw.currentPrice) * quantity
+      : fd ? raw.maturityAmount ?? raw.principalAmount ?? raw.currentValue ?? 0 : raw.currentValue ?? raw.purchaseValue ?? 0)),
     startDate: raw.startDate ? String(raw.startDate) : '',
     endDate: raw.endDate ? String(raw.endDate) : null,
     status: ((raw.status as string) ?? 'Active'),
@@ -826,6 +828,7 @@ function InvestmentCard({
 }
 
 export function Investments() {
+  const confirmAction = useConfirmation()
   const [tab, setTab] = useState<Tab>('all')
   const [today] = useState(() => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
   const [items, setItems] = useState<Investment[]>([])
@@ -859,7 +862,7 @@ export function Investments() {
   }, [load])
 
   const handleDelete = async (inv: Investment) => {
-    if (!window.confirm(`Delete "${inv.title}"?`)) return
+    if (!(await confirmAction(`Delete “${inv.title}”?`, 'This removes the holding from your portfolio.'))) return
     setDeleteError('')
     try {
       await apiClient.delete(`/investments/${inv.id}`)

@@ -13,6 +13,5 @@ const familyAccountSchema = new mongoose.Schema(
 );
 
 familyAccountSchema.index({ adminId: 1 });
-familyAccountSchema.index({ inviteCode: 1 });
 
 module.exports = mongoose.model('FamilyAccount', familyAccountSchema);

@@ -4,6 +4,7 @@ import { MotionConfig } from 'framer-motion'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthGuard } from './components/layout/AuthGuard'
+import { ConfirmationProvider } from './components/ui/ConfirmationProvider'
 import { Layout } from './components/layout/Layout'
 import { navItems } from './components/layout/nav'
 import { registerPrefetcher, prefetchRoute } from './lib/routePrefetch'
@@ -129,7 +130,9 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <BrowserRouter>
-            <AnimatedRoutes />
+            <ConfirmationProvider>
+              <AnimatedRoutes />
+            </ConfirmationProvider>
           </BrowserRouter>
         </AuthProvider>
       </ThemeProvider>

@@ -1,4 +1,5 @@
 import type { ImportResult } from '../types/api'
+import { formatCurrency, indiaDateKey } from '../lib/format'
 import { toApiError } from '../lib/apiError'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -6,20 +7,20 @@ import { importService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
-import { LedgerEmpty, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
+import { LedgerTableScroll, LedgerEmpty, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
 
 type HistoryItem = { batchId: string; fileName?: string; source: string; total: number; created: number; reconciled: number; pendingReview: number; deduped: number; failed: number; status: string; createdAt: string; createdBy?: { name: string; email: string } }
 
-function SuccessOverlay({ show, summary, onClose, onView }: { show: boolean; summary?: string; onClose: () => void; onView: () => void }) {
+function SuccessOverlay({ show, summary, partial, onClose, onView }: { show: boolean; summary?: string; partial?: boolean; onClose: () => void; onView: () => void }) {
   if (!show) return null
   return (
-    <LedgerOverlay onClose={onClose} label="Import successful">
+    <LedgerOverlay onClose={onClose} label={partial ? 'Import partially complete' : 'Import successful'}>
       <div className="led-modal led-modal-sm">
         <div className="led-modal-body" style={{ alignItems: 'center', padding: '32px 26px 28px', gap: 14 }}>
           <div className="led-success-circle">
             <Icon name="check" className="text-4xl" />
           </div>
-          <h2 className="led-success-title">Import Successful</h2>
+          <h2 className="led-success-title">{partial ? 'Import partially complete' : 'Import successful'}</h2>
           {summary && <p className="led-success-summary">{summary}</p>}
           <div className="led-row" style={{ gap: 10, marginTop: 8, width: '100%', justifyContent: 'center' }}>
             <button onClick={onView} className="led-btn">View Transactions</button>
@@ -46,7 +47,7 @@ export function ImportPage() {
   const [err, setErr] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [busy, setBusy] = useState<'bank' | 'shot' | null>(null)
-  const [success, setSuccess] = useState<{ msg: string } | null>(null)
+  const [success, setSuccess] = useState<{ msg: string; from?: string; to?: string; partial?: boolean } | null>(null)
 
   function loadHistory() {
     apiClient.get('/imports/history').then((r) => setHistory(r.data.batches || [])).catch(() => {})
@@ -57,14 +58,15 @@ export function ImportPage() {
     const f = e.target.files?.[0]; if (!f) return
     setErr(null); setBankResult(null); setBusy('bank')
     try {
-      const r = await importService.bank(f)
+      const r = { ...await importService.bank(f), fileName: f.name }
       setBankResult(r)
       loadHistory()
       if (r.status === 'duplicate_file') { setErr(r.message || `Already imported — ${r.batch?.total||''} rows on ${r.batch?.createdAt||''}`); setBankResult(r); return }
+      if (r.status === 'failed') { setErr(`${f.name}: ${r.message || 'No transactions could be imported. Check the statement format and choose the file again.'}`); return }
       if (r.total > 0 && (r.status === 'success' || r.status === 'partial')) {
         const s = r.summary || { created: 0, reconciled: 0, pendingReview: 0, deduped: 0, failed: 0 }
-        const msg = `Imported ${r.total} rows • ${s.created} new • ${s.reconciled} reconciled • ${s.deduped} deduped${s.pendingReview ? ` • ${s.pendingReview} pending review` : ''}`
-        setSuccess({ msg })
+        const msg = `Imported ${r.total} ${r.total === 1 ? 'row' : 'rows'} • ${s.created} new • ${s.reconciled} reconciled • ${s.deduped} deduped${s.pendingReview ? ` • ${s.pendingReview} pending review` : ''}`
+        setSuccess({ msg: s.failed ? `${msg} • ${s.failed} failed` : msg, from: r.periodFrom ? indiaDateKey(new Date(r.periodFrom)) : undefined, to: r.periodTo ? indiaDateKey(new Date(r.periodTo)) : undefined, partial: r.status === 'partial' })
       }
     } catch (caught: unknown) { const ex = toApiError(caught); setErr(ex.response?.data?.error || ex.response?.data?.message || ex.message) }
     finally { setBusy(null); (e.target as HTMLInputElement).value = '' }
@@ -74,11 +76,12 @@ export function ImportPage() {
     const f = e.target.files?.[0]; if (!f) return
     setErr(null); setShotResult(null); setBusy('shot')
     try {
-      const r = await importService.screenshot(f)
+      const r = { ...await importService.screenshot(f), fileName: f.name }
       setShotResult(r)
       loadHistory()
       if (r.status === 'duplicate_file') { setErr(r.message || 'Already imported'); setShotResult(r); return }
-      if (r.status === 'success') setSuccess({ msg: 'Screenshot extracted and reconciled.' })
+      if (r.status === 'success') setSuccess({ msg: 'Screenshot processed.' })
+      else setErr(`${f.name}: ${r.message || 'Could not read this screenshot. Choose another image and try again.'}`)
     } catch (caught: unknown) { const ex = toApiError(caught); setErr(ex.response?.data?.error || ex.message) }
     finally { setBusy(null); (e.target as HTMLInputElement).value = '' }
   }
@@ -119,7 +122,7 @@ export function ImportPage() {
                 type="file"
                 accept=".csv,.xlsx,.xls"
                 onChange={onBank}
-                className="hidden"
+                className="sr-only"
                 disabled={busy !== null || hasNoFamily}
               />
             </label>
@@ -133,7 +136,6 @@ export function ImportPage() {
                     new {bankResult.summary.created} • reconciled {bankResult.summary.reconciled} • pending {bankResult.summary.pendingReview} • deduped {bankResult.summary.deduped} • failed {bankResult.summary.failed}
                   </div>
                 )}
-                <pre className="led-json">{JSON.stringify(bankResult, null, 2)}</pre>
               </div>
             )}
           </div>
@@ -153,7 +155,7 @@ export function ImportPage() {
                 type="file"
                 accept="image/*"
                 onChange={onShot}
-                className="hidden"
+                className="sr-only"
                 disabled={busy !== null || hasNoFamily}
               />
             </label>
@@ -162,7 +164,7 @@ export function ImportPage() {
                 <div className="led-result-head">
                   {shotResult.fileName || 'Screenshot'} <span className={statusClass(shotResult.status)}>{shotResult.status.replace('_', ' ')}</span>
                 </div>
-                <pre className="led-json">{JSON.stringify(shotResult, null, 2)}</pre>
+                {shotResult.parsed && <p>{formatCurrency(shotResult.parsed.amountPaise / 100)}{shotResult.parsed.recipient?.name ? ` · ${shotResult.parsed.recipient.name}` : ''}</p>}
               </div>
             )}
           </div>
@@ -175,7 +177,7 @@ export function ImportPage() {
           <LedgerEmpty title="No imports yet">Upload a statement above to see the history here.</LedgerEmpty>
         ) : (
           <div className="led-table-card">
-            <div className="led-table-scroll">
+            <LedgerTableScroll label="Import history">
               <table className="led-table compact">
                 <thead>
                   <tr>
@@ -203,7 +205,7 @@ export function ImportPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </LedgerTableScroll>
           </div>
         )}
       </div>
@@ -211,8 +213,15 @@ export function ImportPage() {
       <SuccessOverlay
         show={!!success}
         summary={success?.msg}
+        partial={success?.partial}
         onClose={() => setSuccess(null)}
-        onView={() => { setSuccess(null); nav('/transactions') }}
+        onView={() => {
+          const params = new URLSearchParams()
+          if (success?.from) params.set('from', success.from)
+          if (success?.to) params.set('to', success.to)
+          nav(params.size ? `/transactions?${params}` : '/transactions')
+          setSuccess(null)
+        }}
       />
     </LedgerPage>
   )

@@ -12,36 +12,7 @@ const router = express.Router();
 router.use(isAuthenticated);
 registerFinanceTransactions(router, Investment, 'investments');
 
-// Per-type invested / current value estimates for the summary.
-function investedValue(d) {
-  switch (d.investmentType) {
-    case 'stock':
-      return (d.buyPrice || 0) * (d.quantity || 0);
-    case 'mf_sip':
-      return d.totalInvested || d.sipAmount || 0;
-    case 'fd':
-      return d.principalAmount || 0;
-    case 'real_estate':
-      return d.totalInvested || d.purchaseValue || 0;
-    default:
-      return d.totalInvested || d.purchaseValue || 0;
-  }
-}
-
-function currentValueOf(d) {
-  switch (d.investmentType) {
-    case 'stock':
-      return (d.currentPrice || 0) * (d.quantity || 0);
-    case 'mf_sip':
-      return d.currentValue || (d.units || 0) * (d.nav || 0);
-    case 'fd':
-      return d.maturityAmount || d.principalAmount || 0;
-    case 'real_estate':
-      return d.currentValue || d.purchaseValue || 0;
-    default:
-      return d.currentValue || d.purchaseValue || 0;
-  }
-}
+const { investedValue, currentValueOf } = require('../../utils/investmentCalc');
 
 // GET /api/investments/summary — invested vs current value grouped by type.
 router.get('/summary', async (req, res, next) => {
@@ -74,7 +45,7 @@ router.get('/', async (req, res, next) => {
     const filter = await buildListFilter(req);
     if (req.query.type) filter.investmentType = req.query.type;
     const items = await Investment.find(filter).sort({ createdAt: -1 });
-    res.json(items);
+    res.json(items.map(item => ({ ...item.toObject(), investedAmount: investedValue(item), valuedAmount: currentValueOf(item) })));
   } catch (err) {
     next(err);
   }

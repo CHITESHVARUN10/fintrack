@@ -1,4 +1,5 @@
 const express = require('express');
+const { ledgerDateRange } = require('../../utils/ledgerDates');
 const Joi = require('joi');
 const { isObjectIdOrHexString } = require('mongoose');
 const Investment = require('../../models/investment.model');
@@ -14,6 +15,7 @@ const { ingest, computeLedgerSummary } = require('../../services/transactionEngi
 const { canModify, canModifyTransaction, buildTransactionVisibilityFilter } = require('../../utils/scope');
 
 const router = express.Router();
+const manualSubmissions = new Map();
 router.use(isAuthenticated);
 registerOffsetRoutes(router);
 
@@ -62,16 +64,9 @@ router.get('/', async (req, res, next) => {
       if (req.query.minAmountPaise) filter.amountPaise.$gte = Number(req.query.minAmountPaise);
       if (req.query.maxAmountPaise) filter.amountPaise.$lte = Number(req.query.maxAmountPaise);
     }
-    if (req.query.from || req.query.to) {
-      filter.occurredAt = {};
-      if (req.query.from) filter.occurredAt.$gte = new Date(req.query.from);
-      if (req.query.to) {
-        const to = new Date(req.query.to);
-        // inclusive end-of-day when only date part
-        if (/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.to))) to.setHours(23,59,59,999);
-        filter.occurredAt.$lte = to;
-      }
-    }
+    const range = ledgerDateRange(req.query.from, req.query.to);
+    if (range?.error) return res.status(400).json(range);
+    if (range) filter.occurredAt = range;
     const pageParam = req.query.page;
     const paginated = pageParam !== undefined || req.query.limit !== undefined;
     const limit = Math.min(
@@ -101,9 +96,7 @@ router.get('/', async (req, res, next) => {
     // page computes it.
     let summary = {};
     if (!paginated || page === 1) {
-      const all = paginated
-        ? await Transaction.find(filter).select('amountPaise type status').lean()
-        : items;
+      const all = limit >= total ? items : await Transaction.find(filter).select('amountPaise type status').lean();
       summary = computeLedgerSummary(all, offsets);
     }
 
@@ -284,6 +277,7 @@ router.get('/investment-suggestions', async (req, res, next) => {
     try {
       if (!requireFamily(req, res)) return;
       const schema = Joi.object({
+        submissionId: Joi.string().uuid().optional(),
         amountPaise: Joi.number().integer().min(1).required(),
         type: Joi.string().valid('EXPENSE','INCOME','INTERNAL_TRANSFER','CASH_WITHDRAWAL','CASH_EXPENSE').required(),
         mode: Joi.string().valid('UPI','BANK','CASH','CARD','OTHER').default('OTHER'),
@@ -326,9 +320,10 @@ router.get('/investment-suggestions', async (req, res, next) => {
       const member = await require('../../models/user.model').exists({ _id: value.familyTransfer.toUserId, familyAccountId: req.user.familyAccountId, isActive: true });
       if (!member || String(value.familyTransfer.toUserId) === String(req.user._id)) return res.status(400).json({ error: 'Choose another active member of your family' });
     }
-    const origin = value.origin || 'MANUAL';
+    const { submissionId, ...fields } = value;
+    const origin = fields.origin || 'MANUAL';
     const candidate = {
-      ...value,
+      ...fields,
       occurredAt: new Date(value.occurredAt),
       metadata: {
         ...(value.metadata || {}),
@@ -339,8 +334,30 @@ router.get('/investment-suggestions', async (req, res, next) => {
     if (candidate.type==='INTERNAL_TRANSFER' && candidate.familyTransfer?.toUserId) {
       candidate.familyTransfer.fromUserId = req.user._id;
     }
-    const result = await ingest(candidate, { familyId: req.user.familyAccountId, createdBy: req.user._id, source: origin, rawPayload: req.body });
-    res.status(201).json(result);
+    const context = { familyId: req.user.familyAccountId, createdBy: req.user._id, source: origin, rawPayload: req.body };
+    if (!submissionId || origin !== 'MANUAL') return res.status(201).json(await ingest(candidate, context));
+
+    // Persist the submission key on its source so a retry after a lost
+    // response still finds the recorded entry. Concurrent requests in this
+    // process share the same write, including reconciliation and vendor work.
+    const requestId = submissionId.toLowerCase();
+    const key = `${context.familyId}:${context.createdBy}:${requestId}`;
+    let submission = manualSubmissions.get(key);
+    if (!submission) {
+      submission = (async () => {
+        const sourceRecord = await SourceRecord.findOne({
+          familyId: context.familyId, createdBy: context.createdBy, source: origin, 'rawPayload.submissionId': requestId,
+        });
+        if (sourceRecord) {
+          const transaction = await Transaction.findById(sourceRecord.transactionId);
+          if (!transaction) throw Object.assign(new Error('The recorded transaction could not be found'), { status: 409 });
+          return { transaction, sourceRecord, deduped: true };
+        }
+        return ingest(candidate, { ...context, rawPayload: { ...req.body, submissionId: requestId } });
+      })().finally(() => manualSubmissions.delete(key));
+      manualSubmissions.set(key, submission);
+    }
+    res.status(201).json(await submission);
   } catch (err) { next(err); }
 });
 
@@ -424,12 +441,57 @@ router.post('/bulk-categorize', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+  // Keep statement source records intact when correcting or voiding a ledger entry.
+  router.patch('/:id/correction', async (req, res, next) => {
+    try {
+      if (!isObjectIdOrHexString(req.params.id)) return res.status(404).json({ error: 'Transaction not found' });
+      const tx = await Transaction.findById(req.params.id).lean();
+      if (!tx || !canModifyTransaction(req, tx)) return res.status(404).json({ error: 'Transaction not found' });
+      const { error, value } = Joi.object({
+        amountPaise: Joi.number().integer().min(1),
+        occurredAt: Joi.date().iso(),
+        void: Joi.boolean().valid(true),
+      }).or('amountPaise', 'occurredAt', 'void').validate(req.body);
+      if (error) return res.status(400).json({ error: 'Enter a positive amount and a valid date.' });
+      if (tx.status === 'VOIDED' && value.void) return res.json({ transaction: tx });
+      if (!['ACTIVE', 'RECONCILED'].includes(tx.status)) {
+        return res.status(409).json({ error: 'Settle this transaction before correcting it.' });
+      }
+      if (tx.financeLink || tx.subscriptionRef) {
+        return res.status(409).json({ error: 'Unlink this transaction before correcting or voiding it.' });
+      }
+      const TransactionOffset = require('../../models/transactionoffset.model');
+      if (await TransactionOffset.exists({ familyId: tx.familyId, ownerId: tx.createdBy, transactionIds: tx._id })) {
+        return res.status(409).json({ error: 'Remove the offset group before correcting or voiding this entry.' });
+      }
+      if (!value.void && value.amountPaise != null && value.amountPaise !== tx.amountPaise &&
+          (tx.lineItems?.length || tx.categorySplit?.length)) {
+        return res.status(409).json({ error: 'This entry has split amounts. Update the split before changing the total.' });
+      }
+      const changes = value.void ? { status: 'VOIDED' } : {
+        amountPaise: value.amountPaise ?? tx.amountPaise,
+        occurredAt: value.occurredAt ?? tx.occurredAt,
+      };
+      const updated = await Transaction.findOneAndUpdate({
+        _id: tx._id, updatedAt: tx.updatedAt, status: tx.status, financeLink: null, subscriptionRef: null,
+      }, {
+        $set: changes,
+        $push: { 'metadata.corrections': {
+          at: new Date(), by: req.user._id, amountPaise: tx.amountPaise, occurredAt: tx.occurredAt, status: tx.status,
+        } },
+      }, { returnDocument: 'after' });
+      if (!updated) return res.status(409).json({ error: 'This entry changed. Reload it and try again.' });
+      res.json({ transaction: updated });
+    } catch (err) { next(err); }
+  });
+
   // PATCH /api/transactions/:id
   router.patch('/:id', async (req, res, next) => {
     try {
       const tx = await Transaction.findById(req.params.id);
       if (!tx) return res.status(404).json({ error: 'Not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Forbidden' });
+      if (tx.status === 'VOIDED') return res.status(409).json({ error: 'This transaction has been voided.' });
       if (tx.financeLink && (
         ['category', 'subcategory', 'type'].some(field => Object.hasOwn(req.body, field) &&
           (req.body[field] || null) !== (tx[field] || null)) || req.body.subscriptionRef

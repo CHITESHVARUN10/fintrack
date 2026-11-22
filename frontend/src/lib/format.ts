@@ -1,10 +1,13 @@
 // Shared formatting helpers (Indian locale: ₹ and lakhs/crores grouping).
 
+const rupeeNumber = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
+const fractionalRupeeNumber = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export function formatCurrency(amount: number, withSymbol = true): string {
-  const formatted = new Intl.NumberFormat('en-IN', {
-    maximumFractionDigits: 0,
-  }).format(Math.round(amount))
-  return withSymbol ? `₹${formatted}` : formatted
+  const rounded = Math.round(amount * 100) / 100
+  const prefix = rounded < 0 ? '−' : ''
+  const formatter = Number.isInteger(rounded) ? rupeeNumber : fractionalRupeeNumber
+  return `${prefix}${withSymbol ? '₹' : ''}${formatter.format(Math.abs(rounded))}`
 }
 
 // Compact form for big numbers, e.g. ₹4.32L / ₹1.12Cr
@@ -67,4 +70,25 @@ export function initials(name: string): string {
     .slice(0, 2)
     .join('')
     .toUpperCase()
+}
+
+export function datetimeInput(iso: string) {
+  const time = new Date(iso)
+  return new Date(time.valueOf() - time.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+}
+
+export function amountInPaise(value: string) {
+  const normalized = value.trim().replaceAll(',', '')
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null
+  const [rupees, fraction = ''] = normalized.split('.')
+  const paise = Number(rupees) * 100 + Number(fraction.padEnd(2, '0'))
+  return Number.isSafeInteger(paise) && paise > 0 ? paise : null
+}
+
+const indiaCalendar = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+
+export function indiaDateKey(date: Date) {
+  return indiaCalendar.format(date)
 }

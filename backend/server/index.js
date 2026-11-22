@@ -6,12 +6,13 @@ require('./services/cronJobs');
 // Scheduled jobs (cron) are imported here once available (Phase 11).
 // require('./services/cron.service');
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 
 connectDB()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`[server] FinTrack API listening on http://localhost:${PORT}`);
+    app.listen(PORT, HOST, () => {
+      console.log(`[server] FinTrack API listening on http://${HOST}:${PORT}`);
     });
   })
   .catch((err) => {

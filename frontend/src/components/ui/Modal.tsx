@@ -13,6 +13,7 @@ export function Modal({
   children,
   footer,
   width = 'max-w-lg',
+  zIndex,
 }: {
   open: boolean
   onClose: () => void
@@ -20,6 +21,7 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
   width?: string
+  zIndex?: number
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -30,6 +32,7 @@ export function Modal({
       {open && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          style={zIndex === undefined ? undefined : { zIndex }}
           onClick={onClose}
           role="dialog"
           aria-modal="true"

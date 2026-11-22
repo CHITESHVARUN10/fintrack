@@ -258,6 +258,7 @@ export function RecordSubscriptionPaymentModal({
                   id="rp-notes"
                   className="pmt-input"
                   placeholder="e.g. Monthly auto-debit renewal"
+                  maxLength={1000}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />

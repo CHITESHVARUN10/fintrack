@@ -106,7 +106,7 @@ export function EntryTicks({
           <div className="fse-donut-val">
             {formatCurrency(active ? active.amount : total)}
           </div>
-          <div className="fse-donut-lbl">
+          <div className="fse-donut-lbl" title={active?.label ?? totalLabel}>
             {active ? `${active.label} · ${active.percent}%` : totalLabel}
           </div>
         </div>

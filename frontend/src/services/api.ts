@@ -73,12 +73,13 @@ export const taxService = {
     const effectiveRate = (t: { totalTax: number }) =>
       e.grossIncome ? +((t.totalTax / e.grossIncome) * 100).toFixed(1) : 0
     const toRegime = (
-      r: { taxableIncome: number; taxBeforeCess: number; cess: number; totalTax: number },
+      r: { taxableIncome: number; taxBeforeCess: number; cess: number; totalTax: number; deductions?: number; standardDeduction?: number },
       regime: 'Old' | 'New',
     ): TaxRegimeResult => ({
       regime,
       grossIncome: e.grossIncome,
-      deductions: e.deductions.totalDeductions,
+      deductions: r.deductions ?? e.deductions.totalDeductions,
+      standardDeduction: r.standardDeduction,
       taxableIncome: r.taxableIncome,
       taxBeforeCess: r.taxBeforeCess,
       cess: r.cess,

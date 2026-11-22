@@ -9,11 +9,11 @@ export interface LedgerTransaction extends Omit<CanonicalTransaction, 'createdBy
   subscriptionRef?: string | Raw<Subscription> | null
   financeLink?: { resource: 'income' | 'investments'; recordId: string; role: string }
   recipientVendorRef?: string | Vendor
-  notes?: string; candidateOf?: string; upiId?: string; utr?: string; UTR?: string; utu?: string
+  isOffset?: boolean; counterpartyName?: string; notes?: string; candidateOf?: string; upiId?: string; utr?: string; UTR?: string; utu?: string
 }
 export interface LedgerSummary { actualExpenditurePaise: number; internalTransfersPaise: number; cashWithdrawalsPaise: number; totalMovementPaise: number; cashRemainingPaise: number; cashSpentPaise: number; cashWithdrawnPaise: number }
 export interface TransactionList { items: LedgerTransaction[]; summary: LedgerSummary }
-export interface TransactionDetail { transaction: LedgerTransaction; sources: SourceRecord[]; candidateOfTx?: LedgerTransaction | null }
+export interface TransactionDetail { transaction: LedgerTransaction; sources: SourceRecord[]; candidateOfTx?: LedgerTransaction | null; offset?: { purpose: string; kind: string; transactions: LedgerTransaction[] } }
 export interface CompareData { items: LedgerTransaction[]; sourcesByTx: Record<string, SourceRecord[]> }
 export interface DuplicateGroup { key: string; type: string; amountPaise: number; reason: string; items: LedgerTransaction[]; count?: number }
 export interface MergeResult { error?: string; kept?: number; voided?: number; groups?: { amountPaise: number; count: number }[] }
@@ -26,7 +26,7 @@ export interface PaymentSuggestion { id: string; name: string; kind: string; sug
 export interface ImportResult { status: string; batch?: { total: number; createdAt: string }; fileName?: string; batchId: string; total: number; message?: string; duplicateOf?: string; periodFrom?: string; periodTo?: string; summary?: { created: number; reconciled: number; pendingReview: number; deduped: number; failed: number }; parsed?: { amountPaise: number; recipient?: { name?: string }; occurredAt?: string }; transaction?: LedgerTransaction }
 export interface SpendRow { name: string; category: string; vendor: string; mode: string; spend: number; spendPaise: number; count: number; sharePct: number; memberId: string; memberName: string }
 export interface SpendDay { date: string; spend: number; spendPaise: number }
-export interface FamilyAnalytics { summary: LedgerSummary; timeSeries: SpendDay[]; byMember: SpendRow[]; byCategory: SpendRow[]; topVendors: SpendRow[]; byMode: SpendRow[]; heatmap: SpendDay[]; highestDay: SpendDay | null; avgDaily: number; totalCount: number; byMemberShare: SpendRow[]; byCategoryShare: SpendRow[]; byVendorShare: SpendRow[]; byModeShare: SpendRow[]; monthlyArea: { month: string; expense: number; income: number; net: number }[]; byMemberByVendor: SpendRow[] }
+export interface FamilyAnalytics { summary: LedgerSummary; timeSeries: SpendDay[]; byMember: SpendRow[]; byCategory: SpendRow[]; topVendors: SpendRow[]; byMode: SpendRow[]; heatmap: SpendDay[]; highestDay: SpendDay | null; avgDaily: number; totalCount: number; expenseCount?: number; byMemberShare: SpendRow[]; byCategoryShare: SpendRow[]; byVendorShare: SpendRow[]; byModeShare: SpendRow[]; monthlyArea: { month: string; expense: number; income: number; net: number }[]; byMemberByVendor: SpendRow[] }
 export type ApiMember = Raw<FamilyMember>
 export type RawSubscription = Raw<Subscription>
 export type RawInvestment = Raw<Investment> & { name?: string }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import type { FamilyAnalytics } from '../types/api'
 import type { FamilyMember } from '../types'
 import { PageHeader, LoadingBlock } from '../components/ui/PageHeader'
 import { analyticsService, familyService } from '../services/api'
 import { apiClient } from '../services/apiClient'
-import { formatCurrency } from '../lib/format'
+import { formatCurrency, indiaDateKey } from '../lib/format'
 import { AreaTrend } from '../components/charts/ChartKit'
 import { compactINR } from '../components/charts/chartTheme'
 import { TickDonut, VerticalBars } from '../components/family/WorkspaceCharts'
@@ -14,12 +16,11 @@ import './family-workspace.css'
 const MODES = ['UPI', 'BANK', 'CASH', 'CARD', 'OTHER'] as const
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10)
+  return indiaDateKey(new Date())
 }
 
 function monthStartISO() {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+  return todayISO().slice(0, 8) + '01'
 }
 
 function shortDayLabel(iso: string) {
@@ -27,6 +28,8 @@ function shortDayLabel(iso: string) {
 }
 
 export function FamilyDashboard() {
+  const { user } = useAuth()
+  const familyId = user?.familyAccountId
   const [from, setFrom] = useState(monthStartISO)
   const [to, setTo] = useState(todayISO)
   // Chips express exclusion (a filter is active only when it is unchecked),
@@ -43,6 +46,7 @@ export function FamilyDashboard() {
   // Household roster comes from the family endpoint, not the analytics
   // payload: filtering a member out of the chart must not remove their chip.
   useEffect(() => {
+    if (!familyId) return
     apiClient
       .get('/families/me')
       .then((r) => {
@@ -51,7 +55,7 @@ export function FamilyDashboard() {
         return familyService.members(familyId).then((d) => setMembers(d.members || []))
       })
       .catch(() => {})
-  }, [])
+  }, [familyId])
 
   const memberOptions = useMemo(() => {
     if (members.length) {
@@ -66,6 +70,7 @@ export function FamilyDashboard() {
   // Load once on mount so the page is populated before the user hits Apply.
   // `loading` already starts true, so the effect only reports the result.
   useEffect(() => {
+    if (!familyId) return
     const seq = ++requestSeq.current
     analyticsService
       .family({ from: monthStartISO(), to: todayISO() })
@@ -81,7 +86,7 @@ export function FamilyDashboard() {
       .finally(() => {
         if (seq === requestSeq.current) setLoading(false)
       })
-  }, [])
+  }, [familyId])
 
   const load = useCallback(async () => {
     const seq = ++requestSeq.current
@@ -182,6 +187,16 @@ export function FamilyDashboard() {
 
   const highestDate = data?.highestDay?.date
 
+  if (!familyId) return (
+    <div className="fw-page">
+      <PageHeader title="Family Dashboard" />
+      <div className="fw-card fw-stack">
+        <p>Create or join a family to see shared spending.</p>
+        <Link to="/settings#family">Create or join a family</Link>
+      </div>
+    </div>
+  )
+
   return (
     <div className="fw-page">
       <PageHeader
@@ -275,7 +290,7 @@ export function FamilyDashboard() {
             margin: '0 0 2px',
           }}
         >
-          Only months each member has shared are included in these totals.
+          Only months each member has shared are included in these totals. <Link to="/settings#sharing">Manage month sharing</Link>.
         </p>
 
         {loading && !data && <LoadingBlock label="Loading family analytics…" />}
@@ -289,7 +304,7 @@ export function FamilyDashboard() {
                 </span>
                 <div>
                   <div className="fw-kpi__value">{formatCurrency(totalSpend)}</div>
-                  <div className="fw-kpi__sub">{data.totalCount} txns</div>
+                  <div className="fw-kpi__sub">{data.expenseCount == null ? `${data.totalCount} total transactions` : `${data.expenseCount} ${data.expenseCount === 1 ? 'expense' : 'expenses'}`}</div>
                 </div>
               </div>
               <div className="fw-card fw-kpi">

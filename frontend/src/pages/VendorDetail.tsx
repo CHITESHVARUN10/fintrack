@@ -1,3 +1,5 @@
+import { formatCurrency } from '../lib/format'
+import { useConfirmation } from '../hooks/useConfirmation'
 import type { ApiMember, LedgerTransaction, LineItem, Vendor, VendorSummary } from '../types/api'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useState } from 'react'
@@ -5,7 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { apiClient } from '../services/apiClient'
 import { familyService } from '../services/api'
 import { compactINR } from '../components/charts/chartTheme'
-import { LedgerEmpty, LedgerLoading, LedgerNotice, LedgerPage } from '../components/ledger/LedgerShell'
+import { LedgerTableScroll, LedgerEmpty, LedgerLoading, LedgerNotice, LedgerPage } from '../components/ledger/LedgerShell'
 
 type Tx = { _id:string; amountPaise:number; category?:string; subcategory?:string; productName?:string; lineItems?: LineItem[]; occurredAt:string; type:string; mode:string; recipient?:{name?:string}; status:string; createdBy?: LedgerTransaction['createdBy'] }
 
@@ -14,7 +16,7 @@ const PRODUCT_COLORS = ['var(--nb-cyan)', 'var(--accent)', 'var(--nb-violet)', '
 const CATEGORY_COLORS = ['var(--nb-yellow)', 'var(--nb-cyan)', 'var(--nb-pink)', 'var(--nb-violet)', 'var(--nb-teal)', 'var(--nb-orange)', 'var(--chart-7)', 'var(--chart-8)']
 
 function money(paise: number) {
-  return `₹${(paise / 100).toLocaleString('en-IN')}`
+  return formatCurrency(paise / 100)
 }
 
 function formatMonth(month: string) {
@@ -202,6 +204,7 @@ function ProductBars({ entries }: { entries: { name: string; value: number }[] }
 }
 
 export function VendorDetail(){
+  const confirmAction = useConfirmation()
   const { id } = useParams()
   const nav = useNavigate()
   const [vendor, setVendor] = useState<Vendor | null>(null)
@@ -317,7 +320,7 @@ export function VendorDetail(){
     finally{ setProdBusy(false) }
   }
   async function delProduct(pid:string){
-    if(!confirm('Delete product? Price mapping will be removed.')) return
+    if (!(await confirmAction('Delete product?', 'The saved product and its price mapping will be removed.'))) return
     setProdBusy(true)
     try{
       await apiClient.delete(`/recipients/${id}/products/${pid}`)
@@ -345,10 +348,8 @@ export function VendorDetail(){
     : 'No products configured yet'
   const creatorRaw = vendor?.createdBy as unknown
   const creatorLabel = typeof creatorRaw === 'string'
-    ? creatorRaw.slice(0, 12)
-    : creatorRaw && typeof creatorRaw === 'object'
-      ? ((creatorRaw as { name?: string }).name || '')
-      : ''
+    ? members.find(member => member.id === creatorRaw)?.name
+    : (creatorRaw as { name?: string } | undefined)?.name
 
   return (
     <LedgerPage
@@ -590,7 +591,7 @@ export function VendorDetail(){
         </LedgerEmpty>
       ) : (
         <div className="led-table-card">
-          <div className="led-table-scroll">
+          <LedgerTableScroll label="Vendor transactions">
             <table className="led-table compact">
               <thead>
                 <tr>
@@ -654,7 +655,7 @@ export function VendorDetail(){
                 })}
               </tbody>
             </table>
-          </div>
+          </LedgerTableScroll>
           <div className="led-table-foot">
             <button disabled={page===0} onClick={()=> setPage(p=> Math.max(0,p-1))} className="led-btn led-btn-white led-btn-sm">Prev</button>
             <span className="led-filter-meta">Page {page + 1} of {totalPages}</span>

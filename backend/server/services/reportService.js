@@ -6,9 +6,11 @@ const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
 const Investment = require('../models/investment.model');
 const AdHocExpense = require('../models/expense.model');
-const User = require('../models/user.model');
 const Transaction = require('../models/transaction.model');
-const { buildTransactionVisibilityFilter } = require('../utils/scope');
+const { activeOffsets } = require('./transactionOffsets');
+const { indiaCalendarDate, monthRange } = require('../utils/scope');
+const { localDayRange } = require('../utils/ledgerDates');
+const User = require('../models/user.model');
 const Budget = require('../models/budget.model');
 const RecipientDirectory = require('../models/recipientdirectory.model');
 const ImportBatch = require('../models/importbatch.model');
@@ -26,11 +28,10 @@ function investmentMonthlyAmount(inv) {
 }
 
 function inr(n) {
-  return '₹' + Math.round(n || 0).toLocaleString('en-IN');
-}
-function dateOnly(d) {
-  const x = d ? new Date(d) : new Date();
-  return new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const amount = Math.round(Number(n || 0) * 100) / 100;
+  return 'INR ' + amount.toLocaleString('en-IN', {
+    maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  });
 }
 function monthName(m) {
   return [
@@ -44,15 +45,34 @@ function monthName(m) {
 // ---------------------------------------------------------------------------
 
 async function baseData(userId) {
-  const [user, incomes, subs, invs, expenses] =
+  const [user, incomes, subs, invs] =
     await Promise.all([
-      User.findById(userId).select('name email').lean(),
+      User.findById(userId).select('name email familyAccountId').lean(),
       Income.find({ memberId: userId }),
       Subscription.find({ memberId: userId }),
       Investment.find({ memberId: userId }),
-      AdHocExpense.find({ memberId: userId }),
     ]);
-  return { user: user || {}, incomes, subs, invs, expenses };
+  return { user: user || {}, incomes, subs, invs };
+}
+
+async function reportExpenses(user, userId, range) {
+  if (user.familyAccountId) {
+    const scope = { createdBy: userId, familyId: user.familyAccountId };
+    const [rows, offsets, ledgerExists] = await Promise.all([
+      Transaction.find({ ...scope, occurredAt: range, status: { $in: ['ACTIVE', 'RECONCILED'] },
+        type: { $in: ['EXPENSE', 'CASH_EXPENSE'] } })
+        .select('recipient productName occurredAt category amountPaise').sort({ occurredAt: -1 }).lean(),
+      activeOffsets(user.familyAccountId, userId),
+      Transaction.exists(scope),
+    ]);
+    if (rows.length || ledgerExists) return rows.filter(row => !offsets.has(String(row._id))).map(row => ({
+      title: row.productName || row.recipient?.name,
+      date: row.occurredAt,
+      category: row.category,
+      amount: row.amountPaise / 100,
+    }));
+  }
+  return AdHocExpense.find({ memberId: userId, date: range }).lean();
 }
 
 function buildObligations(subs, invs) {
@@ -86,11 +106,8 @@ function buildInvestmentSnapshot(invs) {
 }
 
 async function buildMonthlyData(userId, month, year) {
-  const { user, incomes, subs, invs, expenses } = await baseData(userId);
-
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 1);
-  const monthExpenses = expenses.filter((e) => e.date >= start && e.date < end);
+  const { user, incomes, subs, invs } = await baseData(userId);
+  const monthExpenses = await reportExpenses(user, userId, monthRange(`${year}-${String(month).padStart(2, '0')}`));
 
   const byCategory = {};
   let expenseTotal = 0;
@@ -122,11 +139,8 @@ async function buildMonthlyData(userId, month, year) {
 }
 
 async function buildAnnualData(userId, year) {
-  const { user, incomes, subs, invs, expenses } = await baseData(userId);
-
-  const start = new Date(year, 0, 1);
-  const end = new Date(year + 1, 0, 1);
-  const yearExpenses = expenses.filter((e) => e.date >= start && e.date < end);
+  const { user, incomes, subs, invs } = await baseData(userId);
+  const yearExpenses = await reportExpenses(user, userId, localDayRange(`${year}-01-01`, `${year}-12-31`));
 
   const byCategory = {};
   let expenseTotal = 0;
@@ -135,7 +149,7 @@ async function buildAnnualData(userId, year) {
     const c = e.category || 'Other';
     byCategory[c] = (byCategory[c] || 0) + (e.amount || 0);
     expenseTotal += e.amount || 0;
-    const m = new Date(e.date).getMonth();
+    const m = indiaCalendarDate(e.date).getUTCMonth();
     monthlySeries[m] += e.amount || 0;
   }
 
@@ -160,14 +174,10 @@ async function buildAnnualData(userId, year) {
 }
 
 async function buildCategoryData(userId, from, to) {
-  const { user, expenses } = await baseData(userId);
-  const fromD = dateOnly(from);
-  const toD = new Date(dateOnly(to).getTime() + 864e5 - 1); // inclusive of `to` day
-
-  const items = expenses.filter((e) => {
-    const d = dateOnly(e.date);
-    return d >= fromD && d <= dateOnly(to);
-  });
+  const user = await User.findById(userId).select('name email familyAccountId').lean() || {};
+  const items = await reportExpenses(user, userId, localDayRange(from, to));
+  const fromD = new Date(from);
+  const toD = new Date(to);
 
   const byCategory = {};
   let total = 0;
@@ -180,8 +190,8 @@ async function buildCategoryData(userId, from, to) {
   return {
     period: 'Category',
     from: fromD,
-    to: dateOnly(to),
-    title: `Expense Report — ${fromD.toISOString().slice(0, 10)} to ${dateOnly(to).toISOString().slice(0, 10)}`,
+    to: toD,
+    title: `Expense Report — ${fromD.toISOString().slice(0, 10)} to ${toD.toISOString().slice(0, 10)}`,
     user,
     byCategory,
     total,
@@ -276,16 +286,21 @@ function section(doc, heading) {
 }
 
 function kv(doc, key, value) {
-  if (doc.y > doc.page.height - 40) doc.addPage();
+  const labelWidth = 140;
+  const valueX = 50 + labelWidth + 16;
+  const valueOptions = { align: 'right', width: doc.page.width - valueX - 50 };
+  const labelHeight = doc.font('Helvetica-Bold').fontSize(10).heightOfString(key, { width: labelWidth });
+  const valueHeight = doc.font('Helvetica').heightOfString(value, valueOptions);
+  const rowHeight = Math.max(labelHeight, valueHeight) + 12;
+  if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) doc.addPage();
   const y = doc.y;
-  
-  // Draw subtle row separator
-  doc.moveTo(40, y + 16).lineTo(doc.page.width - 40, y + 16).lineWidth(1).strokeColor('#E0E0E0').stroke();
+  doc.font('Helvetica-Bold').fillColor(COLORS.text).text(key, 50, y, { width: labelWidth });
+  doc.font('Helvetica').text(value, valueX, y, valueOptions);
+  doc.moveTo(40, y + rowHeight - 4).lineTo(doc.page.width - 40, y + rowHeight - 4)
+    .lineWidth(1).strokeColor('#E0E0E0').stroke();
   doc.lineWidth(2).strokeColor(COLORS.border);
-
-  doc.font('Helvetica-Bold').fillColor(COLORS.text).text(key, 50, y);
-  doc.font('Helvetica').text(value, 50, y, { align: 'right', width: doc.page.width - 100 });
-  doc.moveDown(0.75);
+  doc.x = 50;
+  doc.y = y + rowHeight;
 }
 
 function bullet(doc, text) {
@@ -364,7 +379,7 @@ async function renderCategoryPdf(data) {
 
   section(doc, 'Transactions');
   if (data.items.length === 0) doc.text('  None.');
-  for (const e of data.items) bullet(doc, `${new Date(e.date).toISOString().slice(0, 10)} — ${e.title || 'Expense'} (${e.category || 'Other'}) — ${inr(e.amount)}`);
+  for (const e of data.items) bullet(doc, `${indiaCalendarDate(e.date).toISOString().slice(0, 10)} — ${e.title || 'Expense'} (${e.category || 'Other'}) — ${inr(e.amount)}`);
 
   doc.end();
   return done;
@@ -515,7 +530,7 @@ async function renderCategoryExcel(data) {
         { header: 'Amount', key: 'amount' },
       ],
       rows: data.items.map((e) => ({
-        date: new Date(e.date).toISOString().slice(0, 10),
+        date: indiaCalendarDate(e.date).toISOString().slice(0, 10),
         title: e.title || 'Expense',
         category: e.category || 'Other',
         amount: e.amount || 0,
@@ -557,8 +572,7 @@ async function buildFamilyData(familyId, from, to, requesterId) {
   const budgets = await Budget.find({ familyId }).lean();
   const vendors = await RecipientDirectory.find({ familyId, status: { $ne: 'ARCHIVED' } }).sort({ hits: -1 }).limit(20).lean();
   const recentBatches = await ImportBatch.find({ familyId }).sort({ createdAt: -1 }).limit(10).lean();
-  const visibility = await buildTransactionVisibilityFilter(null, { familyId, userId: requesterId });
-  const txCount = await Transaction.countDocuments({ familyId, status: { $ne: 'VOIDED' }, ...visibility });
+  const txCount = analytics.totalCount;
   return { analytics, family: family || { name: 'Family' }, members, budgets, vendors, recentBatches, txCount, from, to };
 }
 
@@ -589,7 +603,7 @@ async function renderFamilyPdf(data) {
 
   section(doc, 'Member × Vendor (top)');
   if (!data.analytics.byMemberByVendor || data.analytics.byMemberByVendor.length === 0) doc.text('  No data.');
-  else for (const r of data.analytics.byMemberByVendor.slice(0, 20)) bullet(doc, `${r.memberName} → ${r.vendor} — ${inr(r.spend)} ×${r.count}`);
+  else for (const r of data.analytics.byMemberByVendor.slice(0, 20)) bullet(doc, `${r.memberName} to ${r.vendor} — ${inr(r.spend)} ×${r.count}`);
 
   section(doc, 'Monthly Area (Income vs Expense)');
   if (!data.analytics.monthlyArea || data.analytics.monthlyArea.length === 0) doc.text('  No monthly data.');

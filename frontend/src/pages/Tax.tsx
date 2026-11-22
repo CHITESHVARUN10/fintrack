@@ -49,7 +49,7 @@ function RegimeCard({
         </div>
 
         <div className="fw-rowbox fw-rowbox--cyan">
-          <span className="fw-label">Deductions</span>
+          <span className="fw-label">Deductions{regime.standardDeduction ? ` (includes ${formatCurrency(regime.standardDeduction)} standard)` : ''}</span>
           <span className="fw-tag">{formatCurrency(deductions)}</span>
         </div>
 
@@ -220,7 +220,7 @@ export function Tax() {
 
         <section className="fw-card fw-stack" style={{ gap: 14 }}>
           <span className="fw-label" style={{ color: 'var(--text-secondary)' }}>
-            Deductions claimed (annual)
+            Investment and payment deductions (annual)
           </span>
           <div className="fw-grid-3">
             {DEDUCTION_TILES.map((tile) => (

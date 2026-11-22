@@ -1,3 +1,5 @@
+import { LedgerTableScroll } from '../components/ledger/LedgerShell'
+import { useConfirmation } from '../hooks/useConfirmation'
 import type { LedgerTransaction } from '../types/api'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useState } from 'react'
@@ -51,6 +53,7 @@ function normalizeSubscription(raw: Record<string, unknown>): Subscription {
     autoRenew: Boolean(raw.autoRenew),
     status: ((raw.status as SubscriptionStatus) ?? 'Active'),
     notes: raw.notes as string | undefined,
+    priceHistory: Array.isArray(raw.priceHistory) ? raw.priceHistory as Subscription['priceHistory'] : [],
   }
 }
 
@@ -65,12 +68,14 @@ function statusTagClass(status: SubscriptionStatus): string {
 }
 
 export function SubscriptionDetail() {
+  const confirmAction = useConfirmation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
 
   // Linked transactions & suggestions
@@ -109,7 +114,7 @@ if (!id) return
   }, [loadData])
 
   const handleDelete = async () => {
-    if (!subscription || !window.confirm(`Delete "${subscription.name}"?`)) return
+    if (!subscription || !(await confirmAction(`Delete “${subscription.name}”?`, 'This removes the subscription from your list.'))) return
     try {
       await subscriptionService.delete(subscription.id)
       navigate('/subscriptions')
@@ -119,9 +124,11 @@ if (!id) return
   }
 
   const handleUnlink = async (txId: string) => {
-    if (!subscription || !window.confirm('Unlink this transaction from the subscription?')) return
+    if (!subscription || !(await confirmAction('Unlink payment?', 'The transaction will stay in your ledger.', 'Unlink'))) return
     try {
       await subscriptionService.unlinkTransaction(subscription.id, { transactionId: txId })
+      setActionError(null)
+      setActionMessage('Payment unlinked.')
       loadData()
     } catch (caught: unknown) { const err = toApiError(caught);
       setActionError(err?.response?.data?.error || 'Could not unlink transaction.')
@@ -225,6 +232,7 @@ if (!id) return
         }
       >
         {actionError && <PaymentsNotice tone="error">{actionError}</PaymentsNotice>}
+        {actionMessage && <PaymentsNotice>{actionMessage}</PaymentsNotice>}
 
         {/* 4-column KPI row — matches the prototype's cost / spent / status /
             payment-method cards, fed by the live subscription payload. */}
@@ -293,7 +301,7 @@ if (!id) return
             <div style={{ minWidth: 0 }}>
               <h2 className="pmt-table-title">Linked transactions &amp; payment history</h2>
               <p className="pmt-sub">
-                Transactions linked to this subscription ({linkedTxs.length} records · Total Paid:{' '}
+                Transactions linked to this subscription ({linkedTxs.length} {linkedTxs.length === 1 ? 'record' : 'records'} · Total Paid:{' '}
                 {formatCurrency(totalPaidPaise / 100)})
               </p>
             </div>
@@ -333,7 +341,7 @@ if (!id) return
             </div>
           )}
 
-          <div className="pmt-table-scroll">
+          <LedgerTableScroll label="Subscription payment history" className="pmt-table-scroll">
             <table className="pmt-table">
               <thead>
                 <tr>
@@ -387,8 +395,21 @@ if (!id) return
                 )}
               </tbody>
             </table>
-          </div>
+          </LedgerTableScroll>
         </section>
+
+        {Boolean(subscription.priceHistory?.length) && (
+          <section className="pmt-card pmt-stack">
+            <h2 className="pmt-card-title">Price history</h2>
+            {subscription.priceHistory?.slice().reverse().map((price) => (
+              <div key={price.effectiveFrom} className="pmt-row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <time dateTime={price.effectiveFrom.slice(0, 10)}>{price.effectiveFrom.slice(0, 10).split('-').reverse().join('/')}</time>
+                <span>{price.source === 'payment' ? 'Detected from a payment' : price.source === 'manual' ? 'Updated manually' : 'Starting price'}</span>
+                <strong>{formatCurrency(price.amount)}</strong>
+              </div>
+            ))}
+          </section>
+        )}
 
         {subscription.notes && (
           <section className="pmt-card pmt-stack">
@@ -404,7 +425,11 @@ if (!id) return
         open={recordPaymentOpen}
         onClose={() => setRecordPaymentOpen(false)}
         subscription={subscription}
-        onRecorded={() => loadData()}
+        onRecorded={() => {
+          setActionError(null)
+          setActionMessage('Payment saved.')
+          void loadData()
+        }}
       />
 
       <PaymentsModal
@@ -432,6 +457,8 @@ if (!id) return
           subscription={subscription}
           onBusyChange={setSaving}
           onSaved={() => {
+            setActionError(null)
+            setActionMessage('Subscription updated.')
             setEditing(false)
             loadData()
           }}

@@ -24,7 +24,6 @@ const importBatchSchema = new mongoose.Schema(
 );
 
 importBatchSchema.index({ familyId: 1, createdAt: -1 });
-importBatchSchema.index({ batchId: 1 });
 importBatchSchema.index({ familyId: 1, fileHash: 1 });
 
 module.exports = mongoose.model('ImportBatch', importBatchSchema);

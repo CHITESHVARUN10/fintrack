@@ -1718,3 +1718,10 @@
     max-height: none;
   }
 }
+
+.fse-donut-lbl {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}

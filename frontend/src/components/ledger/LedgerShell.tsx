@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useDialogFocus } from '../../hooks/useDialogFocus'
 import '../../styles/ledger.css'
@@ -64,6 +64,34 @@ export function LedgerLoading({ rows = 3 }: { rows?: number }) {
       ))}
     </div>
   )
+}
+
+export function LedgerTableScroll({ label, children, className = 'led-table-scroll' }: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  const viewport = useRef<HTMLDivElement>(null)
+  const [overflow, setOverflow] = useState(false)
+
+  useEffect(() => {
+    const element = viewport.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      setOverflow(element.scrollWidth > element.clientWidth + 1)
+    })
+    observer.observe(element)
+    const table = element.querySelector('table')
+    if (table) observer.observe(table)
+    return () => observer.disconnect()
+  }, [])
+
+  return <>
+    {overflow && <p className="led-table-hint">Scroll the table sideways to see all columns.</p>}
+    <div className={className} ref={viewport} tabIndex={overflow ? 0 : undefined} role="region" aria-label={label}>
+      {children}
+    </div>
+  </>
 }
 
 export function LedgerOverlay({

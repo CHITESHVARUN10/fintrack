@@ -1704,3 +1704,30 @@
 }
 
 .led-transaction-link:hover { text-decoration: underline; }
+
+.led-table-hint {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.led-recipient-label {
+  display: block;
+  width: min(22ch, 45vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.led-suggest [role="option"][aria-selected="true"] {
+  background: var(--bg-warm);
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.led-file-btn:focus-within,
+.led-table-scroll:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}

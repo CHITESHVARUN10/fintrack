@@ -1,3 +1,4 @@
+import { indiaDateKey } from '../lib/format'
 import { useState } from 'react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Icon } from '../components/ui/Icon'
@@ -37,10 +38,6 @@ const reportTypes: { icon: string; title: string; desc: string; kind: ReportKind
   },
 ]
 
-function pad2(n: number) {
-  return String(n).padStart(2, '0')
-}
-
 function triggerDownload(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -53,9 +50,8 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 function buildParams(kind: ReportKind, from: string, to: string): Record<string, string | number> {
-  const d = new Date(from)
-  const p: Record<string, string | number> = { year: d.getFullYear() }
-  if (kind === 'monthly') p.month = d.getMonth() + 1
+  const p: Record<string, string | number> = { year: Number(from.slice(0, 4)) }
+  if (kind === 'monthly') p.month = Number(from.slice(5, 7))
   if (kind === 'category' || kind === 'family') {
     p.from = from
     p.to = to
@@ -64,11 +60,10 @@ function buildParams(kind: ReportKind, from: string, to: string): Record<string,
 }
 
 function buildFilename(kind: ReportKind, from: string, to: string, format: ReportFormat) {
-  const d = new Date(from)
-  const year = d.getFullYear()
+  const year = from.slice(0, 4)
   const ext = format === 'pdf' ? 'pdf' : 'xlsx'
   if (kind === 'family') return `family-report-${from}-to-${to}.${ext}`
-  if (kind === 'monthly') return `monthly-report-${year}-${pad2(d.getMonth() + 1)}.${ext}`
+  if (kind === 'monthly') return `monthly-report-${year}-${from.slice(5, 7)}.${ext}`
   if (kind === 'annual') return `annual-report-${year}.${ext}`
   if (kind === 'tax') return `tax-summary-${year}.pdf`
   return `expense-report-${from}-to-${to}.${ext}`
@@ -91,8 +86,8 @@ async function fetchReport(kind: ReportKind, params: Record<string, string | num
 export function Reports() {
   const [format, setFormat] = useState<'PDF' | 'EXCEL'>('PDF')
   const [selected, setSelected] = useState(0)
-  const [from, setFrom] = useState('2026-04-01')
-  const [to, setTo] = useState('2026-04-30')
+  const [from, setFrom] = useState(() => indiaDateKey(new Date()).slice(0, 8) + '01')
+  const [to, setTo] = useState(() => indiaDateKey(new Date()))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Session-only log of what this tab actually downloaded. Nothing is
@@ -107,6 +102,15 @@ export function Reports() {
   const formatLocked = kind === 'tax'
 
   const handleGenerate = async () => {
+    const usesRange = kind === 'category' || kind === 'family'
+    if (!from || (usesRange && !to)) {
+      setError(usesRange ? 'Choose a start date and an end date.' : 'Choose a start date for this report.')
+      return
+    }
+    if (usesRange && from > to) {
+      setError('The end date must be on or after the start date.')
+      return
+    }
     setError(null)
     setLoading(true)
     try {
@@ -120,7 +124,7 @@ export function Reports() {
           filename,
           range:
             kind === 'monthly' || kind === 'annual' || kind === 'tax'
-              ? `FY ${new Date(from).getFullYear()}`
+              ? `FY ${from.slice(0, 4)}`
               : `${from} → ${to}`,
           format: effectiveFormat,
           generatedAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),

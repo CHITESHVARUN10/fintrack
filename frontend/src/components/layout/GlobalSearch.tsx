@@ -269,7 +269,8 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     return Array.from(map.entries()).sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
   }, [filtered])
 
-  const flatResults = useMemo(() => filtered.slice(0, 30), [filtered])
+  const flatResults = useMemo(() => grouped.flatMap(([, rows]) => rows), [grouped])
+  const selectedIndex = Math.min(activeIdx, flatResults.length - 1)
 
   const handleSelect = useCallback((item: SearchItem) => {
     saveRecent(query)
@@ -290,9 +291,9 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
         e.preventDefault()
         setActiveIdx(i => Math.max(i - 1, 0))
       } else if (e.key === 'Enter') {
-        if (flatResults[activeIdx]) {
+        if (flatResults[selectedIndex]) {
           e.preventDefault()
-          handleSelect(flatResults[activeIdx])
+          handleSelect(flatResults[selectedIndex])
         } else if (query.trim() && flatResults.length === 0) {
           saveRecent(query)
           onClose()
@@ -302,13 +303,13 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, flatResults, activeIdx, handleSelect, query, onClose, navigate])
+  }, [open, flatResults, selectedIndex, handleSelect, query, onClose, navigate])
 
   useEffect(() => {
     if (!listRef.current) return
-    const el = listRef.current.querySelector(`[data-idx="${activeIdx}"]`) as HTMLElement | null
+    const el = listRef.current.querySelector(`[data-idx="${selectedIndex}"]`) as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest' })
-  }, [activeIdx])
+  }, [selectedIndex])
 
   if (!open) return null
 
@@ -327,6 +328,11 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             onChange={(e) => { setQuery(e.target.value); setActiveIdx(0) }}
             placeholder="Search pages, transactions, vendors…"
             aria-label="Search pages, transactions, vendors"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={!loading && flatResults.length > 0}
+            aria-controls={!loading && flatResults.length ? 'fin-search-results' : undefined}
+            aria-activedescendant={!loading && selectedIndex >= 0 ? `fin-search-result-${selectedIndex}` : undefined}
             autoComplete="off"
             spellCheck={false}
           />
@@ -423,23 +429,28 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
             </div>
           ) : (
             <>
-              <div className="fse-count-line">
-                {filtered.length} results — showing top {flatResults.length} grouped
+              <div className="fse-count-line" role="status">
+                Showing {flatResults.length} of {filtered.length} {filtered.length === 1 ? 'result' : 'results'}
               </div>
+              <div id="fin-search-results" role="listbox" aria-label="Search results">
               {grouped.map(([group, arr]) => (
-                <div key={group} className="fse-res-group">
+                <div key={group} className="fse-res-group" role="group" aria-label={group}>
                   <div className="fse-res-head">
                     <span>{group}</span>
                     <span className="fse-kbd">{arr.length}</span>
                   </div>
                   {arr.map(item => {
-                    const flatIdx = flatResults.findIndex(f => f.id === item.id)
-                    const isActive = flatIdx === activeIdx
+                    const flatIdx = flatResults.indexOf(item)
+                    const isActive = flatIdx === selectedIndex
                     return (
                       <button
                         key={item.id}
                         type="button"
+                        id={`fin-search-result-${flatIdx}`}
                         data-idx={flatIdx}
+                        role="option"
+                        aria-selected={isActive}
+                        tabIndex={-1}
                         onClick={() => handleSelect(item)}
                         onMouseEnter={() => setActiveIdx(flatIdx)}
                         className={`fse-res-row${isActive ? ' is-active' : ''}`}
@@ -459,6 +470,7 @@ export function GlobalSearch({ open, onClose, initialQuery = '', onQueryChange }
                   })}
                 </div>
               ))}
+              </div>
             </>
           )}
         </div>

@@ -35,7 +35,7 @@ router.get('/', async (req,res,next)=>{
     const visibility = await buildTransactionVisibilityFilter(req, { familyId });
     for(const b of items){
       const { from, to } = budgetInterval(b.period, now);
-      const filter={ familyId, _id: { $nin: excludedIds }, status:{$ne:'VOIDED'}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from, $lt: to }, $and: [visibility] };
+      const filter={ familyId, _id: { $nin: excludedIds }, status:{$in:['ACTIVE','RECONCILED']}, type: { $in:['EXPENSE','CASH_EXPENSE'] }, occurredAt:{ $gte: from, $lt: to }, $and: [visibility] };
       if(b.scope==='CATEGORY' && b.category) filter.category=b.category;
       if(b.scope==='MEMBER' && b.memberId) filter.createdBy=b.memberId;
       // for MEMBER scope, if filtering other member's budget, respect their PRIVATE? already via $or above

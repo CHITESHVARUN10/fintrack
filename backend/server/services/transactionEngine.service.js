@@ -96,6 +96,21 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
     if (sc.confidence > bestScore) { bestScore = sc.confidence; best = tx; bestLevel = sc.level; }
   }
 
+  // An identical date-only statement row can be a distinct purchase. Ask
+  // for review when the same narration recurs in this batch without a reference.
+  if (batchId && source === 'BANK_STATEMENT' && !exactIdentity && candidate.recipient?.name?.trim()) {
+    const earlier = await SourceRecord.findOne({ familyId, createdBy, batchId, fingerprint: fp })
+      .sort({ _id: 1 }).select('transactionId').lean();
+    if (earlier) {
+      const match = recent.find(tx => String(tx._id) === String(earlier.transactionId));
+      if (match) {
+        best = match;
+        bestScore = 70;
+        bestLevel = 'STATEMENT_ROW_MATCH';
+      }
+    }
+  }
+
   const decision = classifyConfidence(bestScore);
 
   if (decision === 'AUTO' && best) {
@@ -214,7 +229,7 @@ async function ingest(candidate, { familyId, createdBy, source, batchId, rawPayl
 function computeLedgerSummary(transactions, offsets = new Map()) {
   let actualExpenditurePaise = 0, internalTransfersPaise = 0, cashWithdrawalsPaise = 0, totalMovementPaise = 0, cashSpentPaise = 0, cashWithdrawnPaise = 0;
   for (const t of transactions) {
-    if (t.status === 'VOIDED') continue;
+    if (t.status === 'VOIDED' || t.status === 'PENDING_REVIEW') continue;
     totalMovementPaise += t.amountPaise || 0;
     if ((t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE') && !offsets.has(String(t._id))) actualExpenditurePaise += t.amountPaise || 0;
     if (t.type === 'INTERNAL_TRANSFER') internalTransfersPaise += t.amountPaise || 0;

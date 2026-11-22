@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../services/apiClient'
@@ -185,6 +186,7 @@ function ExpenseForm({ initial, onSaved, onCancel }: ExpenseFormProps) {
 }
 
 export function Expenses() {
+  const confirmAction = useConfirmation()
   const [items, setItems] = useState<AdHocExpense[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -209,7 +211,7 @@ export function Expenses() {
   }, [load])
 
   const handleDelete = async (exp: AdHocExpense) => {
-    if (!window.confirm(`Delete "${exp.title}"?`)) return
+    if (!(await confirmAction(`Delete “${exp.title}”?`, 'This removes the expense from your list.'))) return
     try {
       await apiClient.delete(`/expenses/${exp.id}`)
       await load()

@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -34,6 +35,7 @@ function productLine(v: Vendor) {
 }
 
 export function Vendors(){
+  const confirmAction = useConfirmation()
   const nav = useNavigate()
   const [searchParams] = useSearchParams()
   const [items, setItems] = useState<Vendor[]>([])
@@ -157,7 +159,7 @@ export function Vendors(){
   }
 
   async function archive(id:string){
-    if(!confirm('Archive this vendor? Transactions remain but vendor hidden from list.')) return
+    if (!(await confirmAction('Archive this vendor?', 'The vendor will be hidden. Its transactions will stay in your ledger.', 'Archive'))) return
     setBusy(true)
     try{
       await apiClient.delete(`/recipients/${id}`)
@@ -200,7 +202,7 @@ export function Vendors(){
     setBusy(true)
     try{
       const r = await apiClient.post(`/recipients/${id}/apply`, { overwrite: false })
-      alert(`Matched ${r.data.matched}, updated ${r.data.updated} transactions (only Other)`)
+      setNotice(r.data.updated ? `Updated ${r.data.updated} ${r.data.updated === 1 ? 'transaction' : 'transactions'}.` : 'No transactions matched.')
     } finally { setBusy(false) }
   }
 

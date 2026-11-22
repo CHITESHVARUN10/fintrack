@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { initials } from '../../lib/format'
@@ -8,6 +8,7 @@ import { GlobalSearch } from './GlobalSearch'
 
 export function Header({ title, onMenu, navOpen }: { title: string; onMenu: () => void; navOpen: boolean }) {
   const { user, isAdmin, members, activeMember, setActiveMemberId } = useAuth()
+  const { pathname } = useLocation()
   const { theme, toggle } = useTheme()
   const [memberOpen, setMemberOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -69,7 +70,7 @@ export function Header({ title, onMenu, navOpen }: { title: string; onMenu: () =
           <Icon name="menu" className="text-xl" />
         </button>
         <span className="fin-topbar-title">{title}</span>
-        {isAdmin && activeMember && members.length > 0 && (
+        {pathname === '/dashboard' && isAdmin && activeMember && members.length > 0 && (
           <div className="fin-member-picker" ref={memberPicker}>
             <button
               type="button"

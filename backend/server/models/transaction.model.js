@@ -12,6 +12,7 @@ const transactionSchema = new mongoose.Schema(
     category: { type: String },
     subcategory: { type: String },
     productName: { type: String },
+    notes: { type: String, trim: true, maxlength: 1000 },
     productRef: { type: mongoose.Schema.Types.ObjectId },
     categorySplit: [{ category: String, amountPaise: Number }],
     lineItems: [

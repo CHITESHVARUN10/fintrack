@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { MonthSharing } from '../components/family/MonthSharing'
 import { familyService } from '../services/api'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Modal } from '../components/ui/Modal'
@@ -225,16 +226,15 @@ export function Settings() {
   const [prefs, setPrefs] = useState<Record<PrefKey, boolean>>(readPrefs)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  // Deep links from the family banner and Import land on /settings#family;
-  // bring the section into view once the page has mounted.
+  const { hash } = useLocation()
   useEffect(() => {
-    if (window.location.hash !== '#family') return
+    if (hash !== '#family' && hash !== '#sharing') return
     const timer = window.setTimeout(
-      () => document.getElementById('family')?.scrollIntoView({ block: 'start' }),
+      () => document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' }),
       0,
     )
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [hash])
 
   // Alert preferences are a per-device UI preference; the server owns actual
   // delivery through the scheduled notification jobs.
@@ -290,15 +290,14 @@ export function Settings() {
                 </span>
               </div>
               <p className="fw-muted" style={{ fontSize: 12 }}>
-                Name, email and role are owned by the household account and can only be changed by
-                the family admin through the server. There is no profile-edit endpoint in this
-                build, so these fields are read-only rather than a button that silently does nothing.
+                To request a change to your account details, contact FinStack support.
               </p>
             </div>
           </div>
         </section>
 
         <FamilySection />
+        {user.familyAccountId && <MonthSharing key={user.familyAccountId} />}
 
         {/* Appearance */}
         <section className="fw-section">
@@ -361,8 +360,7 @@ export function Settings() {
               )
             })}
             <p className="fw-muted" style={{ fontSize: 12 }}>
-              These switches are stored on this device. Delivery itself is handled by the server's
-              notification jobs, which decide what is actually sent.
+              These preferences apply on this device. Email delivery is managed separately.
             </p>
           </div>
         </section>
@@ -371,16 +369,12 @@ export function Settings() {
         <section className="fw-section">
           <h2 className="fw-h2">Security</h2>
           <div className="fw-card fw-stack">
-            <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>
-              This build has no password-change endpoint — the session is managed by the server and
-              passwords are only set when an account is created or an invite is accepted.
-            </p>
             <p className="fw-muted" style={{ fontSize: 12 }}>
-              If you need a new password, ask your family admin to re-issue an invite, or contact{' '}
+              For help accessing your account or resetting your password, contact{' '}
               <a href={`mailto:${PRIVACY_EMAIL}`} style={{ textDecoration: 'underline', fontWeight: 700 }}>
                 {PRIVACY_EMAIL}
               </a>
-              . We do not show a form that cannot actually save.
+              .
             </p>
           </div>
         </section>

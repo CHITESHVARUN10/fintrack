@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import type { PaymentSuggestion } from '../types/api'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -300,6 +301,7 @@ function SubscriptionForm({
 }
 
 export function Subscriptions() {
+  const confirmAction = useConfirmation()
   const navigate = useNavigate()
   const [freq, setFreq] = useState<Freq>('monthly')
   const [items, setItems] = useState<Subscription[]>([])
@@ -308,6 +310,7 @@ export function Subscriptions() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Subscription | null>(null)
   const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null)
   const [suggestions, setSuggestions] = useState<PaymentSuggestion[]>([])
 
   const load = useCallback(() => Promise.resolve().then(async () => {
@@ -363,9 +366,10 @@ export function Subscriptions() {
         matchedTxIds: s.matchedTxIds,
       })
       setSuggestions((prev) => prev.filter((x) => x.id !== s.id))
+      setFeedback({ text: 'Subscription updated from the matched payments.' })
       load()
     } catch (caught: unknown) { const err = toApiError(caught);
-      alert(err?.response?.data?.error || 'Failed to accept suggestion')
+      setFeedback({ text: err.response?.data.error ?? 'Could not apply this suggestion.', error: true })
     }
   }
 
@@ -382,9 +386,10 @@ export function Subscriptions() {
   }
 
   const handleDelete = async (sub: Subscription) => {
-    if (!window.confirm(`Delete "${sub.name}"?`)) return
+    if (!(await confirmAction(`Delete “${sub.name}”?`, 'This removes the subscription from your list.'))) return
     try {
       await apiClient.delete(`/subscriptions/${sub.id}`)
+      setFeedback({ text: 'Subscription deleted.' })
       await load()
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not delete subscription.'
@@ -397,7 +402,7 @@ export function Subscriptions() {
   const visible = freq === 'monthly' ? monthly : yearly
   const suffix = freq === 'monthly' ? '/mo' : '/yr'
   const activeTotal = visible
-    .filter((s) => s.status !== 'Cancelled')
+    .filter((s) => s.status === 'Active')
     .reduce((sum, s) => sum + s.amount, 0)
 
   const modalOpen = open || !!editing
@@ -438,6 +443,7 @@ export function Subscriptions() {
           </button>
         }
       >
+        {feedback && <PaymentsNotice tone={feedback.error ? 'error' : 'info'}>{feedback.text}</PaymentsNotice>}
         <div className="pmt-tabs" role="tablist" aria-label="Billing frequency">
           <button
             type="button"
@@ -578,7 +584,7 @@ export function Subscriptions() {
 
         <div className="pmt-summary">
           <span className="pmt-summary-label">
-            Total {freq} spending
+            {freq === 'monthly' ? 'Active monthly renewals' : 'Active yearly renewals'}
           </span>
           <span className="pmt-summary-value">
             {formatCurrency(activeTotal)}
@@ -609,6 +615,7 @@ export function Subscriptions() {
           defaultFrequency={freq}
           onBusyChange={setSaving}
           onSaved={(savedFrequency) => {
+            setFeedback({ text: editing ? 'Subscription updated.' : 'Subscription saved.' })
             closeModal()
             setFreq(savedFrequency === 'yearly' ? 'yearly' : 'monthly')
             load()

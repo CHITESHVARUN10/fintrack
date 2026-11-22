@@ -100,6 +100,7 @@ async function buildDashboard(userId, viewerId = userId) {
   let transactionCategoryEntries = [];
   let transactionVendorEntries = [];
   let incomeEntries = [];
+  let refundPaise = 0;
   if (me?.familyAccountId) {
     const visibility = await buildTransactionVisibilityFilter(null, {
       familyId: me.familyAccountId,
@@ -118,7 +119,14 @@ async function buildDashboard(userId, viewerId = userId) {
     ]);
     const settled = entries.filter(tx => !offsets.has(String(tx._id)));
     const txs = settled.filter(tx => tx.type !== 'INCOME');
-    incomeEntries = settled.filter(tx => tx.type === 'INCOME');
+    incomeEntries = settled.filter(tx => {
+      if (tx.type !== 'INCOME') return false;
+      const narration = tx.recipient?.name || tx.sender?.name || '';
+      const refund = tx.metadata?.origin !== 'MANUAL' && tx.batchId &&
+        /^\s*(?:(?:upi|imps|neft|card|pos|cr)[\s/:-]+)*(?:refund|purchase reversal)\b/i.test(narration);
+      if (refund) refundPaise += tx.amountPaise || 0;
+      return !refund;
+    });
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
     const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];
@@ -176,7 +184,7 @@ async function buildDashboard(userId, viewerId = userId) {
     monthStart,
     monthEnd,
   });
-  const netMonthlyFlow = round2(income.received - transactionSpendThisMonth);
+  const netMonthlyFlow = round2(income.received + refundPaise / 100 - transactionSpendThisMonth);
   const monthlyBurnBreakdown = {
     Subscriptions: round2(subs
       .filter(sub => activeInMonth(sub, monthStart, monthEnd))
@@ -188,9 +196,11 @@ async function buildDashboard(userId, viewerId = userId) {
     netMonthlyFlow,
     monthlyIncome: income.received,
     monthlyObligations: transactionSpendThisMonth,
-    receivedIncomeThisMonth: income.received,
+    receivedIncomeThisMonth: round2(income.received + refundPaise / 100),
+    incomeExcludingRefundsThisMonth: income.received,
     plannedIncomeThisMonth: income.planned,
     spentThisMonth: transactionSpendThisMonth,
+    refundsThisMonth: refundPaise / 100,
     savingsRatePct: income.received > 0
       ? round2((netMonthlyFlow / income.received) * 100)
       : 0,

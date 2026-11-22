@@ -16,14 +16,13 @@ const Income = require('../models/income.model');
 const Subscription = require('../models/subscription.model');
 const RecurringPayment = require('../models/recurring.model');
 const Investement = require('../models/investment.model');
-const AdHocExpense = require('../models/expense.model');
+const Transaction = require('../models/transaction.model');
 const Notification = require('../models/notification.model');
 
 // --- date helpers (relative to "now" so the seed stays current) ---
 const DAY = 864e5;
 const daysFromNow = (n) => new Date(Date.now() + n * DAY);
 const daysAgo = (n) => new Date(Date.now() - n * DAY);
-const monthsAgo = (n) => { const d = new Date(); d.setMonth(d.getMonth() - n); return d; };
 const yearsAgo = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return d; };
 
 const isFresh = process.argv.includes('--fresh');
@@ -50,7 +49,7 @@ async function seed() {
       Subscription.deleteMany({}),
       RecurringPayment.deleteMany({}),
       Investement.deleteMany({}),
-      AdHocExpense.deleteMany({}),
+      Transaction.deleteMany({ 'metadata.seedExample': { $exists: true } }),
       Notification.deleteMany({}),
     ]);
   }
@@ -169,30 +168,36 @@ async function seed() {
   ]);
   console.log('✅ Investments seeded');
 
-  // --- 6. Ad-hoc expenses (last 3 months, both members, mixed categories) ---
-  await AdHocExpense.insertMany([
-    { memberId: R, familyAccountId: F, title: 'Petrol', category: 'Fuel', amount: 1500, date: daysAgo(3), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Swiggy lunch', category: 'Food', amount: 450, date: daysAgo(3), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Ola cab', category: 'Travel', amount: 320, date: daysAgo(12), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Amazon order', category: 'Shopping', amount: 2400, date: daysAgo(20), paymentMode: 'Card' },
-    { memberId: R, familyAccountId: F, title: 'Pharmacy', category: 'Medical', amount: 680, date: daysAgo(25), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'AC repair', category: 'Maintenance', amount: 3500, date: daysAgo(40), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Groceries', category: 'Food', amount: 2100, date: daysAgo(55), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Fuel', category: 'Fuel', amount: 1800, date: daysAgo(70), paymentMode: 'Card' },
-    { memberId: R, familyAccountId: F, title: 'Flight tickets', category: 'Travel', amount: 8000, date: daysAgo(85), paymentMode: 'Card' },
-    { memberId: R, familyAccountId: F, title: 'Gift', category: 'Other', amount: 1200, date: daysAgo(90), paymentMode: 'UPI' },
-    { memberId: R, familyAccountId: F, title: 'Dinner (split)', category: 'Food', amount: 2000, date: daysAgo(6), paymentMode: 'UPI', splitWith: [P], splitType: 'Equal' },
-
-    { memberId: P, familyAccountId: F, title: 'Myntra', category: 'Shopping', amount: 3200, date: daysAgo(5), paymentMode: 'Card' },
-    { memberId: P, familyAccountId: F, title: 'Doctor visit', category: 'Medical', amount: 900, date: daysAgo(15), paymentMode: 'UPI' },
-    { memberId: P, familyAccountId: F, title: 'Zomato', category: 'Food', amount: 520, date: daysAgo(18), paymentMode: 'UPI' },
-    { memberId: P, familyAccountId: F, title: 'Fuel', category: 'Fuel', amount: 1000, date: daysAgo(30), paymentMode: 'UPI' },
-    { memberId: P, familyAccountId: F, title: 'Plumber', category: 'Maintenance', amount: 1400, date: daysAgo(48), paymentMode: 'UPI' },
-    { memberId: P, familyAccountId: F, title: 'Metro card', category: 'Travel', amount: 200, date: daysAgo(60), paymentMode: 'UPI' },
-    { memberId: P, familyAccountId: F, title: 'Gift (split)', category: 'Shopping', amount: 2600, date: daysAgo(10), paymentMode: 'UPI', splitWith: [R], splitType: 'Equal' },
-    { memberId: P, familyAccountId: F, title: 'Weekend trip (split)', category: 'Travel', amount: 5000, date: daysAgo(75), paymentMode: 'Card', splitWith: [R], splitType: 'Equal' },
-  ]);
-  console.log('✅ Ad-hoc expenses seeded');
+  // --- 6. Representative settled ledger activity ---
+  const currentMonth = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 7);
+  const { monthRange } = require('../utils/scope');
+  const withinMonth = days => new Date(Math.max(monthRange(currentMonth).$gte.valueOf(), daysAgo(days).valueOf()));
+  const examples = [
+    [R, 'salary', 'Acme Corp', 'Income', 'INCOME', 'BANK', 120000, 5],
+    [R, 'lunch', 'Swiggy', 'Food', 'EXPENSE', 'UPI', 450, 1],
+    [R, 'cab', 'Ola', 'Transportation', 'EXPENSE', 'UPI', 320, 2],
+    [R, 'shop', 'Amazon', 'Shopping', 'EXPENSE', 'CARD', 2400, 3],
+    [P, 'salary', 'TechSoft', 'Income', 'INCOME', 'BANK', 85000, 5],
+    [P, 'dinner', 'Zomato', 'Food', 'EXPENSE', 'UPI', 520, 2],
+    [P, 'metro', 'Metro Card', 'Transportation', 'EXPENSE', 'UPI', 200, 3],
+  ];
+  await Transaction.bulkWrite(examples.map(([member, key, name, category, type, mode, amount, days]) => {
+    const filter = { familyId: F, createdBy: member, 'metadata.seedExample': key };
+    return {
+      updateOne: {
+        filter,
+        update: {
+          $setOnInsert: {
+            familyId: F, createdBy: member,
+            type, mode, amountPaise: amount * 100, occurredAt: withinMonth(days),
+            category, recipient: { name }, status: 'ACTIVE', visibility: 'FAMILY',
+          },
+        },
+        upsert: true,
+      },
+    };
+  }));
+  console.log('✅ Ledger activity seeded');
 
   // --- 10. Notifications (Rohan) ---
   await Notification.insertMany([

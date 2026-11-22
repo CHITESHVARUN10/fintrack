@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import { FinanceTransactions } from '../components/payments/FinanceTransactions'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -206,6 +207,7 @@ function IncomeForm({ formId, initial, onSaved, onBusyChange }: IncomeFormProps)
 }
 
 export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean }) {
+  const confirmAction = useConfirmation()
   const [items, setItems] = useState<Income[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -213,6 +215,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   const [editing, setEditing] = useState<Income | null>(null)
   const [ledgerItem, setLedgerItem] = useState<Income | null>(null)
   const [deleteError, setDeleteError] = useState('')
+  const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
@@ -235,10 +238,11 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
   }, [load])
 
   const handleDelete = async (inc: Income) => {
-    if (!window.confirm(`Delete "${inc.title}"?`)) return
+    if (!(await confirmAction(`Delete “${inc.title}”?`, 'This removes the income source from your plan.'))) return
     setDeleteError('')
     try {
       await apiClient.delete(`/income/${inc.id}`)
+      setMessage('Income source deleted.')
       await load()
     } catch (err: unknown) {
       const msg = toApiError(err).response?.data?.error ?? 'Could not delete income.'
@@ -305,6 +309,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
           </button>
         }
       >
+        {message && <PaymentsNotice>{message}</PaymentsNotice>}
         {/* Flat income-mix proportion bar — real data, no dummy control. */}
         <section className="pmt-viz" aria-label="Income mix proportion">
           <div className="pmt-viz-head">
@@ -442,6 +447,7 @@ export function Income({ initialAddOpen = false }: { initialAddOpen?: boolean })
           initial={editing}
           onBusyChange={setSaving}
           onSaved={() => {
+            setMessage(editing ? 'Income source updated.' : 'Income source saved.')
             closeModal()
             load()
           }}

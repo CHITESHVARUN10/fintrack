@@ -13,10 +13,7 @@ import { cn } from '../lib/cn'
 import { Badge } from '../components/ui/Badge'
 import './entry-overview.css'
 
-const ledgerCurrency = new Intl.NumberFormat('en-IN', {
-  style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 2,
-})
-const formatLedgerCurrency = (amount: number) => ledgerCurrency.format(amount)
+const formatLedgerCurrency = formatCurrency
 
 const CAT_VARS = [
   'var(--fse-cat-1)',
@@ -149,14 +146,15 @@ export function Dashboard() {
   if (!data || !verification) return <div className="fse-empty">No dashboard data available.</div>
 
   const { categories, catTotal, maxCat, catTicks, vendorTicks, vendorTotal, actualSpend, txnCount } = verification
-  const received = data.receivedIncomeThisMonth ?? 0
+  const received = data.incomeExcludingRefundsThisMonth ?? data.receivedIncomeThisMonth ?? 0
+  const refunds = data.refundsThisMonth ?? 0
   const spent = data.spentThisMonth ?? actualSpend
-  const net = Math.round((received - spent) * 100) / 100
+  const net = Math.round((received + refunds - spent) * 100) / 100
   const visibleBars = categories.slice(0, 6)
   const hiddenBars = categories.length - visibleBars.length
 
   const chips: { label: string; color: 'yellow' | 'surface' | 'white' }[] = [
-    { label: `Subscriptions: ${formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo`, color: 'yellow' },
+    { label: `Subscriptions: ${formatCurrency(data.monthlyBurnBreakdown?.Subscriptions || 0)}/mo equivalent`, color: 'yellow' },
     { label: `Investments SIP: ${formatCurrency(data.monthlyBurnBreakdown?.Investments || 0)}/mo`, color: 'surface' },
   ]
 
@@ -214,6 +212,7 @@ export function Dashboard() {
           </div>
           <div className="fse-kpi-value">
             <CountUp value={net} format={formatLedgerCurrency} />
+            {refunds > 0 && <small className="fse-kicker">Includes {formatLedgerCurrency(refunds)} in refunds</small>}
           </div>
           <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', marginTop: 2 }}>
             {received > 0
@@ -279,7 +278,7 @@ export function Dashboard() {
               <span className="fse-kicker">Actual spend (transactions) this month</span>
               <div className="fse-spend-line">
                 <span className="fse-spend-val">{formatCurrency(actualSpend)}</span>
-                <span className="fse-spend-count">{txnCount} txns</span>
+                <span className="fse-spend-count">{txnCount} {txnCount === 1 ? 'expense' : 'expenses'}</span>
               </div>
               <div className="fse-chips">
                 {chips.map((c) => (

@@ -253,6 +253,9 @@ router.post('/:id/record-payment', async (req, res, next) => {
       return res.json({ success: true, transaction: linked });
     }
 
+    if (notes != null && (typeof notes !== 'string' || notes.length > 1000)) {
+      return res.status(400).json({ error: 'Use up to 1,000 characters for the payment note.' });
+    }
     const occurredAt = date ? new Date(date) : new Date();
     if (!Number.isFinite(occurredAt.getTime())) return res.status(400).json({ error: 'Valid payment date is required' });
     const [priced] = amount == null ? await withObservedSubscriptionPrices([item], req.user._id) : [item];

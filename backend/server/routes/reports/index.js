@@ -1,4 +1,5 @@
 const express = require('express');
+const { localDayRange } = require('../../utils/ledgerDates');
 const { isAuthenticated } = require('../../middleware/auth.middleware');
 const { buildListFilter } = require('../../utils/scope');
 const {
@@ -68,7 +69,7 @@ router.get('/annual', async (req, res, next) => {
 router.get('/category', async (req, res, next) => {
   try {
     const { from, to } = req.query;
-    if (!from || !to || isNaN(Date.parse(from)) || isNaN(Date.parse(to))) {
+    if (!from || !to || localDayRange(from, to)?.error) {
       return res.status(400).json({ error: 'Valid from and to dates are required' });
     }
     const { memberId } = await buildListFilter(req);
@@ -103,6 +104,9 @@ router.get('/tax', async (req, res, next) => {
 router.get('/family', async (req, res, next) => {
   try {
     if (!req.user.familyAccountId) return res.status(400).json({ error: 'Join family first' });
+    if (req.query.from === '' || req.query.to === '' || localDayRange(req.query.from, req.query.to)?.error) {
+      return res.status(400).json({ error: 'Choose a valid date range' });
+    }
     const from = req.query.from ? String(req.query.from) : undefined;
     const to = req.query.to ? String(req.query.to) : undefined;
     const isExcel = req.query.format === 'excel';

@@ -1,3 +1,4 @@
+import { useConfirmation } from '../hooks/useConfirmation'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -37,6 +38,7 @@ function currentMonthRange() {
 }
 
 export function Family() {
+  const confirmAction = useConfirmation()
   const navigate = useNavigate()
   const { refreshSession, members, loading, setActiveMemberId, isAdmin, user, removeMember } = useAuth()
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -97,7 +99,7 @@ export function Family() {
 
   async function handleRemove(member: FamilyMember) {
     setActionError(null)
-    if (!window.confirm(`Remove ${member.name} from the household?`)) return
+    if (!(await confirmAction(`Remove ${member.name}?`, 'They will lose access to this household.', 'Remove'))) return
     setRemovingId(member.id)
     try {
       await removeMember(member.id)

@@ -1,12 +1,15 @@
 import type { CategorizeResult, CompareData, DuplicateGroup, LedgerSummary, LedgerTransaction, MergeResult, TransactionDetail, Vendor, VendorProduct } from '../types/api'
+import { amountInPaise, datetimeInput, formatCurrency } from '../lib/format'
+import { useConfirmation } from '../hooks/useConfirmation'
+import { TransactionCorrection } from '../components/ledger/TransactionCorrection'
 import { toApiError } from '../lib/apiError'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { transactionService } from '../services/api'
 import { apiClient } from '../services/apiClient'
 import { Icon } from '../components/ui/Icon'
 import { useAuth } from '../context/AuthContext'
-import { LedgerEmpty, LedgerLoading, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
+import { LedgerTableScroll, LedgerEmpty, LedgerLoading, LedgerNotice, LedgerOverlay, LedgerPage } from '../components/ledger/LedgerShell'
 
 type Tx = LedgerTransaction
 
@@ -39,12 +42,9 @@ const TYPE_CLASSES: Record<string, string> = {
   CASH_EXPENSE: 'led-tag led-tag-red',
 }
 
-function localDateTime() {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-}
+function localDateTime() { return datetimeInput(new Date().toISOString()) }
 
-function money(paise?: number) { return `₹${((paise || 0) / 100).toLocaleString('en-IN')}` }
+function money(paise?: number) { return formatCurrency((paise ?? 0) / 100) }
 function fmtDate(iso: string) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) } catch { return iso } }
 function fmtDay(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 function monthBounds(y: number, m: number) { return { first: fmtDay(new Date(y, m, 1)), last: fmtDay(new Date(y, m + 1, 0)) } }
@@ -63,12 +63,25 @@ function monthLabel(fromDate: string) {
 }
 
 export function Transactions() {
-  const { isAdmin, user, members: authMembers } = useAuth()
+  const { user, members: authMembers } = useAuth()
+  const confirmAction = useConfirmation()
+  const familyId = user?.familyAccountId
   const ownsTransaction = (tx: LedgerTransaction) => String(typeof tx.createdBy === 'object' ? tx.createdBy._id : tx.createdBy) === user?.id
   const [searchParams, setSearchParams] = useSearchParams()
   const [familyView, setFamilyView] = useState(false)
   const [items, setItems] = useState<Tx[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [actionStatus, setActionStatus] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [formStatus, setFormStatus] = useState('')
+  const [formError, setFormError] = useState('')
+  const [creating, setCreating] = useState(false)
+  const createPending = useRef(false)
+  const submission = useRef<{ signature: string; id?: string } | null>(null)
+  const amountField = useRef<HTMLInputElement>(null)
+  const whenField = useRef<HTMLInputElement>(null)
+  const comparePanel = useRef<HTMLElement>(null)
   // Member list comes from AuthContext instead of a second /families/me →
   // /families/:id/members round-trip on every visit.
   const members = useMemo(() => authMembers.map((m) => ({ id: m.id, name: m.name })), [authMembers])
@@ -77,8 +90,9 @@ export function Transactions() {
   const [q, setQ] = useState(() => searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
+  const [fromDate, setFromDate] = useState(() => searchParams.get('from') || '')
+  const [toDate, setToDate] = useState(() => searchParams.get('to') || '')
+  const invalidRange = Boolean(fromDate && toDate && fromDate > toDate)
   const [modeFilter, setModeFilter] = useState('')
   const [vendorFilter, setVendorFilter] = useState(() => searchParams.get('vendor') || searchParams.get('q') || '')
   const [memberFilter, setMemberFilter] = useState('')
@@ -86,11 +100,19 @@ export function Transactions() {
   const [detailId, setDetailId] = useState<string | null>(() => searchParams.get('highlight'))
   const [detail, setDetail] = useState<TransactionDetail | null>(null)
   const [compareData, setCompareData] = useState<CompareData | null>(null)
+  const [comparing, setComparing] = useState(false)
+  const [offsetBusy, setOffsetBusy] = useState(false)
+  const [offsetError, setOffsetError] = useState('')
+  const [offsetPurpose, setOffsetPurpose] = useState('')
+  const [offsetKind, setOffsetKind] = useState('general')
   const [catEditId, setCatEditId] = useState<string | null>(null)
   const [catEditVal, setCatEditVal] = useState('')
   const [vendorSuggest, setVendorSuggest] = useState<Vendor[]>([])
   const [showVendorSuggest, setShowVendorSuggest] = useState(false)
   const vendorSuggestRef = useRef(0)
+  const chosenVendor = useRef('')
+  const [activeVendor, setActiveVendor] = useState(-1)
+  const vendorOpen = showVendorSuggest && form.recipient.trim().length >= 2 && vendorSuggest.length > 0
   const [dynamicCats, setDynamicCats] = useState<string[]>(DEFAULT_CATEGORIES)
 
   useEffect(() => {
@@ -115,8 +137,13 @@ export function Transactions() {
     if (modeFilter) params.mode = modeFilter
     if (vendorFilter.trim()) params.vendor = vendorFilter.trim()
     if (familyView && memberFilter) params.memberId = memberFilter
-    Promise.resolve().then(() => {
+    return Promise.resolve().then(() => {
       const seq = ++ledgerLoadSeq
+      setLoadError('')
+      if (!familyId || invalidRange) {
+        setLoading(false)
+        return
+      }
       setLoading(true)
       return transactionService.list(params)
         .then((d) => {
@@ -124,10 +151,12 @@ export function Transactions() {
           setItems(d.items || d || [])
           setSummary(d.summary || null)
         })
-        .catch(() => {})
+        .catch(() => {
+          if (seq === ledgerLoadSeq) setLoadError('Could not load transactions. Any entries below are from the last successful load.')
+        })
         .finally(() => { if (seq === ledgerLoadSeq) setLoading(false) })
     })
-  }, [familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
+  }, [familyId, invalidRange, familyView, statusFilter, categoryFilter, fromDate, toDate, modeFilter, vendorFilter, memberFilter])
   useEffect(() => { load() }, [load])
   // External navigation synchronizes local filters before rendering the next frame.
   const [previousSearch, setPreviousSearch] = useState(searchParams.toString())
@@ -137,6 +166,10 @@ export function Transactions() {
     const highlight = searchParams.get('highlight')
     if (urlQ !== null && urlQ !== q) setQ(urlQ)
     if (urlQ && urlQ !== vendorFilter) setVendorFilter(urlQ)
+    const importedFrom = searchParams.get('from')
+    const importedTo = searchParams.get('to')
+    if (importedFrom && importedFrom !== fromDate) setFromDate(importedFrom)
+    if (importedTo && importedTo !== toDate) setToDate(importedTo)
     if (highlight !== detailId) setDetailId(highlight)
   }
 
@@ -164,26 +197,79 @@ export function Transactions() {
   // autocomplete vendor for recipient field
   useEffect(()=>{
     const q = form.recipient.trim()
-    if(q.length < 2) return
     const seq = ++vendorSuggestRef.current
-    const t = setTimeout(()=>{
-      apiClient.get('/recipients', { params:{ q, limit:5 }}).then((r)=>{
-        if(seq!==vendorSuggestRef.current) return
-        const arr = r.data?.items||[]
-        setVendorSuggest(arr)
-        setShowVendorSuggest(arr.length>0)
-      }).catch(()=>{})
+    if (q.length < 2 || q === chosenVendor.current) return
+    const controller = new AbortController()
+    const t = window.setTimeout(() => {
+      apiClient.get('/recipients', { params: { q, limit: 5 }, signal: controller.signal }).then(({ data }) => {
+        if (seq !== vendorSuggestRef.current || document.activeElement?.id !== 'transaction-recipient') return
+        const results = data?.items || []
+        setVendorSuggest(results)
+        setActiveVendor(-1)
+        setShowVendorSuggest(results.length > 0)
+      }).catch(() => {})
     }, 300)
-    return ()=> clearTimeout(t)
+    return () => {
+      window.clearTimeout(t)
+      controller.abort()
+    }
   }, [form.recipient])
+
+  function chooseVendor(vendor: Vendor) {
+    chosenVendor.current = vendor.label.trim()
+    setForm(previous => ({
+      ...previous,
+      recipient: vendor.label,
+      category: previous.category === 'Other' ? vendor.primaryCategory || previous.category : previous.category,
+    }))
+    setShowVendorSuggest(false)
+    setActiveVendor(-1)
+    document.getElementById('transaction-recipient')?.focus()
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const amountPaise = Math.round(Number(form.amount || 0) * 100)
-    if (!amountPaise) return
-    await transactionService.create({ amountPaise, type: form.type, mode: form.mode, category: form.category, occurredAt: new Date(form.occurredAt).toISOString(), recipient: form.recipient ? { name: form.recipient } : undefined, visibility: form.visibility, familyTransfer: form.toUserId ? { toUserId: form.toUserId } : undefined })
-    setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: localDateTime(), recipient: '', toUserId: '', visibility: 'FAMILY' })
-    load()
+    if (createPending.current || !familyId) return
+    setFormStatus('')
+    setFormError('')
+    const amountPaise = amountInPaise(form.amount)
+    if (amountPaise === null) {
+      setFormError('Enter an amount greater than ₹0 with up to two decimal places.')
+      amountField.current?.focus()
+      return
+    }
+    const date = new Date(form.occurredAt)
+    if (!Number.isFinite(date.valueOf())) {
+      setFormError('Choose a valid transaction date and time.')
+      whenField.current?.focus()
+      return
+    }
+    const payload = {
+      amountPaise, type: form.type, mode: form.mode, category: form.category,
+      occurredAt: date.toISOString(), recipient: form.recipient.trim() ? { name: form.recipient.trim() } : undefined,
+      visibility: form.visibility,
+      familyTransfer: form.type === 'INTERNAL_TRANSFER' && form.toUserId ? { toUserId: form.toUserId } : undefined,
+    }
+    const signature = JSON.stringify(payload)
+    if (submission.current?.signature !== signature) {
+      submission.current = { signature, id: globalThis.crypto?.randomUUID?.() }
+    }
+    createPending.current = true
+    setCreating(true)
+    try {
+      const result = await transactionService.create({ ...payload, submissionId: submission.current.id })
+      submission.current = null
+      setForm({ amount: '', type: 'EXPENSE', mode: 'UPI', category: 'Other', occurredAt: localDateTime(), recipient: '', toUserId: '', visibility: 'FAMILY' })
+      setFormStatus(result.transaction?.status === 'PENDING_REVIEW'
+        ? 'Transaction saved for duplicate review.' : 'Transaction saved.')
+      void load()
+    } catch (caught) {
+      const error = toApiError(caught)
+      setFormError(error.response?.data.error ?? 'Could not save the transaction. Try again.')
+    } finally {
+      createPending.current = false
+      setCreating(false)
+    }
   }
 
   // Keep the search box responsive: the table re-renders against the deferred
@@ -275,20 +361,67 @@ export function Transactions() {
     findAutoGroups()
   }, [reviewMode, reviewSearchMode, findAutoGroups])
 
+  useEffect(() => {
+    if (!compareData) return
+    comparePanel.current?.focus()
+    comparePanel.current?.scrollIntoView({ block: 'nearest' })
+  }, [compareData])
+
   async function doCompare() {
-    if (selectedIds.size < 2) return
-    const res = await apiClient.get('/transactions/compare', { params: { ids: Array.from(selectedIds).join(',') } })
-    setCompareData(res.data)
+    if (selectedIds.size < 2 || comparing) return
+    setActionError('')
+    setOffsetError('')
+    setComparing(true)
+    try {
+      const { data } = await apiClient.get<CompareData>('/transactions/compare', { params: { ids: [...selectedIds].join(',') } })
+      setCompareData(data)
+    } catch {
+      setActionError('Could not compare these transactions. Try again.')
+    } finally {
+      setComparing(false)
+    }
+  }
+
+  const compareItems = compareData?.items ?? []
+  const incoming = compareItems.filter(tx => tx.type === 'INCOME').reduce((sum, tx) => sum + tx.amountPaise, 0)
+  const outgoing = compareItems.filter(tx => ['EXPENSE', 'CASH_EXPENSE'].includes(tx.type)).reduce((sum, tx) => sum + tx.amountPaise, 0)
+  const eligibleOffset = incoming > 0 && incoming === outgoing
+    && compareItems.every(tx => ownsTransaction(tx) && !items.some(item => item._id === tx._id && item.isOffset) && ['ACTIVE', 'RECONCILED'].includes(tx.status)
+      && ['INCOME', 'EXPENSE', 'CASH_EXPENSE'].includes(tx.type))
+    && new Set(compareItems.map(tx => tx.currency || 'INR')).size === 1
+
+  async function saveOffset() {
+    const [anchor, ...rest] = compareItems
+    if (!eligibleOffset || offsetBusy || !offsetPurpose.trim()) return
+    setOffsetError('')
+    setOffsetBusy(true)
+    try {
+      await apiClient.put(`/transactions/${anchor._id}/offset`, {
+        transactionIds: rest.map(tx => tx._id), purpose: offsetPurpose.trim(), kind: offsetKind,
+      })
+      setCompareData(null)
+      setSelectedIds(new Set())
+      setOffsetPurpose('')
+      setOffsetKind('general')
+      setActionStatus('Offset group saved.')
+      void load()
+    } catch (caught) {
+      setOffsetError(toApiError(caught).response?.data.error ?? 'Could not save the offset group. Try again.')
+    } finally {
+      setOffsetBusy(false)
+    }
   }
 
   async function saveCategory(id: string) {
     try {
       await transactionService.update(id, { category: catEditVal })
       setCatEditId(null)
-      load()
+      setActionError('')
+      setActionStatus('Category saved.')
+      void load()
       if (detailId === id) setDetail(await transactionService.get(id))
     } catch (err: unknown) {
-      window.alert(toApiError(err).response?.data?.error ?? 'Could not save the category.')
+      setActionError(toApiError(err).response?.data?.error ?? 'Could not save the category.')
     }
   }
 
@@ -344,15 +477,35 @@ export function Transactions() {
     try { await transactionService.resolve(id, 'keepSeparate'); load() } catch { setDetailId(id) }
   }
 
+  if (!familyId) return (
+    <LedgerPage title="Transactions">
+      <LedgerEmpty title="Set up your family to use the ledger">
+        <Link className="led-btn led-btn-sm" to="/settings#family">Create or join a family</Link>
+      </LedgerEmpty>
+    </LedgerPage>
+  )
+
+  const filtersActive = Boolean(fromDate || toDate || modeFilter || categoryFilter || statusFilter || memberFilter || vendorFilter || q)
+
   return (
     <LedgerPage
       title="Transactions"
+      action={<button type="button" className="led-btn" onClick={() => {
+        amountField.current?.scrollIntoView({ block: 'center' })
+        amountField.current?.focus({ preventScroll: true })
+      }}>Add transaction</button>}
       subtitle="Manual entry + family ledger. Transfers and withdrawals don’t inflate spend."
     >
+      {actionStatus && <LedgerNotice>{actionStatus}</LedgerNotice>}
+      {actionError && !detailId && <LedgerNotice tone="error">{actionError}</LedgerNotice>}
+      {loadError && <LedgerNotice tone="error">
+        {loadError} <button className="led-btn led-btn-white led-btn-sm" onClick={load}>Retry</button>
+      </LedgerNotice>}
+      {invalidRange && <LedgerNotice tone="error">The end date must be on or after the start date.</LedgerNotice>}
       <div className="led-scope-row">
         <button onClick={() => setFamilyView(false)} className={`led-btn led-btn-sm${!familyView ? '' : ' led-btn-white'}`}>My</button>
         <button onClick={() => setFamilyView(true)} className={`led-btn led-btn-sm${familyView ? '' : ' led-btn-white'}`}>Family</button>
-        {isAdmin && <span className="led-tiny">Admin sees full family ledger</span>}
+        {familyView && <Link className="led-btn led-btn-white led-btn-sm" to="/settings#sharing">Manage month sharing</Link>}
         <button
           type="button"
           onClick={() => {
@@ -372,10 +525,11 @@ export function Transactions() {
               setStatusFilter('')
             }
           }}
-          title="Enter duplicate review: rows become selectable, then merge selected"
+          title="Review flagged duplicates or find similar transactions"
+          disabled={!reviewMode && (loading || !!loadError || !items.length || invalidRange)}
           className={`led-btn led-btn-sm${reviewMode ? '' : ' led-btn-white'}`}
         >
-          {reviewMode ? '✓ Reviewing…' : `⚠ Review duplicates${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+          {reviewMode ? 'Exit duplicate review' : pendingCount > 0 ? `Review duplicates (${pendingCount})` : 'Find duplicates'}
         </button>
       </div>
 
@@ -452,7 +606,7 @@ export function Transactions() {
         </select>
       </div>
 
-      {summary && (
+      {summary && !invalidRange && (
         <div className="led-grid-4">
           <div className="led-card-sm led-kpi">
             <span className="led-label" style={{ color: 'var(--text-secondary)' }}>Actual spend</span>
@@ -482,7 +636,7 @@ export function Transactions() {
         </div>
       )}
 
-      {otherCount > 0 && (
+      {(otherCount > 0 || bulkResult) && !invalidRange && (
         <div className="led-banner">
           <div style={{ minWidth: 0 }}>
             <div className="led-banner-title">
@@ -492,16 +646,16 @@ export function Transactions() {
               Uses your vendor directory, UPI handle map and keyword rules. Low confidence stays as Other.
             </div>
           </div>
-          <button onClick={bulkCategorize} disabled={bulkLoading} className="led-btn led-btn-white led-btn-sm">
+          <button onClick={bulkCategorize} disabled={bulkLoading || otherCount === 0} className="led-btn led-btn-white led-btn-sm">
             {bulkLoading ? 'Categorizing…' : 'Categorize Others'}
           </button>
           {bulkResult && (
-            <div className="led-card-sm" style={{ flexBasis: '100%', boxShadow: 'none' }}>
+            <div className="led-card-sm" role={bulkResult.error ? 'alert' : 'status'} style={{ flexBasis: '100%', boxShadow: 'none' }}>
               {bulkResult.error ? (
                 <span className="led-strong" style={{ color: 'rgb(var(--c-on-error-container))' }}>{bulkResult.error}</span>
               ) : (
                 <>
-                  <span className="led-strong">Scanned {bulkResult.scanned}, updated {bulkResult.updated}, still Other {bulkResult.stillOther}</span>
+                  <span className="led-strong">{bulkResult.updated ? `Updated ${bulkResult.updated} ${bulkResult.updated === 1 ? 'transaction' : 'transactions'}.` : 'No matching categories found.'}</span>
                   {bulkResult.details && bulkResult.details.length > 0 && (
                     <div className="led-stack" style={{ gap: 4, marginTop: 6, maxHeight: 128, overflow: 'auto' }}>
                       {bulkResult.details.slice(0, 10).map((d) => (
@@ -626,10 +780,12 @@ export function Transactions() {
         </div>
       )}
 
-      <form onSubmit={handleCreate} className="led-card">
+      <form onSubmit={handleCreate} className="led-card" aria-busy={creating}>
+        {formError && <LedgerNotice tone="error">{formError}</LedgerNotice>}
+        {formStatus && <LedgerNotice>{formStatus}</LedgerNotice>}
         <div className="led-quick-grid">
           <label className="led-field">Amount ₹
-            <input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="led-input led-mono" placeholder="500" />
+            <input ref={amountField} inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="led-input led-mono" placeholder="500" />
           </label>
           <label className="led-field">Type
             <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="led-select led-mono">
@@ -655,32 +811,68 @@ export function Transactions() {
             </select>
           </label>
           <label className="led-field">When
-            <input type="datetime-local" value={form.occurredAt} onChange={(e) => setForm({ ...form, occurredAt: e.target.value })} className="led-input led-mono" />
+            <input ref={whenField} type="datetime-local" value={form.occurredAt} onChange={(e) => setForm({ ...form, occurredAt: e.target.value })} className="led-input led-mono" />
           </label>
         </div>
         <div className="led-quick-row2">
           <label className="led-field led-w-240" style={{ position: 'relative' }}>Recipient
             <input
+              id="transaction-recipient"
               value={form.recipient}
-              onChange={(e) => setForm({ ...form, recipient: e.target.value })}
-              onFocus={()=> vendorSuggest.length && setShowVendorSuggest(true)}
-              onBlur={()=> setTimeout(()=> setShowVendorSuggest(false),200)}
+              onChange={event => {
+                chosenVendor.current = ''
+                setForm({ ...form, recipient: event.target.value })
+                setShowVendorSuggest(false)
+                setVendorSuggest([])
+                setActiveVendor(-1)
+              }}
+              onFocus={() => { if (vendorSuggest.length) setShowVendorSuggest(true) }}
+              onBlur={() => setShowVendorSuggest(false)}
+              onKeyDown={event => {
+                if (event.key === 'Escape' && vendorOpen) {
+                  event.preventDefault()
+                  setShowVendorSuggest(false)
+                  return
+                }
+                if (!vendorOpen) return
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  setActiveVendor(index => event.key === 'ArrowDown'
+                    ? Math.min(index + 1, vendorSuggest.length - 1)
+                    : Math.max(index - 1, 0))
+                } else if (event.key === 'Enter' && vendorSuggest[activeVendor]) {
+                  event.preventDefault()
+                  chooseVendor(vendorSuggest[activeVendor])
+                }
+              }}
               className="led-input"
               placeholder="Vendor — type to search"
               autoComplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={vendorOpen}
+              aria-controls={vendorOpen ? 'recipient-suggestions' : undefined}
+              aria-activedescendant={vendorOpen && activeVendor >= 0 ? `recipient-suggestion-${activeVendor}` : undefined}
             />
-            {showVendorSuggest && form.recipient.trim().length >= 2 && vendorSuggest.length>0 && (
+            {vendorOpen && (
               <div className="led-suggest">
-                {vendorSuggest.map((v)=> (
-                  <button
-                    key={v._id}
-                    type="button"
-                    onMouseDown={(e)=>{ e.preventDefault(); setForm(f => ({ ...f, recipient: v.label, category: v.primaryCategory && v.primaryCategory!=='Other' && f.category==='Other' ? v.primaryCategory : f.category })); setShowVendorSuggest(false) }}
-                  >
-                    <span className="led-strong">{v.label}</span>
-                    <span className="led-muted">{v.primaryCategory} · {v.vendorKey}</span>
-                  </button>
-                ))}
+                <div id="recipient-suggestions" role="listbox" aria-label="Vendors">
+                  {vendorSuggest.map((vendor, index) => (
+                    <button
+                      key={vendor._id}
+                      type="button"
+                      id={`recipient-suggestion-${index}`}
+                      role="option"
+                      aria-selected={index === activeVendor}
+                      tabIndex={-1}
+                      onPointerDown={event => event.preventDefault()}
+                      onClick={() => chooseVendor(vendor)}
+                    >
+                      <span className="led-strong">{vendor.label}</span>
+                      <span className="led-muted">{vendor.primaryCategory} · {vendor.vendorKey}</span>
+                    </button>
+                  ))}
+                </div>
                 <div className="led-suggest-note">Select to auto-fill category from vendor</div>
               </div>
             )}
@@ -699,7 +891,7 @@ export function Transactions() {
               </select>
             </label>
           )}
-          <button type="submit" className="led-btn">+ Add</button>
+          <button type="submit" className="led-btn" disabled={creating}>{creating ? 'Saving…' : '+ Add'}</button>
         </div>
       </form>
 
@@ -707,14 +899,14 @@ export function Transactions() {
         <div className="led-banner">
           <span className="led-banner-title">{selectedIds.size} selected for compare</span>
           <div className="led-row">
-            <button onClick={doCompare} className="led-btn led-btn-white led-btn-sm">Compare</button>
+            <button onClick={doCompare} disabled={comparing} className="led-btn led-btn-white led-btn-sm">{comparing ? 'Comparing…' : 'Compare'}</button>
             <button onClick={() => { setSelectedIds(new Set()); setCompareData(null) }} className="led-btn led-btn-white led-btn-sm">Clear</button>
           </div>
         </div>
       )}
 
       {compareData && (
-        <div className="led-card">
+        <section className="led-card led-stack" ref={comparePanel} tabIndex={-1} aria-label="Compare transactions">
           <div className="led-row-between">
             <h3 className="led-h2">Compare</h3>
             <button onClick={() => setCompareData(null)} className="led-btn led-btn-white led-btn-sm">Close</button>
@@ -728,16 +920,36 @@ export function Transactions() {
               </div>
             ))}
           </div>
-        </div>
+          {offsetError && <LedgerNotice tone="error">{offsetError}</LedgerNotice>}
+          {eligibleOffset ? (
+            <form className="led-row" onSubmit={event => { event.preventDefault(); void saveOffset() }}>
+              <label className="led-field">Purpose
+                <input className="led-input" value={offsetPurpose} maxLength={120} required
+                  onChange={event => setOffsetPurpose(event.target.value)} placeholder="e.g. Repaid shared purchase" />
+              </label>
+              <label className="led-field">Offset type
+                <select className="led-select" value={offsetKind} onChange={event => setOffsetKind(event.target.value)}>
+                  <option value="general">Other reimbursement</option>
+                  <option value="purchase_on_behalf">Purchase on behalf of someone</option>
+                  <option value="loan_repayment">Loan and repayment</option>
+                </select>
+              </label>
+              <button className="led-btn led-btn-sm" disabled={offsetBusy || !offsetPurpose.trim()}>
+                {offsetBusy ? 'Saving…' : 'Create offset group'}
+              </button>
+            </form>
+          ) : <p className="led-tiny">To create an offset, select your settled income and expense entries with matching totals in the same currency.</p>}
+        </section>
       )}
 
-      {loading ? <LedgerLoading rows={4} /> : filtered.length === 0 ? (
-        <LedgerEmpty title={items.length === 0 ? 'No transactions yet' : 'No transactions match these filters'}>
-          {items.length === 0 ? 'Add a manual entry above or import a statement.' : 'Clear status/search or pick another month.'}
+      {invalidRange ? null : loading ? <LedgerLoading rows={4} /> : filtered.length === 0 ? (
+        loadError ? null : <LedgerEmpty title={filtersActive ? 'No transactions match these filters' : 'No transactions yet'}>
+          {familyView ? <>You’ll only see other members’ entries for months they choose to share. <Link to="/settings#sharing">Manage sharing</Link>.</>
+            : filtersActive ? 'Clear filters or pick another month.' : 'Add a manual entry above or import a statement.'}
         </LedgerEmpty>
       ) : (
         <div className="led-table-card">
-          <div className="led-table-scroll">
+          <LedgerTableScroll label="Transactions table">
             <table className="led-table wide">
               <thead>
                 <tr>
@@ -775,7 +987,7 @@ export function Transactions() {
                       <td className="led-mono led-nowrap" style={{ fontSize: 11.5 }}>{fmtDate(t.occurredAt)}</td>
                       <td className="led-nowrap">{madeBy}</td>
                       <td className="led-strong" style={{ minWidth: 140 }}>
-                        {reviewMode ? (t.recipient?.name || '—') : (
+                        {reviewMode ? <span className="led-recipient-label" title={t.counterpartyName || t.recipient?.name}>{t.counterpartyName || t.recipient?.name || '—'}</span> : (
                           <button
                             type="button"
                             className="led-transaction-link"
@@ -785,7 +997,7 @@ export function Transactions() {
                               setDetailId(t._id)
                             }}
                           >
-                            {t.recipient?.name || '—'}
+                            <span className="led-recipient-label" title={t.counterpartyName || t.recipient?.name}>{t.counterpartyName || t.recipient?.name || '—'}</span>
                           </button>
                         )}
                       </td>
@@ -849,7 +1061,7 @@ export function Transactions() {
                 })}
               </tbody>
             </table>
-          </div>
+          </LedgerTableScroll>
           <div className="led-table-foot">
             <span className="led-filter-meta">Showing {filtered.length} of {items.length} transactions</span>
             <span className="led-filter-meta">Click any row to inspect &amp; teach vendor</span>
@@ -874,6 +1086,8 @@ export function Transactions() {
               </div>
             </div>
             <div className="led-drawer-body">
+              {actionError && <LedgerNotice tone="error">{actionError}</LedgerNotice>}
+              {actionStatus && <LedgerNotice>{actionStatus}</LedgerNotice>}
               <div>
                 <DetailRow label="Amount" value={money(detail.transaction.amountPaise)} bold />
                 <DetailRow label="Type" value={detail.transaction.type} />
@@ -966,6 +1180,36 @@ export function Transactions() {
                 </div>
               </div>
 
+              {ownsTransaction(detail.transaction) && detail.offset && (
+                <div className="led-source-card led-stack">
+                  <strong>Offset group · {detail.offset.purpose}</strong>
+                  <span className="led-tiny">Excluded from spend and income totals.</span>
+                  <button className="led-btn led-btn-white led-btn-sm" disabled={offsetBusy} onClick={async () => {
+                    if (!(await confirmAction('Remove this offset group?', 'Its transactions will count toward income and spend again.', 'Remove offset'))) return
+                    setOffsetBusy(true)
+                    try {
+                      await apiClient.delete(`/transactions/${detail.transaction._id}/offset`)
+                      setDetail(await transactionService.get(detail.transaction._id))
+                      setActionStatus('Offset group removed.')
+                      void load()
+                    } catch (caught) {
+                      setActionError(toApiError(caught).response?.data.error ?? 'Could not remove the offset group.')
+                    } finally {
+                      setOffsetBusy(false)
+                    }
+                  }}>Remove offset</button>
+                </div>
+              )}
+              {ownsTransaction(detail.transaction) && <TransactionCorrection
+                key={`${detail.transaction._id}:${detail.transaction.updatedAt}`}
+                tx={detail.transaction}
+                onChanged={(message, close) => {
+                  setActionStatus(message)
+                  if (close) setDetailId(null)
+                  else void transactionService.get(detail.transaction._id).then(setDetail).catch(() => setActionError('Could not refresh the transaction details.'))
+                  void load()
+                }}
+              />}
               <div className="led-drawer-actions">
                 <button onClick={() => { if (detailId) { setSelectedIds((prev) => new Set(prev).add(detailId)); setDetailId(null) } }} className="led-btn led-btn-sm">Add to compare</button>
                 {ownsTransaction(detail.transaction) && detail.transaction.status === 'PENDING_REVIEW' && (
@@ -1138,7 +1382,7 @@ function TeachVendorBox({ tx, categories, onDone }: { tx: LedgerTransaction; cat
         <label className="led-field">What did you buy for {money(tx.amountPaise)}? (product — free form, optional)
           <input value={productName} onChange={e=> setProductName(e.target.value)} placeholder="e.g. paneer, milk, stationery" className="led-input" />
         </label>
-        <span className="led-tiny">Next time you pay {money(tx.amountPaise)} to this vendor we’ll suggest “{productName||'paneer'}” — just confirm.</span>
+        {productName.trim() && <span className="led-tiny">Save “{productName.trim()}” to suggest it for future {money(tx.amountPaise)} payments to this vendor.</span>}
         <div>
           <button onClick={teach} disabled={busy} className="led-btn led-btn-sm">{busy?'Saving…':'Save vendor'}</button>
         </div>

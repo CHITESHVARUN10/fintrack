@@ -1,3 +1,5 @@
+const { ledgerDateRange } = require('../utils/ledgerDates');
+const { indiaCalendarDate } = require('../utils/scope');
 const Transaction = require('../models/transaction.model');
 const { buildTransactionVisibilityFilter } = require('../utils/scope');
 const { vendorDisplayName } = require('../utils/vendorDisplayName');
@@ -5,7 +7,7 @@ const { activeOffsets } = require('./transactionOffsets');
 const { computeLedgerSummary } = require('./transactionEngine.service');
 
 async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, modes, types, requesterId, includePrivate = false }) {
-  const filter = { familyId, status: { $ne: 'VOIDED' } };
+  const filter = { familyId, status: { $in: ['ACTIVE', 'RECONCILED'] } };
   // Only the requester's own rows plus months other members explicitly shared
   // are visible; PRIVATE rows stay hidden even inside a shared month.
   filter.$and = [await buildTransactionVisibilityFilter(null, {
@@ -13,11 +15,9 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
     userId: requesterId,
     includePrivate,
   })];
-  if (from || to) {
-    filter.occurredAt = {};
-    if (from) filter.occurredAt.$gte = new Date(from);
-    if (to) { const t = new Date(to); if (/^\d{4}-\d{2}-\d{2}$/.test(String(to))) t.setHours(23,59,59,999); filter.occurredAt.$lte = t; }
-  }
+  const range = ledgerDateRange(from, to);
+  if (range?.error) throw Object.assign(new Error(range.error), { status: 400 });
+  if (range) filter.occurredAt = range;
   if (memberIds && memberIds.length) filter.createdBy = { $in: memberIds };
   if (categories && categories.length) filter.category = { $in: categories };
   if (modes && modes.length) filter.mode = { $in: modes };
@@ -35,7 +35,7 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   const byDay = new Map();
   for (const t of items) {
     if (t.type !== 'EXPENSE' && t.type !== 'CASH_EXPENSE') continue;
-    const k = new Date(t.occurredAt).toISOString().slice(0,10);
+    const k = indiaCalendarDate(t.occurredAt).toISOString().slice(0,10);
     byDay.set(k, (byDay.get(k)||0) + (t.amountPaise||0));
   }
   const timeSeries = Array.from(byDay.entries()).sort((a,b)=> a[0].localeCompare(b[0])).map(([date, spendPaise])=> ({ date, spendPaise, spend: spendPaise/100 }));
@@ -128,7 +128,7 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
   // monthly area (income vs expense) for AreaChart
   const monthlyMap = new Map();
   for (const t of items) {
-    const k = new Date(t.occurredAt).toISOString().slice(0, 7);
+    const k = indiaCalendarDate(t.occurredAt).toISOString().slice(0, 7);
     const cur = monthlyMap.get(k) || { month: k, expensePaise: 0, incomePaise: 0 };
     if (t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE') cur.expensePaise += t.amountPaise || 0;
     else if (t.type === 'INCOME') cur.incomePaise += t.amountPaise || 0;
@@ -168,6 +168,7 @@ async function getFamilyAnalytics({ familyId, from, to, memberIds, categories, m
     avgDailyPaise,
     avgDaily: avgDailyPaise / 100,
     totalCount: entries.length,
+    expenseCount: items.filter(t => t.type === 'EXPENSE' || t.type === 'CASH_EXPENSE').length,
     byMemberShare,
     byCategoryShare,
     byVendorShare,
