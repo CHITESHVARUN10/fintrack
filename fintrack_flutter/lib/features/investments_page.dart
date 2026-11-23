@@ -247,36 +247,36 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
   Widget _summaryTile(
     String label,
     String value, {
-    Color color = Colors.white,
-    Color valueColor = FinStackColors.onSurface,
+    Color? color,
+    Color? valueColor,
     String? detail,
-  }) => BrutalCard(
-    color: color,
-    border: 2,
-    shadow: 3,
-    padding: const EdgeInsets.all(7),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisAlignment: MainAxisAlignment.center,
-      spacing: 4,
-      children: [
-        Text(label.toUpperCase(), style: FinStackType.caption),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            style: FinStackType.amount.copyWith(
-              fontSize: 15,
-              color: valueColor,
+  }) {
+    final ink = valueColor ?? FinStackColors.onSurface;
+    return BrutalCard(
+      color: color ?? FinStackColors.surface,
+      border: 2,
+      shadow: 3,
+      padding: const EdgeInsets.all(7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
+        spacing: 4,
+        children: [
+          Text(label.toUpperCase(), style: FinStackType.caption),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: FinStackType.amount.copyWith(fontSize: 15, color: ink),
             ),
           ),
-        ),
-        if (detail != null)
-          Text(detail, style: FinStackType.caption.copyWith(color: valueColor)),
-      ],
-    ),
-  );
+          if (detail != null)
+            Text(detail, style: FinStackType.caption.copyWith(color: ink)),
+        ],
+      ),
+    );
+  }
 
   Widget _investmentCard(Map item) {
     final kind = '${item['investmentType'] ?? 'other'}';
@@ -447,7 +447,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
             children: [
               BrutalButton(
                 label: 'Details',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 10,
@@ -457,7 +457,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
               if (isFd || kind == 'stock')
                 BrutalButton(
                   label: 'Transactions',
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 10,
@@ -479,7 +479,7 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
   Widget _positionValue(
     String label,
     num? value, {
-    Color color = FinStackColors.onSurface,
+    Color? color,
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -489,7 +489,10 @@ class _InvestmentsPageState extends State<InvestmentsPage> {
         alignment: Alignment.centerLeft,
         child: Text(
           value == null ? '—' : inr(value),
-          style: FinStackType.amount.copyWith(fontSize: 14, color: color),
+          style: FinStackType.amount.copyWith(
+            fontSize: 14,
+            color: color ?? FinStackColors.onSurface,
+          ),
         ),
       ),
     ],

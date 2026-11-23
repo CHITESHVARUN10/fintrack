@@ -20,4 +20,16 @@ function incomeForMonth({ incomes = [], receipts = [], monthStart, monthEnd }) {
   return { received: round2(received), planned: round2(planned) };
 }
 
-module.exports = { activeInMonth, incomeForMonth, round2 };
+// Bank reversals arrive as credits but are not new income. Keep them out of
+// the income plan while still showing them in the receipt timeline.
+function isRefundReceipt(tx) {
+  const narration = tx?.recipient?.name || tx?.sender?.name || '';
+  const reversal = /(?:^|[\s/:-])(?:refund|purchase reversal)(?:[\s/:-]|$)/i.test(narration);
+  return Boolean(
+    tx?.metadata?.origin !== 'MANUAL' &&
+    tx?.batchId &&
+    reversal,
+  );
+}
+
+module.exports = { activeInMonth, incomeForMonth, isRefundReceipt, round2 };

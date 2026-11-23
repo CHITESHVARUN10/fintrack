@@ -57,6 +57,70 @@ void main() {
     expect(find.text('₹60.25'), findsOneWidget);
   });
 
+  testWidgets('the income KPI opens the receipts behind the total', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    FlutterSecureStorage.setMockInitialValues({});
+    final interceptor = InterceptorsWrapper(
+      onRequest: (request, handler) {
+        handler.resolve(
+          Response(
+            requestOptions: request,
+            data: {
+              'receivedIncomeThisMonth': 30000,
+              'plannedIncomeThisMonth': 28800,
+              'refundsThisMonth': 1200,
+              'spentThisMonth': 0,
+              'incomeReceiptCount': 2,
+              'incomeReceipts': <Map<String, dynamic>>[
+                {
+                  'id': 'tx-1',
+                  'name': 'Freelance Client',
+                  'amountPaise': 2880000,
+                  'occurredAt': '2026-11-20T10:00:00Z',
+                  'category': 'Freelance',
+                  'mode': 'UPI',
+                  'isRefund': false,
+                  'linkedSource': null,
+                },
+                {
+                  'id': 'tx-2',
+                  'name': 'Refund · Corner Store',
+                  'amountPaise': 120000,
+                  'occurredAt': '2026-11-18T10:00:00Z',
+                  'category': 'Refund',
+                  'mode': 'UPI',
+                  'isRefund': true,
+                  'linkedSource': null,
+                },
+              ],
+              'monthlyBurnBreakdown': <String, dynamic>{},
+            },
+          ),
+        );
+      },
+    );
+    ApiClient.dio.interceptors.add(interceptor);
+    addTearDown(() => ApiClient.dio.interceptors.remove(interceptor));
+
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: DashboardPage())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('INCOME RECEIVED THIS MONTH'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('INCOME RECEIVED'), findsOneWidget);
+    expect(find.text('Planned sources'), findsOneWidget);
+    expect(find.text('Refunds included'), findsOneWidget);
+    expect(find.text('Freelance Client'), findsOneWidget);
+    expect(find.text('Refund · Corner Store'), findsOneWidget);
+    expect(find.text('REFUND'), findsOneWidget);
+    expect(find.text('₹30,000'), findsWidgets);
+  });
+
   testWidgets('both spending rings update their centers from the legend', (
     tester,
   ) async {

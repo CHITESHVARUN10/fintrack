@@ -248,7 +248,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                     ),
                     if (showServer) ...[
                       const SizedBox(height: 14),
-                      const BrutalCard(
+                      BrutalCard(
                         color: FinStackColors.surfaceLow,
                         padding: EdgeInsets.all(9),
                         shadow: 0,

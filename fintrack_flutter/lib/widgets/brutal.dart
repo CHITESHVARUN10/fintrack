@@ -10,19 +10,19 @@ void dismissKeyboard(BuildContext context) {
 
 class BrutalCard extends StatelessWidget {
   final Widget child;
-  final Color color;
+  final Color? color;
   final EdgeInsets padding;
   final double shadow;
   final double border;
-  final Color shadowColor;
+  final Color? shadowColor;
   const BrutalCard({
     super.key,
     required this.child,
-    this.color = Colors.white,
+    this.color,
     this.padding = const EdgeInsets.all(14),
     this.shadow = 5,
     this.border = 2.5,
-    this.shadowColor = FinStackColors.onSurface,
+    this.shadowColor,
   });
   @override
   Widget build(BuildContext context) => Container(
@@ -59,6 +59,7 @@ class FinStackMark extends StatelessWidget {
           fontSize: size * .56,
           fontWeight: FontWeight.w700,
           height: 1,
+          color: lightPalette.onSurface,
         ),
       ),
     ),
@@ -124,7 +125,7 @@ class _BrutalButtonState extends State<BrutalButton> {
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
     final bg = widget.color ?? FinStackColors.brandYellow;
-    final fg = widget.textColor ?? FinStackColors.onSurface;
+    final fg = widget.textColor ?? FinStackColors.inkOn(bg);
     final shift = _down && enabled ? 2.0 : 0.0;
     return Semantics(
       button: true,
@@ -161,7 +162,7 @@ class _BrutalButtonState extends State<BrutalButton> {
               boxShadow: enabled && !_down
                   ? [
                       BoxShadow(
-                        color: FinStackColors.onSurface,
+                        color: FinStackColors.shadow,
                         offset: Offset(widget.shadow, widget.shadow),
                         blurRadius: 0,
                       ),
@@ -221,6 +222,7 @@ class BrutalIconButton extends StatelessWidget {
     final background = onPressed == null
         ? FinStackColors.surfaceContainer
         : color;
+    final ink = FinStackColors.inkOn(background);
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
@@ -234,7 +236,7 @@ class BrutalIconButton extends StatelessWidget {
         height: size,
         decoration: brutal(color: background, border: 2, shadow: 2),
         alignment: Alignment.center,
-        child: Icon(icon, size: size * .5),
+        child: Icon(icon, size: size * .5, color: ink),
       ),
     );
   }
@@ -298,7 +300,7 @@ class BrutalField extends StatelessWidget {
         autofillHints: autofillHints,
         enableSuggestions: enableSuggestions,
         autocorrect: autocorrect,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
           color: FinStackColors.onSurface,
@@ -316,48 +318,52 @@ class BrutalField extends StatelessWidget {
 
 class BrutalTag extends StatelessWidget {
   final String label;
-  final Color color;
-  final Color textColor;
+  final Color? color;
+  final Color? textColor;
   final IconData? icon;
   const BrutalTag({
     super.key,
     required this.label,
-    this.color = FinStackColors.brandYellow,
-    this.textColor = FinStackColors.onSurface,
+    this.color,
+    this.textColor,
     this.icon,
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-    decoration: BoxDecoration(
-      color: color,
-      border: Border.all(color: FinStackColors.onSurface, width: 1.5),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null) ...[
-          Icon(icon, size: 11, color: textColor),
-          const SizedBox(width: 4),
-        ],
-        Flexible(
-          child: Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: FinStackType.mono,
-              fontSize: 9.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.45,
-              color: textColor,
+  Widget build(BuildContext context) {
+    final background = color ?? FinStackColors.surface;
+    final foreground = textColor ?? FinStackColors.inkOn(background);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        border: Border.all(color: FinStackColors.onSurface, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: foreground),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: FinStackType.mono,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.45,
+                color: foreground,
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class BrutalSectionTitle extends StatelessWidget {
@@ -405,7 +411,7 @@ class BrutalSectionTitle extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           subtitle!,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: FinStackColors.onSurfaceVariant,
@@ -481,8 +487,8 @@ class BrutalBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: FinStackColors.surface,
         border: Border(
           top: BorderSide(color: FinStackColors.onSurface, width: 3),
         ),
@@ -529,14 +535,14 @@ class BrutalBottomNav extends StatelessWidget {
                   width: 40,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: FinStackColors.brandYellow,
+                    color: FinStackColors.accentSurface,
                     border: Border.all(
                       color: FinStackColors.onSurface,
                       width: 2,
                     ),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: FinStackColors.onSurface,
+                        color: FinStackColors.shadow,
                         offset: Offset(3, 3),
                         blurRadius: 0,
                       ),
@@ -550,7 +556,7 @@ class BrutalBottomNav extends StatelessWidget {
                   height: 28,
                   decoration: active
                       ? brutal(
-                          color: FinStackColors.brandYellow,
+                          color: FinStackColors.accentSurface,
                           border: 2,
                           shadow: 2,
                         )

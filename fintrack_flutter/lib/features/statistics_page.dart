@@ -379,7 +379,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: FinStackType.mono,
                           fontFamilyFallback: _monoFallback,
                           fontSize: 11,
@@ -451,8 +451,8 @@ class _StatisticsPageState extends State<StatisticsPage> {
         letterSpacing: .4,
       ),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      side: const BorderSide(color: FinStackColors.onSurface, width: 2),
-      backgroundColor: Colors.white,
+      side: BorderSide(color: FinStackColors.onSurface, width: 2),
+      backgroundColor: FinStackColors.surface,
     ),
     child: Text(label.toUpperCase()),
   );
@@ -512,11 +512,13 @@ class _DurationPill extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
           decoration: BoxDecoration(
-            color: selected ? FinStackColors.brandYellow : Colors.white,
+            color: selected
+                ? FinStackColors.accentSurface
+                : FinStackColors.surface,
             border: Border.all(color: FinStackColors.onSurface, width: 2.5),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: FinStackColors.onSurface,
+                color: FinStackColors.shadow,
                 offset: Offset(2, 2),
                 blurRadius: 0,
               ),
@@ -526,7 +528,7 @@ class _DurationPill extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: FinStackType.display,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -682,9 +684,9 @@ class _ClearFilters extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: FinStackColors.surfaceContainer,
                   border: Border.all(color: FinStackColors.onSurface, width: 2),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: FinStackColors.onSurface,
+                      color: FinStackColors.shadow,
                       offset: Offset(2, 2),
                       blurRadius: 0,
                     ),
@@ -727,11 +729,13 @@ class _SegButton extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
           decoration: BoxDecoration(
-            color: selected ? FinStackColors.brandYellow : Colors.white,
+            color: selected
+                ? FinStackColors.accentSurface
+                : FinStackColors.surface,
             border: Border.all(color: FinStackColors.onSurface, width: 2.5),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: FinStackColors.onSurface,
+                color: FinStackColors.shadow,
                 offset: Offset(3, 3),
                 blurRadius: 0,
               ),
@@ -809,7 +813,7 @@ class _SpendingFilterSheetState extends State<_SpendingFilterSheet> {
                         BrutalIconButton(
                           icon: Icons.close,
                           tooltip: 'Close',
-                          color: Colors.white,
+                          color: FinStackColors.surface,
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                       ],
@@ -975,7 +979,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: FinStackColors.surfaceContainer,
                 border: Border(
                   bottom: BorderSide(
@@ -992,7 +996,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
                       BrutalIconButton(
                         icon: Icons.close,
                         tooltip: 'Close date picker',
-                        color: Colors.white,
+                        color: FinStackColors.surface,
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                       const Spacer(),
@@ -1004,7 +1008,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     'Choose spending dates',
                     style: TextStyle(
                       fontSize: 11.5,
@@ -1026,7 +1030,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: FinStackColors.surfaceLow,
                 border: Border(
                   bottom: BorderSide(color: FinStackColors.onSurface, width: 2),
@@ -1115,11 +1119,11 @@ class _ApplyDatesButton extends StatelessWidget {
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: FinStackColors.brandYellow,
+            color: FinStackColors.accentSurface,
             border: Border.all(color: FinStackColors.onSurface, width: 2),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: FinStackColors.onSurface,
+                color: FinStackColors.shadow,
                 offset: Offset(2, 2),
                 blurRadius: 0,
               ),
@@ -1300,7 +1304,7 @@ class SpendingChanges extends StatelessWidget {
   });
 
   static const _previousColor = Color(0xFF7B7465);
-  static const _amountStyle = TextStyle(
+  static TextStyle get _amountStyle => TextStyle(
     fontFamily: FinStackType.mono,
     fontFamilyFallback: _monoFallback,
     fontSize: 12,
@@ -1386,7 +1390,7 @@ class SpendingChanges extends StatelessWidget {
                       decoration: BoxDecoration(
                         border: index == visible.length - 1
                             ? null
-                            : const Border(
+                            : Border(
                                 bottom: BorderSide(
                                   color: FinStackColors.chartGrid,
                                 ),
@@ -1406,7 +1410,7 @@ class SpendingChanges extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             spendingDelta(change.current, change.previous),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: FinStackType.mono,
                               fontFamilyFallback: _monoFallback,
                               fontSize: 11,
@@ -1447,7 +1451,7 @@ class SpendingChanges extends StatelessWidget {
             const SizedBox(height: 12),
             BrutalButton(
               block: true,
-              color: Colors.white,
+              color: FinStackColors.surface,
               label: showAll ? 'Show top 5' : 'Show all ${changes.length}',
               onPressed: onToggle,
             ),

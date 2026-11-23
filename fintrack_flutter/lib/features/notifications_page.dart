@@ -162,7 +162,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final rawDate = item['scheduledAt'] ?? item['createdAt'];
     final date = DateTime.tryParse('$rawDate')?.toLocal();
     return BrutalCard(
-      color: unread ? Colors.white : FinStackColors.surfaceContainer,
+      color: unread ? FinStackColors.surface : FinStackColors.surfaceContainer,
       child: Row(
         spacing: 7,
         crossAxisAlignment: CrossAxisAlignment.start,

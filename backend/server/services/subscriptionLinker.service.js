@@ -202,7 +202,7 @@ async function applySuggestion({ kind, id, acceptAmount, acceptDate, matchedTxId
     // Link matched transactions to this subscription
     if (Array.isArray(matchedTxIds) && matchedTxIds.length > 0) {
       await Transaction.updateMany(
-        { _id: { $in: matchedTxIds }, familyId, createdBy },
+        { _id: { $in: matchedTxIds }, familyId, createdBy, financeLink: null, subscriptionRef: null },
         { $set: { subscriptionRef: sub._id, category: sub.category || 'Entertainment' } }
       ).catch(() => {});
     }

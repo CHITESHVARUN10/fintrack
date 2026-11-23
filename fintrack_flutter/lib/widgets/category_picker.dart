@@ -99,7 +99,7 @@ class CategoryChoice extends StatelessWidget {
   Future<void> _choose(BuildContext context) async {
     final selection = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: FinStackColors.surface,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) =>
@@ -127,7 +127,7 @@ class CategoryChoice extends StatelessWidget {
       OutlinedButton(
         onPressed: enabled ? () => _choose(context) : null,
         style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
+          backgroundColor: FinStackColors.surface,
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         ),

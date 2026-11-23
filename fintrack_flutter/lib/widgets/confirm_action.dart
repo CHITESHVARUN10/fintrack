@@ -31,7 +31,9 @@ Future<bool> confirmAction(
                 onPressed: () => close(true),
                 style: FilledButton.styleFrom(
                   backgroundColor: FinStackColors.onErrorContainer,
-                  foregroundColor: Colors.white,
+                  foregroundColor: FinStackColors.inkOn(
+                    FinStackColors.onErrorContainer,
+                  ),
                 ),
                 child: Text(action),
               ),

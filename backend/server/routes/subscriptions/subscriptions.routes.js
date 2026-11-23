@@ -198,10 +198,26 @@ router.post('/:id/link-transaction', async (req, res, next) => {
     const tx = await Transaction.findById(transactionId);
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
+    if (tx.subscriptionRef) {
+      if (String(tx.subscriptionRef) === String(item._id)) {
+        return res.json({ success: true, transaction: tx, subscription: item });
+      }
+      return res.status(409).json({ error: 'This payment is already linked to another subscription. Unlink it there first.' });
+    }
 
     const linked = await Transaction.findOneAndUpdate(
-      { _id: tx._id, financeLink: null },
-      { $set: { subscriptionRef: item._id, ...(!tx.category || tx.category === 'Other' ? { category: item.category || 'Entertainment' } : {}) } },
+      { _id: tx._id, financeLink: null, subscriptionRef: null },
+      {
+        $set: {
+          subscriptionRef: item._id,
+          ...(!tx.category || tx.category === 'Other'
+            ? {
+                category: item.category || 'Entertainment',
+                'metadata.subscriptionPreviousCategory': tx.category ?? null,
+              }
+            : {}),
+        },
+      },
       { returnDocument: 'after' },
     );
     if (!linked) return res.status(409).json({ error: 'This transaction is linked to an investment or income source' });
@@ -222,7 +238,31 @@ router.post('/:id/unlink-transaction', async (req, res, next) => {
     if (!transactionId) return res.status(400).json({ error: 'transactionId is required' });
 
     const Transaction = require('../../models/transaction.model');
-    await Transaction.updateOne({ _id: transactionId, subscriptionRef: item._id, familyId: req.user.familyAccountId, createdBy: req.user._id }, { $set: { subscriptionRef: null } });
+    const tx = await Transaction.findOne({
+      _id: transactionId,
+      subscriptionRef: item._id,
+      familyId: req.user.familyAccountId,
+      createdBy: req.user._id,
+    });
+    if (!tx) return res.status(404).json({ error: 'Linked payment not found' });
+
+    const set = { subscriptionRef: null };
+    const unset = {};
+    if (tx.metadata?.subscriptionPreviousCategory !== undefined) {
+      // Restore only when the payment still has the category the link applied,
+      // so a later manual recategorisation is not overwritten.
+      if (tx.category === item.category) {
+        if (tx.metadata.subscriptionPreviousCategory) {
+          set.category = tx.metadata.subscriptionPreviousCategory;
+        } else {
+          unset.category = '';
+        }
+      }
+      unset['metadata.subscriptionPreviousCategory'] = '';
+    }
+    const update = { $set: set };
+    if (Object.keys(unset).length) update.$unset = unset;
+    await Transaction.updateOne({ _id: tx._id }, update);
 
     res.json({ success: true });
   } catch (err) {
@@ -244,8 +284,14 @@ router.post('/:id/record-payment', async (req, res, next) => {
       const tx = await Transaction.findById(transactionId);
       if (!tx) return res.status(404).json({ error: 'Transaction not found' });
       if (!canModifyTransaction(req, tx)) return res.status(403).json({ error: 'Only the transaction creator can modify it' });
+      if (tx.subscriptionRef) {
+        if (String(tx.subscriptionRef) === String(item._id)) {
+          return res.json({ success: true, transaction: tx });
+        }
+        return res.status(409).json({ error: 'This payment is already linked to another subscription. Unlink it there first.' });
+      }
       const linked = await Transaction.findOneAndUpdate(
-        { _id: tx._id, financeLink: null },
+        { _id: tx._id, financeLink: null, subscriptionRef: null },
         { $set: { subscriptionRef: item._id } },
         { returnDocument: 'after' },
       );

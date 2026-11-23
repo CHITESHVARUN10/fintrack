@@ -615,7 +615,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
                     BrutalButton(
                       label: 'Transactions',
                       icon: Icons.receipt_long_outlined,
-                      color: Colors.white,
+                      color: FinStackColors.surface,
                       block: true,
                       onPressed: () => showFinanceTransactions(
                         context,
@@ -709,7 +709,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
     };
     final basis = _valuationBasis(detail);
     return BrutalCard(
-      color: FinStackColors.onSurface,
+      color: FinStackColors.inverseSurface,
       shadowColor: FinStackColors.brandYellow,
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       child: Column(
@@ -826,7 +826,11 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
           ),
           Container(
             padding: const EdgeInsets.all(2),
-            decoration: brutal(color: Colors.white, border: 1.5, shadow: 0),
+            decoration: brutal(
+              color: FinStackColors.surface,
+              border: 1.5,
+              shadow: 0,
+            ),
             child: LinearProgressIndicator(
               value: ratio,
               minHeight: 9,
@@ -884,7 +888,7 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
           const SizedBox(height: 8),
           Text(
             _valuationError!,
-            style: const TextStyle(
+            style: TextStyle(
               color: FinStackColors.onErrorContainer,
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -938,7 +942,11 @@ class _InvestmentDetailPageState extends State<InvestmentDetailPage> {
         Container(
           width: 38,
           height: 38,
-          decoration: brutal(color: Colors.white, border: 2, shadow: 0),
+          decoration: brutal(
+            color: FinStackColors.surface,
+            border: 2,
+            shadow: 0,
+          ),
           child: const Icon(Icons.savings_outlined, size: 19),
         ),
         Expanded(
@@ -1212,7 +1220,7 @@ class _RecordSaleSheetState extends State<_RecordSaleSheet> {
             if (_error != null) ...[
               Text(
                 _error!,
-                style: const TextStyle(
+                style: TextStyle(
                   color: FinStackColors.onErrorContainer,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

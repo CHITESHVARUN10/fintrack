@@ -59,6 +59,9 @@ void main() {
     await tester.ensureVisible(link);
     await tester.tap(link);
     await tester.pumpAndSettle();
+    expect(find.text('Link this payment?'), findsOneWidget);
+    await tester.tap(find.text('Link'));
+    await tester.pumpAndSettle();
 
     expect(linked, isTrue);
     expect(find.text('No linked payments yet.'), findsNothing);
@@ -138,5 +141,69 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('₹500'), findsOneWidget);
     expect(find.text('₹1,100'), findsWidgets);
+  });
+
+  testWidgets('a linked payment can be unlinked after a confirmation', (
+    tester,
+  ) async {
+    const subscription = {
+      '_id': 'sub-1',
+      'name': 'Coding Agents',
+      'amount': 1100,
+      'frequency': 'monthly',
+      'billingDate': 5,
+      'status': 'Active',
+    };
+    const transaction = {
+      '_id': 'tx-1',
+      'productName': 'Coding plan',
+      'occurredAt': '2026-11-21',
+      'amountPaise': 110000,
+    };
+    var linked = true;
+    final interceptor = InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final data = switch (request.path) {
+          '/subscriptions' => [subscription],
+          '/subscriptions/suggestions' => {'suggestions': []},
+          '/subscriptions/sub-1' => subscription,
+          '/subscriptions/sub-1/transactions' => {
+            'linked': linked ? [transaction] : [],
+            'suggestions': [],
+            'totalPaidPaise': linked ? 110000 : 0,
+          },
+          '/subscriptions/sub-1/unlink-transaction' => () {
+            expect(request.method, 'POST');
+            expect(request.data, {'transactionId': 'tx-1'});
+            linked = false;
+            return const {'success': true};
+          }(),
+          _ => throw StateError('Unexpected request ${request.path}'),
+        };
+        handler.resolve(Response(requestOptions: request, data: data));
+      },
+    );
+    ApiClient.dio.interceptors.add(interceptor);
+    addTearDown(() => ApiClient.dio.interceptors.remove(interceptor));
+
+    await tester.pumpWidget(
+      MaterialApp(theme: finStackTheme(), home: const SubscriptionsPage()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('HISTORY & DETAIL'));
+    await tester.pumpAndSettle();
+    expect(find.text('Coding plan'), findsOneWidget);
+
+    final unlink = find.text('UNLINK');
+    await tester.ensureVisible(unlink);
+    await tester.tap(unlink);
+    await tester.pumpAndSettle();
+    expect(find.text('Unlink this payment?'), findsOneWidget);
+
+    await tester.tap(find.text('Unlink'));
+    await tester.pumpAndSettle();
+
+    expect(linked, isFalse);
+    expect(find.text('No linked payments yet.'), findsOneWidget);
   });
 }

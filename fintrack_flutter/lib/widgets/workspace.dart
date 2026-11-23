@@ -25,7 +25,7 @@ class WorkspaceScaffold extends StatelessWidget {
               child: BrutalIconButton(
                 icon: Icons.arrow_back,
                 tooltip: 'Back',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 size: 34,
                 onPressed: () => Navigator.maybePop(context),
               ),
@@ -72,7 +72,7 @@ class WorkspaceTotal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => BrutalCard(
-    color: FinStackColors.onSurface,
+    color: FinStackColors.inverseSurface,
     shadowColor: FinStackColors.brandYellow,
     padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
     child: Row(
@@ -80,7 +80,9 @@ class WorkspaceTotal extends StatelessWidget {
         Expanded(
           child: Text(
             label.toUpperCase(),
-            style: FinStackType.caption.copyWith(color: Colors.white),
+            style: FinStackType.caption.copyWith(
+              color: FinStackColors.onInverse,
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -117,7 +119,7 @@ class WorkspaceItemActions extends StatelessWidget {
       BrutalIconButton(
         icon: Icons.edit_outlined,
         tooltip: 'Edit',
-        color: Colors.white,
+        color: FinStackColors.surface,
         size: 34,
         onPressed: onEdit,
       ),
@@ -167,7 +169,7 @@ class WorkspaceScheduledCard extends StatelessWidget {
                 children: [
                   Text(title, style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 5),
-                  BrutalTag(label: category, color: Colors.white),
+                  BrutalTag(label: category, color: FinStackColors.surface),
                 ],
               ),
             ),
@@ -202,7 +204,7 @@ class WorkspaceSheetTitle extends StatelessWidget {
         icon: Icons.close,
         tooltip: 'Close',
         size: 32,
-        color: Colors.white,
+        color: FinStackColors.surface,
         onPressed: () => Navigator.maybePop(context),
       ),
     ],

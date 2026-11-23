@@ -132,7 +132,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Widget _familySection() {
     if (familyLoading) {
-      return const BrutalCard(
+      return BrutalCard(
         child: Row(
           children: [
             SizedBox(
@@ -160,7 +160,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           children: [
             Text(
               familyError!,
-              style: const TextStyle(
+              style: TextStyle(
                 color: FinStackColors.onErrorContainer,
                 fontWeight: FontWeight.w700,
               ),
@@ -200,7 +200,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ),
             if (members.isNotEmpty) ...[
               const SizedBox(height: 10),
-              const Text('MEMBERS', style: FinStackType.caption),
+              Text('MEMBERS', style: FinStackType.caption),
               ...members.map(
                 (m) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
@@ -359,7 +359,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('NOTIFICATIONS', style: FinStackType.caption),
+              Text('NOTIFICATIONS', style: FinStackType.caption),
               SwitchListTile(
                 title: const Text(
                   'Push Notifications',
@@ -395,7 +395,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('SERVER', style: FinStackType.caption),
+              Text('SERVER', style: FinStackType.caption),
               const SizedBox(height: 4),
               TextField(
                 controller: serverCtrl,

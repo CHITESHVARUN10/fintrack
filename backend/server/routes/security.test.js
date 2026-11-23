@@ -402,3 +402,63 @@ test('weekly and yearly budgets use different bounded intervals', async t => {
   assert.equal(intervals[1].$gte.getMonth(), 0);
   assert.equal(intervals[1].$lt.getFullYear(), intervals[1].$gte.getFullYear() + 1);
 });
+test('unlinking a subscription payment restores the category the link replaced', async t => {
+  const Subscription = require('../models/subscription.model');
+  const subscription = { _id: id(), memberId: bob._id, familyAccountId: bob.familyAccountId, category: 'Entertainment' };
+  t.mock.method(Subscription, 'findById', async () => subscription);
+  const tx = { _id: id(), category: 'Entertainment', metadata: { subscriptionPreviousCategory: 'Food' } };
+  t.mock.method(Transaction, 'findOne', async () => tx);
+  const update = t.mock.method(Transaction, 'updateOne', async () => ({}));
+  const router = require('./subscriptions/subscriptions.routes');
+  const res = await call(router, 'post', '/:id/unlink-transaction', {
+    user: bob,
+    params: { id: String(subscription._id) },
+    body: { transactionId: String(tx._id) },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { success: true });
+  const doc = update.mock.calls[0].arguments[1];
+  assert.equal(doc.$set.subscriptionRef, null);
+  assert.equal(doc.$set.category, 'Food');
+  assert.equal(doc.$unset['metadata.subscriptionPreviousCategory'], '');
+});
+test('unlinking does not overwrite a later manual category', async t => {
+  const Subscription = require('../models/subscription.model');
+  const subscription = { _id: id(), memberId: bob._id, familyAccountId: bob.familyAccountId, category: 'Entertainment' };
+  t.mock.method(Subscription, 'findById', async () => subscription);
+  const tx = { _id: id(), category: 'Groceries', metadata: { subscriptionPreviousCategory: 'Food' } };
+  t.mock.method(Transaction, 'findOne', async () => tx);
+  const update = t.mock.method(Transaction, 'updateOne', async () => ({}));
+  const router = require('./subscriptions/subscriptions.routes');
+  await call(router, 'post', '/:id/unlink-transaction', {
+    user: bob,
+    params: { id: String(subscription._id) },
+    body: { transactionId: String(tx._id) },
+  });
+  const doc = update.mock.calls[0].arguments[1];
+  assert.equal(doc.$set.subscriptionRef, null);
+  assert.equal(doc.$set.category, undefined);
+  assert.equal(doc.$unset['metadata.subscriptionPreviousCategory'], '');
+});
+test('a payment already linked to another subscription cannot be relinked', async t => {
+  const Subscription = require('../models/subscription.model');
+  const subscription = { _id: id(), memberId: bob._id, familyAccountId: bob.familyAccountId, category: 'Entertainment' };
+  t.mock.method(Subscription, 'findById', async () => subscription);
+  const tx = {
+    _id: id(),
+    familyId: bob.familyAccountId,
+    createdBy: bob._id,
+    subscriptionRef: id(),
+    category: 'Food',
+  };
+  t.mock.method(Transaction, 'findById', async () => tx);
+  t.mock.method(Transaction, 'findOneAndUpdate', async () => assert.fail('must not relink'));
+  const router = require('./subscriptions/subscriptions.routes');
+  const res = await call(router, 'post', '/:id/link-transaction', {
+    user: bob,
+    params: { id: String(subscription._id) },
+    body: { transactionId: String(tx._id) },
+  });
+  assert.equal(res.statusCode, 409);
+  assert.match(res.body.error, /already linked/);
+});

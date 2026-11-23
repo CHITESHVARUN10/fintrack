@@ -212,7 +212,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                       label: value,
                       color: freq == value
                           ? FinStackColors.brandYellow
-                          : Colors.white,
+                          : FinStackColors.surface,
                       block: true,
                       onPressed: () {
                         if (freq == value || loading) return;
@@ -243,7 +243,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               ),
             if (suggestions.isNotEmpty) ...[
               BrutalCard(
-                color: FinStackColors.brandYellow,
+                color: FinStackColors.accentSurface,
                 child: Column(
                   spacing: 10,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -334,7 +334,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               Expanded(
                 child: BrutalButton(
                   label: 'Dismiss',
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   onPressed: () => dismissSuggestion(suggestion),
                 ),
               ),
@@ -392,7 +392,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                   ),
                   BrutalTag(
                     label: '${item['category'] ?? 'Other'}',
-                    color: Colors.white,
+                    color: FinStackColors.surface,
                   ),
                 ],
               ),
@@ -560,14 +560,25 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
   }
 
   String? _linkingId;
+  String? _unlinkingId;
 
-  Future<void> _linkPayment(String transactionId) async {
+  Future<void> _linkPayment(Map item) async {
     if (_linkingId != null) return;
-    setState(() => _linkingId = transactionId);
+    final id = item['_id'] ?? item['id'];
+    if (id == null) return;
+    final proceed = await confirmAction(
+      context,
+      title: 'Link this payment?',
+      message:
+          '“${_txTitle(item)}” will count toward ${detail?['name'] ?? 'this subscription'}. You can unlink it later.',
+      action: 'Link',
+    );
+    if (!proceed || !mounted) return;
+    setState(() => _linkingId = '$id');
     try {
       await ApiClient.dio.post(
         '/subscriptions/${widget.id}/link-transaction',
-        data: {'transactionId': transactionId},
+        data: {'transactionId': '$id'},
       );
       if (mounted) await load();
     } catch (_) {
@@ -583,7 +594,43 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
     }
   }
 
-  Widget _txTile(Map item, {bool canLink = false}) {
+  Future<void> _unlinkPayment(Map item) async {
+    if (_unlinkingId != null) return;
+    final id = item['_id'] ?? item['id'];
+    if (id == null) return;
+    final proceed = await confirmAction(
+      context,
+      title: 'Unlink this payment?',
+      message:
+          '“${_txTitle(item)}” stays in Activity, but it will no longer count toward this subscription.',
+      action: 'Unlink',
+    );
+    if (!proceed || !mounted) return;
+    setState(() => _unlinkingId = '$id');
+    try {
+      await ApiClient.dio.post(
+        '/subscriptions/${widget.id}/unlink-transaction',
+        data: {'transactionId': '$id'},
+      );
+      if (mounted) await load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not unlink this payment. Try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _unlinkingId = null);
+    }
+  }
+
+  Widget _txTile(
+    Map item, {
+    bool canLink = false,
+    bool canUnlink = false,
+  }) {
     final rawDate = '${item['occurredAt'] ?? item['date'] ?? ''}';
     final date = DateTime.tryParse(rawDate)?.toLocal();
     final id = item['_id'] ?? item['id'];
@@ -621,7 +668,20 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                   vertical: 10,
                 ),
                 onPressed: _linkingId == null
-                    ? () => _linkPayment('$id')
+                    ? () => _linkPayment(item)
+                    : null,
+              )
+            else if (canUnlink && id != null)
+              BrutalButton(
+                label: _unlinkingId == '$id' ? 'Unlinking…' : 'Unlink',
+                color: FinStackColors.surface,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 10,
+                ),
+                fontSize: 10,
+                onPressed: _unlinkingId == null
+                    ? () => _unlinkPayment(item)
                     : null,
               ),
           ],
@@ -681,7 +741,7 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                       ),
                       BrutalButton(
                         label: 'Change price',
-                        color: Colors.white,
+                        color: FinStackColors.surface,
                         onPressed: openPriceChange,
                       ),
                     ],
@@ -690,12 +750,16 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                 const SizedBox(height: 12),
                 WorkspaceTotal(label: 'Total paid', value: inr(totalPaid)),
                 const SizedBox(height: 15),
-                const BrutalSectionTitle(title: 'Linked payments'),
+                const BrutalSectionTitle(
+                  title: 'Linked payments',
+                  subtitle: 'Unlink anything linked by mistake.',
+                ),
                 const SizedBox(height: 8),
                 if (linked.isEmpty)
                   const BrutalCard(child: Text('No linked payments yet.'))
                 else
-                  for (final item in linked.whereType<Map>()) _txTile(item),
+                  for (final item in linked.whereType<Map>())
+                    _txTile(item, canUnlink: true),
                 const SizedBox(height: 12),
                 const BrutalSectionTitle(
                   title: 'Matching candidates',
@@ -703,7 +767,7 @@ class _SubscriptionDetailPageState extends State<_SubscriptionDetailPage> {
                 ),
                 const SizedBox(height: 8),
                 if (candidates.isEmpty)
-                  const BrutalCard(
+                  BrutalCard(
                     color: FinStackColors.surfaceContainer,
                     child: Text('No unlinked matching payments.'),
                   )

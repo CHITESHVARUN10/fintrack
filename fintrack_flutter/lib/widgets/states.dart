@@ -30,7 +30,7 @@ class BrutalLoading extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          const SizedBox(
+          SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
@@ -44,7 +44,11 @@ class BrutalLoading extends StatelessWidget {
           Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(16),
-            decoration: brutal(color: Colors.white, border: 3, shadow: 4),
+            decoration: brutal(
+              color: FinStackColors.surface,
+              border: 3,
+              shadow: 4,
+            ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Container(width: 120, height: 10, color: FinStackColors.brandYellow),
               const SizedBox(height: 10),
@@ -73,15 +77,17 @@ class BrutalError extends StatelessWidget {
         BrutalCard(
           color: FinStackColors.errorContainer,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const BrutalTag(
+            BrutalTag(
               label: 'Something broke',
               color: FinStackColors.onErrorContainer,
-              textColor: Colors.white,
+              textColor: FinStackColors.inkOn(
+                FinStackColors.onErrorContainer,
+              ),
             ),
             const SizedBox(height: 10),
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                 color: FinStackColors.onErrorContainer,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,

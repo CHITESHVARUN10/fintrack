@@ -261,8 +261,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     final open = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
+      backgroundColor: FinStackColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.zero,
         side: BorderSide(color: FinStackColors.onSurface, width: 3),
       ),
@@ -295,7 +295,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 'UPI apps reject prefilled payments to personal IDs from '
                 'another app. The UPI ID is copied — open ${app.label}, paste '
                 'it, and pay. Then come back here to record it.',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   height: 1.45,
                   color: FinStackColors.onSurfaceVariant,
@@ -509,8 +509,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     final chosen = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
+      backgroundColor: FinStackColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.zero,
         side: BorderSide(color: FinStackColors.onSurface, width: 3),
       ),
@@ -539,7 +539,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
+              Text(
                 'FinStack remembers this choice, so the next payment goes straight to it.',
                 style: TextStyle(
                   fontSize: 12,
@@ -578,8 +578,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
       isDismissible: false,
       enableDrag: false,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
+      backgroundColor: FinStackColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.zero,
         side: BorderSide(color: FinStackColors.onSurface, width: 3),
       ),
@@ -613,7 +613,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               Text(
                 '${inr((paise ?? widget.request.amountPaise ?? 0) / 100)} to $_payeeName',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: FinStackType.mono,
                   fontFamilyFallback: _monoFallback,
                   fontSize: 13,
@@ -631,7 +631,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 autocorrect: false,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Check your UPI app’s transaction history. Save only if it shows success. If the payment is pending or your account was debited, check its status before paying again.',
                 style: TextStyle(
                   fontSize: 11.5,
@@ -652,7 +652,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               BrutalButton(
                 block: true,
-                color: Colors.white,
+                color: FinStackColors.surface,
                 label: 'Payment failed or pending',
                 onPressed: () => Navigator.of(sheetContext).pop(false),
               ),
@@ -682,8 +682,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
+      backgroundColor: FinStackColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.zero,
         side: BorderSide(color: FinStackColors.onSurface, width: 3),
       ),
@@ -712,7 +712,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Only use this if you paid in another app. It records the transaction in FinStack now.',
                 style: TextStyle(
                   fontSize: 12.5,
@@ -729,7 +729,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               BrutalButton(
                 block: true,
-                color: Colors.white,
+                color: FinStackColors.surface,
                 label: 'Cancel',
                 onPressed: () => Navigator.of(sheetContext).pop(false),
               ),
@@ -856,7 +856,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           child: BrutalIconButton(
             icon: Icons.close,
             tooltip: 'Cancel',
-            color: Colors.white,
+            color: FinStackColors.surface,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -892,7 +892,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
 
   Widget _payeeCard(int? paise) {
     return BrutalCard(
-      color: FinStackColors.brandYellow,
+      color: FinStackColors.accentSurface,
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -903,7 +903,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   border: Border.all(color: FinStackColors.onSurface, width: 2),
                 ),
                 child: const Icon(Icons.qr_code_2, size: 19),
@@ -926,7 +926,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 label: widget.request.hasAmount
                     ? 'Amount in QR'
                     : 'Enter amount',
-                color: Colors.white,
+                color: FinStackColors.surface,
               ),
             ],
           ),
@@ -975,7 +975,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 ),
               ),
               if (_metaLoading)
-                const BrutalTag(
+                BrutalTag(
                   label: 'Loading payee',
                   color: FinStackColors.surfaceContainer,
                 )
@@ -1011,7 +1011,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: FinStackColors.surface,
                     border: Border.all(
                       color: FinStackColors.onSurface,
                       width: 2.5,
@@ -1063,7 +1063,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
             const SizedBox(height: 6),
             Text(
               inr(paise / 100),
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: FinStackType.mono,
                 fontFamilyFallback: _monoFallback,
                 fontSize: 11.5,
@@ -1078,7 +1078,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
               widget.request.hasAmount
                   ? 'The merchant set the amount on this QR.'
                   : 'Enter the same amount in your UPI app when it opens.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 height: 1.4,
                 color: FinStackColors.onSurfaceVariant,
@@ -1172,7 +1172,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
             liveRegion: true,
             child: Text(
               _error!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 height: 1.4,
@@ -1194,8 +1194,8 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
 
   Widget _actionBar(int? paise, String appLabel) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: FinStackColors.surface,
         border: Border(
           top: BorderSide(color: FinStackColors.onSurface, width: 2.5),
         ),
@@ -1212,7 +1212,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'YOU PAY',
                         style: TextStyle(
                           fontFamily: FinStackType.mono,
@@ -1253,9 +1253,9 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                             color: FinStackColors.onSurface,
                             width: 2,
                           ),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: FinStackColors.onSurface,
+                              color: FinStackColors.shadow,
                               offset: Offset(2, 2),
                               blurRadius: 0,
                             ),
@@ -1463,7 +1463,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
+                                  Text(
                                     'Payment recorded',
                                     style: TextStyle(
                                       fontSize: 13,
@@ -1499,7 +1499,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                       const SizedBox(height: 2),
                       Text(
                         widget.request.payeeVpa,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: FinStackType.mono,
                           fontFamilyFallback: _monoFallback,
                           fontSize: 12,
@@ -1547,7 +1547,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
                 const SizedBox(height: 10),
                 BrutalButton(
                   block: true,
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   label: 'Scan another QR',
                   icon: Icons.qr_code_scanner,
                   fontSize: 13,
@@ -1581,7 +1581,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
           ),
         ),
         const SizedBox(height: 3),
-        const Text(
+        Text(
           'Optional. Add details to help FinStack categorize future payments.',
           style: TextStyle(
             fontSize: 12,
@@ -1625,7 +1625,7 @@ class _UpiPayPageState extends State<UpiPayPage> with WidgetsBindingObserver {
             shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.zero,
             ),
-            side: const BorderSide(color: FinStackColors.onSurface, width: 2),
+            side: BorderSide(color: FinStackColors.onSurface, width: 2),
           ),
           onPressed: _detailsChanged && !_savingDetails
               ? _savePurchaseDetails
@@ -1677,11 +1677,13 @@ class _AppRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? FinStackColors.brandYellow : Colors.white,
+            color: selected
+                ? FinStackColors.accentSurface
+                : FinStackColors.surface,
             border: Border.all(color: FinStackColors.onSurface, width: 2.5),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: FinStackColors.onSurface,
+                color: FinStackColors.shadow,
                 offset: Offset(2.5, 2.5),
                 blurRadius: 0,
               ),
@@ -1700,14 +1702,17 @@ class _AppRow extends StatelessWidget {
                 ),
               ),
               if (selected)
-                const BrutalTag(label: 'Preferred', color: Colors.white)
+                BrutalTag(
+                  label: 'Preferred',
+                  color: FinStackColors.surface,
+                )
               else if (installed)
                 const BrutalTag(
                   label: 'Installed',
                   color: FinStackColors.tertiary,
                 )
               else
-                const BrutalTag(
+                BrutalTag(
                   label: 'Not detected',
                   color: FinStackColors.surfaceContainer,
                 ),

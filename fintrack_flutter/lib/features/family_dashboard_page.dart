@@ -139,7 +139,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 19, 26),
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(bottom: 10),
           child: Text(
             'Only months your family has shared are included. Manage yours in Profile → Privacy & sharing.',
@@ -168,7 +168,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                 onPressed: loading ? null : load,
               ),
               const SizedBox(height: 12),
-              const Text('MEMBERS', style: FinStackType.caption),
+              Text('MEMBERS', style: FinStackType.caption),
               const SizedBox(height: 4),
               if (members.isEmpty)
                 const Text(
@@ -193,7 +193,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                   }).toList(),
                 ),
               const SizedBox(height: 8),
-              const Text('MODE', style: FinStackType.caption),
+              Text('MODE', style: FinStackType.caption),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 6,
@@ -224,7 +224,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
         ),
         const SizedBox(height: 12),
         if (loading)
-          const BrutalCard(
+          BrutalCard(
             child: Row(
               children: [
                 SizedBox(
@@ -251,7 +251,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
               children: [
                 Text(
                   error!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: FinStackColors.onErrorContainer,
                     fontWeight: FontWeight.w700,
                   ),
@@ -342,7 +342,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                 gridData: FlGridData(
                                   show: true,
                                   drawVerticalLine: false,
-                                  getDrawingHorizontalLine: (v) => const FlLine(
+                                  getDrawingHorizontalLine: (v) => FlLine(
                                     color: FinStackColors.chartGrid,
                                     strokeWidth: 1,
                                     dashArray: [2, 6],
@@ -452,7 +452,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                             gridData: FlGridData(
                               show: true,
                               drawVerticalLine: false,
-                              getDrawingHorizontalLine: (v) => const FlLine(
+                              getDrawingHorizontalLine: (v) => FlLine(
                                 color: FinStackColors.chartGrid,
                                 strokeWidth: 1,
                                 dashArray: [2, 6],
@@ -514,7 +514,7 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
                                       borderRadius: const BorderRadius.vertical(
                                         top: Radius.circular(3),
                                       ),
-                                      borderSide: const BorderSide(
+                                      borderSide: BorderSide(
                                         color: FinStackColors.onSurface,
                                         width: 1.5,
                                       ),
@@ -682,35 +682,41 @@ class _FamilyDashboardPageState extends State<FamilyDashboardPage> {
 class _Kpi extends StatelessWidget {
   final String label;
   final String value;
-  final Color color;
+  final Color? color;
   const _Kpi({
     required this.label,
     required this.value,
-    this.color = Colors.white,
+    this.color,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: brutal(color: color, border: 2, shadow: 3),
-    padding: const EdgeInsets.all(10),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(
-            fontFamily: FinStackType.mono,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final cardColor = color ?? FinStackColors.surface;
+    final ink = FinStackColors.inkOn(cardColor);
+    return Container(
+      decoration: brutal(color: cardColor, border: 2, shadow: 3),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontFamily: FinStackType.mono,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: ink,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: FinStackType.amount.copyWith(
-            fontSize: label == 'Highest' ? 15 : 19,
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: FinStackType.amount.copyWith(
+              fontSize: label == 'Highest' ? 15 : 19,
+              color: ink,
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FinStack</string>
+    <string name="finstack_widget_description">This month’s income, outflow and saved amount.</string>
+</resources>

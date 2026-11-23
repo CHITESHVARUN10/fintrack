@@ -180,7 +180,7 @@ class _ShellState extends ConsumerState<Shell> {
     ),
     actions: [
       if (tab == _Tab.home)
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(right: 14),
           child: BrutalTag(
             label: 'Individual',
@@ -196,7 +196,7 @@ class _ShellState extends ConsumerState<Shell> {
           ),
         ),
       if (tab == _Tab.profile)
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(right: 14),
           child: BrutalTag(
             label: 'Live',

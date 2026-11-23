@@ -130,7 +130,7 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Import a CSV or Excel statement.',
             style: TextStyle(color: FinStackColors.onSurfaceVariant),
           ),
@@ -206,8 +206,8 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(48, 48),
                 backgroundColor: bank.canCheck
-                    ? Colors.white
-                    : FinStackColors.brandYellow,
+                    ? FinStackColors.surface
+                    : FinStackColors.accentSurface,
               ),
               onPressed: bank.pickFile,
               icon: const Icon(Icons.upload_file),
@@ -227,7 +227,7 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
   Widget build(BuildContext context) {
     return WorkspaceScaffold(
       title: 'Import',
-      action: const BrutalTag(
+      action: BrutalTag(
         label: 'CSV / AI',
         color: FinStackColors.surfaceContainer,
       ),
@@ -243,8 +243,8 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('UPI SCREENSHOT', style: FinStackType.caption),
-                const Text(
+                Text('UPI SCREENSHOT', style: FinStackType.caption),
+                Text(
                   'Extract the amount, date, and UPI details from a screenshot.',
                   style: TextStyle(
                     fontSize: 12,
@@ -262,7 +262,7 @@ class _ImportPageWidgetState extends State<ImportPageWidget> {
             ),
           ),
           const SizedBox(height: 12),
-          const BrutalCard(
+          BrutalCard(
             color: FinStackColors.surfaceContainer,
             child: Text(
               'Tip: imports need a family. Create or join one from Profile before uploading.',

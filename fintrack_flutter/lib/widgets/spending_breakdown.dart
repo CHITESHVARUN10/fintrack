@@ -6,7 +6,7 @@ import '../core/format.dart';
 import '../theme/finstack_theme.dart';
 import 'brutal.dart';
 
-const _colors = [
+final _colors = [
   FinStackColors.accentPurple,
   FinStackColors.brandYellow,
   FinStackColors.accentTeal,
@@ -30,7 +30,7 @@ class SpendingBreakdown extends StatefulWidget {
     required this.emptyMessage,
     required this.entries,
     required this.accent,
-    this.background = Colors.white,
+    this.background,
     this.subtitle = 'Share of this month’s spend',
     this.formatAmount = inr,
     this.hoverEffect = TickHoverEffect.slice,
@@ -40,7 +40,7 @@ class SpendingBreakdown extends StatefulWidget {
   final String emptyMessage;
   final List<({String label, double value})> entries;
   final Color accent;
-  final Color background;
+  final Color? background;
   final String subtitle;
   final String Function(num) formatAmount;
   final TickHoverEffect hoverEffect;
@@ -143,7 +143,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
     final selected = _touchFocus?.segment ?? _selected;
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return BrutalCard(
-      color: widget.background,
+      color: widget.background ?? FinStackColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -217,7 +217,7 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                                               maxLines: 2,
                                               textAlign: TextAlign.center,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: FinStackColors
                                                     .onSurfaceVariant,
                                                 fontSize: 10.5,
@@ -271,7 +271,9 @@ class _SpendingBreakdownState extends State<SpendingBreakdown>
                       horizontal: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: selected == i ? Colors.white : null,
+                      color: selected == i
+                          ? FinStackColors.surfaceHigh
+                          : null,
                       border: Border(
                         bottom: BorderSide(
                           color: FinStackColors.onSurface.withValues(

@@ -117,7 +117,9 @@ class _TaxPageState extends State<TaxPage> {
 
   Widget _regimeCard(String label, Map data, bool recommended) {
     return BrutalCard(
-      color: recommended ? FinStackColors.brandYellow : Colors.white,
+      color: recommended
+          ? FinStackColors.accentSurface
+          : FinStackColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 6,
@@ -132,7 +134,10 @@ class _TaxPageState extends State<TaxPage> {
                 ),
               ),
               if (recommended)
-                const BrutalTag(label: 'Recommended', color: Colors.white),
+                BrutalTag(
+                  label: 'Recommended',
+                  color: FinStackColors.surface,
+                ),
             ],
           ),
           for (final field in const [
@@ -202,7 +207,7 @@ class _TaxPageState extends State<TaxPage> {
                 const BrutalSectionTitle(title: 'Tax-saving tips'),
                 const SizedBox(height: 8),
                 if (tips.isEmpty)
-                  const BrutalCard(
+                  BrutalCard(
                     color: FinStackColors.surfaceContainer,
                     child: Text(
                       'Add investments to get personalised suggestions.',
@@ -264,7 +269,7 @@ class _TaxPageState extends State<TaxPage> {
           if (calcError != null)
             Text(
               calcError!,
-              style: const TextStyle(color: FinStackColors.onErrorContainer),
+              style: TextStyle(color: FinStackColors.onErrorContainer),
             ),
           BrutalButton(
             label: calcBusy ? 'Calculating…' : 'Calculate',

@@ -53,7 +53,7 @@ class SpendingChartKey extends StatelessWidget {
       Flexible(
         child: Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11.5,
             fontWeight: FontWeight.w700,
             color: FinStackColors.onSurfaceVariant,
@@ -114,7 +114,7 @@ class _SpendingTrendState extends State<SpendingTrend> {
           ),
           Text(
             '${view.count} ${view.count == 1 ? 'expense' : 'expenses'}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w500,
               color: FinStackColors.onSurfaceVariant,
@@ -166,7 +166,7 @@ class _SpendingTrendState extends State<SpendingTrend> {
                         const SizedBox(height: 2),
                         Text(
                           '${spendingInr(view.previousPaise)} in ${spendingDateRange(previousRange)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: FinStackType.mono,
                             fontFamilyFallback: _monoFallback,
                             fontSize: 10.5,
@@ -195,7 +195,7 @@ class _SpendingTrendState extends State<SpendingTrend> {
       (max, bucket) => math.max(max, bucket.paise),
     );
     final max = _axisCeiling(peak);
-    const axisStyle = TextStyle(
+    final axisStyle = TextStyle(
       fontFamily: FinStackType.mono,
       fontFamilyFallback: _monoFallback,
       fontSize: 9.5,
@@ -229,7 +229,7 @@ class _SpendingTrendState extends State<SpendingTrend> {
               ExcludeSemantics(
                 child: Container(
                   height: 116,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
                         color: FinStackColors.onSurface,

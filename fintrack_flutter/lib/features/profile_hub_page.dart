@@ -131,19 +131,19 @@ class ProfileHubPage extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 19, 28),
       children: [
         BrutalCard(
-          color: FinStackColors.brandYellow,
+          color: FinStackColors.accentSurface,
           child: Row(
             children: [
               Container(
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   border: Border.all(color: FinStackColors.onSurface, width: 3),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: FinStackColors.onSurface,
-                      offset: Offset(3, 3),
+                      color: FinStackColors.shadow,
+                      offset: const Offset(3, 3),
                       blurRadius: 0,
                     ),
                   ],
@@ -186,7 +186,7 @@ class ProfileHubPage extends ConsumerWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        BrutalTag(label: role, color: Colors.white),
+                        BrutalTag(label: role, color: FinStackColors.surface),
                         const SizedBox(width: 6),
                         const BrutalTag(
                           label: 'FinStack',
@@ -265,7 +265,7 @@ class ProfileHubPage extends ConsumerWidget {
         const SizedBox(height: 18),
         BrutalButton(
           block: true,
-          color: Colors.white,
+          color: FinStackColors.surface,
           label: 'Log out',
           icon: Icons.logout,
           onPressed: () => ref.read(authProvider.notifier).logout(),
@@ -305,7 +305,11 @@ class _HubRow extends StatelessWidget {
                 color: color,
                 border: Border.all(color: FinStackColors.onSurface, width: 2),
               ),
-              child: Icon(icon, size: 19),
+              child: Icon(
+                icon,
+                size: 19,
+                color: FinStackColors.inkOn(color),
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -324,7 +328,7 @@ class _HubRow extends StatelessWidget {
                     subtitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       color: FinStackColors.onSurfaceVariant,
                     ),
@@ -361,7 +365,11 @@ class _WorkspaceTile extends StatelessWidget {
                 color: entry.color,
                 border: Border.all(color: FinStackColors.onSurface, width: 2),
               ),
-              child: Icon(entry.icon, size: 17),
+              child: Icon(
+                entry.icon,
+                size: 17,
+                color: FinStackColors.inkOn(entry.color),
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(

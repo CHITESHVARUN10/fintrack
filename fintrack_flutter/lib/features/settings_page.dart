@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/auth_state.dart';
+import '../core/home_widget_service.dart';
+import '../core/theme_mode.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 
@@ -67,7 +69,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 9,
           children: [
-            const Text('SERVER', style: FinStackType.caption),
+            Text('SERVER', style: FinStackType.caption),
             SelectableText(
               ApiClient.baseUrl,
               style: FinStackType.caption.copyWith(
@@ -88,6 +90,65 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               child: BrutalButton(
                 label: saving ? 'Saving…' : 'Save URL',
                 onPressed: saving ? null : saveUrl,
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 13),
+      BrutalCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 9,
+          children: [
+            Text('APPEARANCE', style: FinStackType.caption),
+            Text(
+              'Light for daylight, dark for the night ledger, or follow iOS.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(
+                  value: ThemeMode.system,
+                  label: Text('System'),
+                ),
+                ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+                ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+              ],
+              selected: {ref.watch(themeModeProvider)},
+              showSelectedIcon: false,
+              onSelectionChanged: (value) =>
+                  ref.read(themeModeProvider.notifier).setMode(value.first),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 13),
+      BrutalCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 9,
+          children: [
+            Text('HOME SCREEN', style: FinStackType.caption),
+            Text(
+              'The small and medium widgets show this month’s income, outflow and saved amount.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: BrutalButton(
+                label: 'Refresh widgets',
+                icon: Icons.widgets_outlined,
+                onPressed: () async {
+                  await FinStackWidgetService.refresh();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Home-screen widgets refreshed.'),
+                      ),
+                    );
+                  }
+                },
               ),
             ),
           ],

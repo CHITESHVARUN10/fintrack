@@ -236,7 +236,7 @@ class _BudgetsPageState extends State<BudgetsPage> {
                 ),
               ),
               if (over)
-                const BrutalTag(
+                BrutalTag(
                   label: 'Over budget',
                   color: FinStackColors.errorContainer,
                   textColor: FinStackColors.onErrorContainer,

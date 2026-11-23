@@ -352,7 +352,7 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                     label: from == null
                         ? 'Any start date'
                         : 'From ${shortDateLabel(from!)}',
-                    color: Colors.white,
+                    color: FinStackColors.surface,
                     fontSize: 11,
                     onPressed: canFilter ? () => pickDay(start: true) : null,
                   ),
@@ -360,7 +360,7 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                     label: to == null
                         ? 'Any end date'
                         : 'Through ${shortDateLabel(to!)}',
-                    color: Colors.white,
+                    color: FinStackColors.surface,
                     fontSize: 11,
                     onPressed: canFilter ? () => pickDay(start: false) : null,
                   ),
@@ -402,7 +402,7 @@ class _FinanceTransactionsState extends State<_FinanceTransactions> {
                     alignment: Alignment.centerLeft,
                     child: BrutalButton(
                       label: 'Clear filters',
-                      color: Colors.white,
+                      color: FinStackColors.surface,
                       fontSize: 11,
                       onPressed: busy ? null : clearFilters,
                     ),

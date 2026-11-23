@@ -132,7 +132,7 @@ class _FamilySharingPageState extends State<FamilySharingPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('OFF BY DEFAULT', style: FinStackType.caption),
+              Text('OFF BY DEFAULT', style: FinStackType.caption),
               const SizedBox(height: 6),
               const Text(
                 'Every month starts private. Share a month to include its '
@@ -198,7 +198,7 @@ class _FamilySharingPageState extends State<FamilySharingPage> {
                 const SizedBox(height: 3),
                 Text(
                   detail,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
                     color: FinStackColors.onSurfaceVariant,
                   ),

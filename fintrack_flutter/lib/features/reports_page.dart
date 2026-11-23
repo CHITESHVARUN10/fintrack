@@ -295,7 +295,7 @@ class _ReportsPageState extends State<ReportsPage> {
                       builder: (buttonContext) => OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(48, 48),
-                          backgroundColor: FinStackColors.brandYellow,
+                          backgroundColor: FinStackColors.accentSurface,
                         ),
                         onPressed: _opening
                             ? null
@@ -326,7 +326,7 @@ class _ReportsPageState extends State<ReportsPage> {
                       minimumSize: const Size(48, 48),
                       backgroundColor: file == null
                           ? FinStackColors.brandYellow
-                          : Colors.white,
+                          : FinStackColors.surface,
                     ),
                     onPressed: _opening ? null : () => generate(report.kind),
                     child: Text(file == null ? 'Generate' : 'Regenerate'),
@@ -360,7 +360,7 @@ class _ReportsPageState extends State<ReportsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('MONTH / YEAR', style: FinStackType.caption),
+                Text('MONTH / YEAR', style: FinStackType.caption),
                 const SizedBox(height: 8),
                 Row(
                   children: [

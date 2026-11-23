@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
+import '../core/home_widget_service.dart';
 import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
@@ -174,11 +175,15 @@ class _DashboardPageState extends State<DashboardPage> {
     });
     try {
       final res = await ApiClient.dio.get('/dashboard');
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted) return;
       setState(() {
         data = res.data;
         loadedAt = DateTime.now();
       });
+      final snapshot = res.data;
+      if (snapshot is Map) {
+        FinStackWidgetService.refreshFromData(snapshot);
+      }
     } catch (_) {
       if (mounted && version == _requestVersion) {
         setState(() => error = 'Could not load dashboard.');
@@ -195,6 +200,22 @@ class _DashboardPageState extends State<DashboardPage> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const ScanPayPage()));
     if (mounted) await load();
+  }
+
+  void _showIncomeBreakdown() {
+    final snapshot = data;
+    if (snapshot == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _IncomeBreakdownSheet(
+        data: snapshot,
+        month: monthYearLabel(loadedAt ?? DateTime.now()),
+        onOpenSources: widget.onIncome,
+        onOpenActivity: widget.onActivity,
+      ),
+    );
   }
 
   @override
@@ -277,6 +298,11 @@ class _DashboardPageState extends State<DashboardPage> {
     final savingsDetail = receivedIncome > 0
         ? '${(netPaise / receivedIncome).toStringAsFixed(0)}% of income'
         : 'No income this month';
+    final incomeReceipts =
+        (d['incomeReceipts'] as List?)?.whereType<Map>().toList() ??
+        const <Map>[];
+    final incomeReceiptCount =
+        (d['incomeReceiptCount'] as num?)?.toInt() ?? incomeReceipts.length;
 
     return RefreshIndicator(
       onRefresh: load,
@@ -289,7 +315,7 @@ class _DashboardPageState extends State<DashboardPage> {
               Container(
                 width: 8,
                 height: 8,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: FinStackColors.accentTeal,
                   shape: BoxShape.circle,
                   border: Border.fromBorderSide(
@@ -310,7 +336,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 style: FinStackType.caption,
               ),
               const Spacer(),
-              BrutalTag(label: month, color: Colors.white),
+              BrutalTag(label: month, color: FinStackColors.surface),
             ],
           ),
           const SizedBox(height: 12),
@@ -321,8 +347,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: _Stat(
                   label: 'Income received this month',
                   value: inrPaise(receivedIncome * 100),
+                  detail: incomeReceiptCount > 0
+                      ? '$incomeReceiptCount receipts · tap'
+                      : 'Tap to see receipts',
                   color: FinStackColors.brandYellow,
-                  onTap: widget.onIncome,
+                  onTap: _showIncomeBreakdown,
                 ),
               ),
               const SizedBox(width: 10),
@@ -357,14 +386,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   detail: savingsDetail,
                   color: netPaise < 0
                       ? FinStackColors.errorContainer
-                      : Colors.white,
+                      : FinStackColors.surface,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           BrutalCard(
-            color: FinStackColors.onSurface,
+            color: FinStackColors.inverseSurface,
             shadowColor: FinStackColors.brandYellow,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -378,7 +407,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         color: FinStackColors.brandYellow,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
-                      child: const Icon(Icons.qr_code_2, size: 25),
+                      child: Icon(
+                        Icons.qr_code_2,
+                        size: 25,
+                        color: lightPalette.onSurface,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
@@ -437,7 +470,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 BrutalSectionTitle(
                   title: 'Monthly spend breakdown',
                   subtitle: 'From your transactions this month (individual)',
-                  trailing: const BrutalTag(
+                  trailing: BrutalTag(
                     label: 'Top 5',
                     color: FinStackColors.surfaceContainer,
                   ),
@@ -529,7 +562,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                               decoration: BoxDecoration(
                                                 color: color,
                                                 border: value > 0 && value < 1
-                                                    ? const Border(
+                                                    ? Border(
                                                         right: BorderSide(
                                                           color: FinStackColors
                                                               .onSurface,
@@ -648,7 +681,9 @@ class _DashboardPageState extends State<DashboardPage> {
     final card = Padding(
       padding: const EdgeInsets.only(bottom: 8, right: 4),
       child: BrutalCard(
-        color: leaving ? FinStackColors.surfaceContainer : Colors.white,
+        color: leaving
+            ? FinStackColors.surfaceContainer
+            : FinStackColors.surface,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -703,7 +738,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
               ],
             ),
-            const Divider(
+            Divider(
               height: 18,
               thickness: 1,
               color: FinStackColors.outlineVariant,
@@ -825,25 +860,356 @@ class _PaidStrike extends CustomPainter {
       oldDelegate.progress != progress;
 }
 
+class _IncomeBreakdownSheet extends StatefulWidget {
+  const _IncomeBreakdownSheet({
+    required this.data,
+    required this.month,
+    this.onOpenSources,
+    this.onOpenActivity,
+  });
+
+  final Map data;
+  final String month;
+  final VoidCallback? onOpenSources;
+  final VoidCallback? onOpenActivity;
+
+  @override
+  State<_IncomeBreakdownSheet> createState() => _IncomeBreakdownSheetState();
+}
+
+class _IncomeBreakdownSheetState extends State<_IncomeBreakdownSheet> {
+  List<Map>? receipts;
+  bool loading = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = widget.data['incomeReceipts'];
+    if (raw is List) {
+      receipts = raw.whereType<Map>().toList();
+    } else {
+      loading = true;
+      _loadFallback();
+    }
+  }
+
+  static String _dateParam(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadFallback() async {
+    try {
+      final now = DateTime.now();
+      final from = DateTime(now.year, now.month, 1);
+      final to = DateTime(now.year, now.month + 1, 0);
+      final response = await ApiClient.dio.get<Map>(
+        '/transactions',
+        queryParameters: {
+          'familyView': false,
+          'type': 'INCOME',
+          'from': _dateParam(from),
+          'to': _dateParam(to),
+          'limit': 200,
+        },
+      );
+      final rows = ((response.data?['items'] as List?) ?? [])
+          .whereType<Map>()
+          .where((row) => row['isOffset'] != true)
+          .map(
+            (row) => <String, dynamic>{
+              'id': row['_id'],
+              'name': transactionDisplayName(row),
+              'amountPaise': (row['amountPaise'] as num?) ?? 0,
+              'occurredAt': row['occurredAt'],
+              'category': row['category'] ?? 'Other',
+              'mode': row['mode'] ?? 'OTHER',
+              'isRefund': false,
+              'linkedSource': null,
+            },
+          )
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        receipts = rows;
+        error = null;
+      });
+    } catch (err) {
+      if (mounted) {
+        setState(
+          () => error = ApiClient.errorMessage(
+            err,
+            'Could not load income receipts.',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void _retry() {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    _loadFallback();
+  }
+
+  num get _received => _asNum(widget.data['receivedIncomeThisMonth']);
+  num get _planned => _asNum(widget.data['plannedIncomeThisMonth']);
+  num get _refunds => _asNum(widget.data['refundsThisMonth']);
+
+  void _openSources() {
+    Navigator.of(context).pop();
+    widget.onOpenSources?.call();
+  }
+
+  void _openActivity() {
+    Navigator.of(context).pop();
+    widget.onOpenActivity?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = receipts ?? const <Map>[];
+    final listTotalPaise = rows.fold<int>(
+      0,
+      (sum, row) => sum + (((row['amountPaise'] as num?) ?? 0).toInt()),
+    );
+    final total = _received > 0 ? _received : listTotalPaise / 100;
+    final height = MediaQuery.sizeOf(context).height * 0.82;
+    return SizedBox(
+      height: height,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'INCOME RECEIVED',
+                        style: FinStackType.caption,
+                      ),
+                      Text(
+                        widget.month.toUpperCase(),
+                        style: FinStackType.caption.copyWith(fontSize: 9),
+                      ),
+                    ],
+                  ),
+                ),
+                BrutalIconButton(
+                  icon: Icons.close,
+                  tooltip: 'Close income breakdown',
+                  color: FinStackColors.surface,
+                  size: 32,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              inr(total),
+              style: FinStackType.amount.copyWith(fontSize: 28),
+            ),
+            if (_planned > 0 || _refunds > 0) ...[
+              const SizedBox(height: 10),
+              BrutalCard(
+                color: FinStackColors.surfaceContainer,
+                border: 2,
+                shadow: 0,
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_planned > 0)
+                      _summaryRow('Planned sources', inr(_planned)),
+                    if (_refunds > 0)
+                      _summaryRow('Refunds included', inr(_refunds)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Income sources are a plan. These receipts are what actually landed this month.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('RECEIPTS', style: FinStackType.caption),
+                ),
+                Text(
+                  loading ? '—' : '${rows.length}',
+                  style: FinStackType.caption,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Expanded(child: _receiptsView(rows)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: BrutalButton(
+                    label: 'Income sources',
+                    onPressed: _openSources,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: BrutalButton(
+                    label: 'Activity',
+                    color: FinStackColors.surface,
+                    onPressed: _openActivity,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) => Padding(
+    padding: const EdgeInsets.only(bottom: 3),
+    child: Row(
+      children: [
+        Expanded(child: Text(label, style: FinStackType.caption)),
+        Text(
+          value,
+          style: FinStackType.amount.copyWith(fontSize: 12),
+        ),
+      ],
+    ),
+  );
+
+  Widget _receiptsView(List<Map> rows) {
+    if (loading) {
+      return const Center(
+        child: LinearProgressIndicator(
+          semanticsLabel: 'Loading income receipts',
+        ),
+      );
+    }
+    if (error != null) {
+      return BrutalEmpty(
+        message: error!,
+        action: TextButton(onPressed: _retry, child: const Text('Retry')),
+      );
+    }
+    if (rows.isEmpty) {
+      return const BrutalEmpty(
+        message: 'No income receipts recorded this month.',
+      );
+    }
+    return ListView.separated(
+      itemCount: rows.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (_, index) => _receiptCard(rows[index]),
+    );
+  }
+
+  Widget _receiptCard(Map row) {
+    final amountPaise = ((row['amountPaise'] as num?) ?? 0).toInt();
+    final date = DateTime.tryParse('${row['occurredAt'] ?? ''}')?.toLocal();
+    final name = '${row['name'] ?? 'Income receipt'}';
+    final category = '${row['category'] ?? 'Other'}';
+    final mode = transactionModeLabel(row['mode']);
+    final linked = row['linkedSource'];
+    final refund = row['isRefund'] == true;
+    return BrutalCard(
+      border: 2,
+      shadow: 0,
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (date != null) numericDateLabel(date),
+                    mode,
+                    category,
+                  ].join(' · '),
+                  style: FinStackType.caption,
+                ),
+                if (linked != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Linked to $linked',
+                    style: FinStackType.caption.copyWith(fontSize: 9.5),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                inrPaise(amountPaise),
+                style: FinStackType.amount.copyWith(fontSize: 14),
+              ),
+              if (refund) ...[
+                const SizedBox(height: 4),
+                const BrutalTag(
+                  label: 'Refund',
+                  color: FinStackColors.accentPink,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Stat extends StatelessWidget {
   const _Stat({
     required this.label,
     required this.value,
     this.detail,
-    this.color = Colors.white,
+    this.color,
     this.onTap,
   });
 
   final String label;
   final String value;
   final String? detail;
-  final Color color;
+  final Color? color;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = color ?? FinStackColors.surface;
+    final ink = FinStackColors.inkOn(cardColor);
     final card = BrutalCard(
-      color: color,
+      color: cardColor,
       shadow: 3,
       padding: const EdgeInsets.all(12),
       child: ConstrainedBox(
@@ -854,15 +1220,16 @@ class _Stat extends StatelessWidget {
           children: [
             Text(
               label.toUpperCase(),
-              style: FinStackType.caption.copyWith(
-                color: FinStackColors.onSurface,
-              ),
+              style: FinStackType.caption.copyWith(color: ink),
             ),
             const SizedBox(height: 7),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(value, style: FinStackType.amount),
+              child: Text(
+                value,
+                style: FinStackType.amount.copyWith(color: ink),
+              ),
             ),
             if (detail != null) ...[
               const SizedBox(height: 4),
@@ -873,7 +1240,7 @@ class _Stat extends StatelessWidget {
                 style: FinStackType.caption.copyWith(
                   fontSize: 10,
                   height: 1.25,
-                  color: FinStackColors.onSurface.withValues(alpha: 0.65),
+                  color: ink.withValues(alpha: 0.65),
                 ),
               ),
             ],

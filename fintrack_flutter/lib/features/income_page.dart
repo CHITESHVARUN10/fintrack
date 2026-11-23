@@ -137,7 +137,7 @@ class _IncomePageState extends State<IncomePage> {
                         onDelete: () => remove(item),
                         footer: BrutalButton(
                           label: 'Transactions',
-                          color: Colors.white,
+                          color: FinStackColors.surface,
                           onPressed: () => showFinanceTransactions(
                             context,
                             kind: 'income',

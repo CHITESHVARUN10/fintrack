@@ -205,7 +205,7 @@ class _ScanPayPageState extends State<ScanPayPage>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Use the merchant UPI ID when the QR is damaged or the camera is unavailable.',
                     style: TextStyle(
                       fontSize: 12.5,
@@ -226,7 +226,7 @@ class _ScanPayPageState extends State<ScanPayPage>
                     const SizedBox(height: 8),
                     Text(
                       error!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: FinStackColors.onErrorContainer,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -437,9 +437,9 @@ class _ScanPayPageState extends State<ScanPayPage>
                     color: FinStackColors.onSurface,
                     width: 2.5,
                   ),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: FinStackColors.onSurface,
+                      color: FinStackColors.shadow,
                       offset: Offset(2.5, 2.5),
                       blurRadius: 0,
                     ),
@@ -448,7 +448,7 @@ class _ScanPayPageState extends State<ScanPayPage>
                 child: const Icon(Icons.qr_code_2, size: 22),
               ),
               const SizedBox(width: 11),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -489,7 +489,7 @@ class _ScanPayPageState extends State<ScanPayPage>
                     liveRegion: true,
                     child: Text(
                       _scanError!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         height: 1.4,
                         fontWeight: FontWeight.w700,
@@ -589,9 +589,9 @@ class _ScanPayPageState extends State<ScanPayPage>
                               color: FinStackColors.onSurface,
                               width: 2.5,
                             ),
-                            boxShadow: const [
+                            boxShadow: [
                               BoxShadow(
-                                color: FinStackColors.onSurface,
+                                color: FinStackColors.shadow,
                                 offset: Offset(2.5, 2.5),
                                 blurRadius: 0,
                               ),
@@ -651,7 +651,7 @@ class _ScanPayPageState extends State<ScanPayPage>
                 ),
               ),
               const SizedBox(height: 14),
-              const BrutalCard(
+              BrutalCard(
                 color: FinStackColors.surfaceContainer,
                 padding: EdgeInsets.all(14),
                 child: Text(

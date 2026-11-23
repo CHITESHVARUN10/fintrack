@@ -10,6 +10,7 @@ import '../core/vendor_name.dart';
 import '../theme/finstack_theme.dart';
 import '../widgets/brutal.dart';
 import '../widgets/category_picker.dart';
+import '../widgets/confirm_action.dart';
 import '../widgets/states.dart';
 import 'activity_review.dart';
 
@@ -38,7 +39,7 @@ const _tabular = <FontFeature>[FontFeature.tabularFigures()];
 TextStyle _numStyle({
   double size = 13,
   FontWeight weight = FontWeight.w800,
-  Color color = FinStackColors.onSurface,
+  Color? color,
   double letterSpacing = -0.2,
   double height = 1.2,
 }) => FinStackType.amount.copyWith(
@@ -46,19 +47,19 @@ TextStyle _numStyle({
   fontWeight: weight,
   letterSpacing: letterSpacing,
   height: height,
-  color: color,
+  color: color ?? FinStackColors.onSurface,
   fontFeatures: _tabular,
 );
 
 TextStyle _labelStyle({
   double size = 9.5,
-  Color color = FinStackColors.onSurfaceVariant,
+  Color? color,
   double letterSpacing = 0.9,
 }) => FinStackType.caption.copyWith(
   fontSize: size,
   letterSpacing: letterSpacing,
   height: 1.25,
-  color: color,
+  color: color ?? FinStackColors.onSurfaceVariant,
 );
 
 enum _Period {
@@ -566,7 +567,9 @@ class _TransactionsPageState extends State<TransactionsPage> {
           child: _HardPress(
             shadow: 3,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            color: familyView ? Colors.white : FinStackColors.brandYellow,
+            color: familyView
+                ? FinStackColors.surface
+                : FinStackColors.accentSurface,
             selected: !familyView,
             semanticLabel: 'My activity',
             onTap: () {
@@ -591,7 +594,9 @@ class _TransactionsPageState extends State<TransactionsPage> {
           child: _HardPress(
             shadow: 3,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            color: familyView ? FinStackColors.brandYellow : Colors.white,
+            color: familyView
+                ? FinStackColors.accentSurface
+                : FinStackColors.surface,
             selected: familyView,
             semanticLabel: 'Family activity',
             onTap: () {
@@ -739,10 +744,10 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
   Widget _searchField() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: FinStackColors.onSurface,
+            color: FinStackColors.shadow,
             offset: Offset(3, 3),
             blurRadius: 0,
           ),
@@ -795,7 +800,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
           const SizedBox(height: 6),
           Text(
             error!,
-            style: const TextStyle(
+            style: TextStyle(
               color: FinStackColors.onErrorContainer,
               fontWeight: FontWeight.w700,
               fontSize: 13,
@@ -851,7 +856,11 @@ class _TransactionsPageState extends State<TransactionsPage> {
             onPressed: () => _selectPeriod(_Period.thisMonth),
           );
     return Container(
-      decoration: brutal(color: Colors.white, border: 3, shadow: 5),
+      decoration: brutal(
+        color: FinStackColors.surface,
+        border: 3,
+        shadow: 5,
+      ),
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -863,14 +872,14 @@ class _TransactionsPageState extends State<TransactionsPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: FinStackColors.brandYellow,
+                  color: FinStackColors.accentSurface,
                   border: Border.all(
                     color: FinStackColors.onSurface,
                     width: 2.5,
                   ),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: FinStackColors.onSurface,
+                      color: FinStackColors.shadow,
                       offset: Offset(2.5, 2.5),
                       blurRadius: 0,
                     ),
@@ -950,11 +959,11 @@ class _TransactionsPageState extends State<TransactionsPage> {
     ].join(' · ');
     final amount = '${isIncome ? '+' : ''}${inrPaise(paise)}';
     final statusLabel = (status.isEmpty ? type : status).replaceAll('_', ' ');
-    final (tagBg, tagFg) = status == 'RECONCILED'
-        ? (FinStackColors.tertiary, FinStackColors.onSurface)
+    final tagBg = status == 'RECONCILED'
+        ? FinStackColors.tertiary
         : status == 'PENDING_REVIEW'
-        ? (FinStackColors.errorContainer, FinStackColors.onErrorContainer)
-        : (Colors.white, FinStackColors.onSurface);
+        ? FinStackColors.errorContainer
+        : FinStackColors.surface;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: _HardPress(
@@ -997,7 +1006,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                       meta,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                         height: 1.25,
@@ -1024,7 +1033,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   ),
                 ),
                 const SizedBox(height: 5),
-                BrutalTag(label: mode, color: tagBg, textColor: tagFg),
+                BrutalTag(label: mode, color: tagBg),
                 if (status == 'PENDING_REVIEW')
                   const Padding(
                     padding: EdgeInsets.only(top: 3),
@@ -1079,7 +1088,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
               Text(
                 error!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: FinStackColors.onErrorContainer,
@@ -1135,7 +1144,11 @@ class _SummaryStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: brutal(color: Colors.white, border: 2.5, shadow: 2.5),
+    decoration: brutal(
+      color: FinStackColors.surface,
+      border: 2.5,
+      shadow: 2.5,
+    ),
     padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1174,7 +1187,11 @@ class _SkeletonCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.all(12),
-    decoration: brutal(color: Colors.white, border: 2.5, shadow: 3),
+    decoration: brutal(
+      color: FinStackColors.surface,
+      border: 2.5,
+      shadow: 3,
+    ),
     child: Row(
       children: [
         Container(
@@ -1229,7 +1246,7 @@ class _HardPress extends StatefulWidget {
   const _HardPress({
     required this.child,
     this.onTap,
-    this.color = Colors.white,
+    this.color,
     this.shadow = 3,
     this.padding = EdgeInsets.zero,
     this.semanticLabel,
@@ -1238,7 +1255,7 @@ class _HardPress extends StatefulWidget {
 
   final Widget child;
   final VoidCallback? onTap;
-  final Color color;
+  final Color? color;
   final double shadow;
   final EdgeInsets padding;
   final String? semanticLabel;
@@ -1263,12 +1280,12 @@ class _HardPressState extends State<_HardPress> {
       transform: Matrix4.translationValues(shift, shift, 0),
       padding: widget.padding,
       decoration: BoxDecoration(
-        color: widget.color,
+        color: widget.color ?? FinStackColors.surface,
         border: Border.all(color: FinStackColors.onSurface, width: 2.5),
         boxShadow: enabled && !_down
             ? [
                 BoxShadow(
-                  color: FinStackColors.onSurface,
+                  color: FinStackColors.shadow,
                   offset: Offset(widget.shadow, widget.shadow),
                   blurRadius: 0,
                 ),
@@ -1440,7 +1457,7 @@ class _SheetSelect extends StatelessWidget {
           isExpanded: true,
           initialValue: initialValue,
           icon: const Icon(Icons.expand_more, size: 20),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w700,
             color: FinStackColors.onSurface,
@@ -1663,14 +1680,14 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 const SizedBox(height: 10),
                 _SheetButton(
                   label: 'From ${dates.formatShortDate(from)}',
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   fontSize: 12,
                   onPressed: () => _pick(true),
                 ),
                 const SizedBox(height: 8),
                 _SheetButton(
                   label: 'Through ${dates.formatShortDate(to)}',
-                  color: Colors.white,
+                  color: FinStackColors.surface,
                   fontSize: 12,
                   onPressed: () => _pick(false),
                 ),
@@ -1746,7 +1763,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
               const SizedBox(height: 9),
               _SheetButton(
                 label: 'Reset to this month',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 onPressed: () => _apply(reset: true),
               ),
             ],
@@ -1900,7 +1917,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
                   liveRegion: true,
                   child: Text(
                     error!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
                       color: FinStackColors.onErrorContainer,
@@ -1917,7 +1934,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
               const SizedBox(height: 9),
               _SheetButton(
                 label: 'Cancel',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 onPressed: adding
                     ? null
                     : () => Navigator.of(context).pop(false),
@@ -2081,6 +2098,67 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
     }
   }
 
+  Future<void> _unlinkRecord(Map tx) async {
+    final subscriptionRef = tx['subscriptionRef'];
+    final financeLink = tx['financeLink'];
+    if (subscriptionRef == null && financeLink == null) return;
+    final isSubscription = subscriptionRef != null;
+    final recordName = isSubscription
+        ? (subscriptionRef is Map
+              ? '${subscriptionRef['name'] ?? 'this subscription'}'
+              : 'this subscription')
+        : (detail?['financeRecordName'] ??
+              (financeLink is Map && financeLink['resource'] == 'income'
+                  ? 'this income source'
+                  : 'this investment'));
+    final proceed = await confirmAction(
+      context,
+      title: isSubscription
+          ? 'Unlink from subscription?'
+          : 'Unlink this transaction?',
+      message:
+          '“${transactionDisplayName(tx)}” stays in Activity, but it will no longer be linked to $recordName.',
+      action: 'Unlink',
+    );
+    if (!proceed || !mounted) return;
+    setState(() => busy = true);
+    try {
+      if (isSubscription) {
+        final subscriptionId = subscriptionRef is Map
+            ? (subscriptionRef['_id'] ?? subscriptionRef['id'])
+            : subscriptionRef;
+        await ApiClient.dio.post(
+          '/subscriptions/$subscriptionId/unlink-transaction',
+          data: {'transactionId': tx['_id']},
+        );
+      } else if (financeLink is Map) {
+        final resource = financeLink['resource'] == 'investments'
+            ? 'investments'
+            : 'income';
+        await ApiClient.dio.delete(
+          '/$resource/${financeLink['recordId']}/transactions/${tx['_id']}',
+        );
+      }
+      await fetch();
+      widget.onChanged();
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              ApiClient.errorMessage(
+                err,
+                'Could not unlink this transaction.',
+              ),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> resolve(String action) async {
     setState(() => busy = true);
     try {
@@ -2141,7 +2219,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                     children: [
                       Text(
                         'Could not load this transaction.',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: FinStackColors.onErrorContainer,
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
@@ -2316,7 +2394,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          const Text(
+                          Text(
                             'Private stays hidden even when the month is shared.',
                             style: TextStyle(
                               fontSize: 11,
@@ -2350,6 +2428,65 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                   ],
                 ),
               ),
+              if (subscription != null || financeLink != null) ...[
+                const SizedBox(height: 12),
+                BrutalCard(
+                  border: 2.5,
+                  shadow: 3,
+                  padding: const EdgeInsets.all(13),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              subscription != null
+                                  ? 'LINKED SUBSCRIPTION'
+                                  : financeLink?['resource'] == 'income'
+                                  ? 'LINKED INCOME SOURCE'
+                                  : 'LINKED INVESTMENT',
+                              style: _labelStyle(
+                                color: FinStackColors.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              subscription ??
+                                  financeName ??
+                                  'Linked record',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Unlink if this was linked by mistake. The transaction stays in Activity.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 1.4,
+                                color: FinStackColors.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: _SheetButton(
+                          label: busy ? 'Unlinking…' : 'Unlink',
+                          fontSize: 11,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
+                          ),
+                          onPressed: busy
+                              ? null
+                              : () => _unlinkRecord(tx),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               BrutalCard(
                 border: 2.5,
@@ -2451,7 +2588,7 @@ class _TxDetailSheetState extends State<_TxDetailSheet> {
                       const SizedBox(height: 9),
                       _SheetButton(
                         label: 'Keep separate',
-                        color: Colors.white,
+                        color: FinStackColors.surface,
                         onPressed: busy ? null : () => resolve('keepSeparate'),
                       ),
                     ],

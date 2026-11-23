@@ -9,7 +9,7 @@ const { withObservedSubscriptionPrices } = require('./subscriptionPrices.service
 const { vendorDisplayName, paymentId } = require('../utils/vendorDisplayName');
 const { investedValue, currentValueOf } = require('../utils/investmentCalc');
 const { computeLiability, aggregateDeductions } = require('../services/tax.service');
-const { activeInMonth, incomeForMonth, round2 } = require('../utils/cashflow');
+const { activeInMonth, incomeForMonth, isRefundReceipt, round2 } = require('../utils/cashflow');
 const {
   effectiveSubscriptionAmount,
   monthlySubscriptionAmount,
@@ -18,6 +18,20 @@ const {
 function investmentMonthlyAmount(inv) {
   if (inv.investmentType === 'mf_sip') return inv.sipAmount || 0;
   return 0;
+}
+
+function incomeReceiptName(tx) {
+  const sender = tx.sender || {};
+  const recipient = tx.recipient || {};
+  return String(
+    sender.name ||
+      sender.upiId ||
+      recipient.name ||
+      recipient.upiId ||
+      tx.productName ||
+      tx.notes ||
+      'Income receipt',
+  ).trim();
 }
 
 // Next calendar occurrence of a day-of-month within [today, today+lookaheadDays].
@@ -100,6 +114,7 @@ async function buildDashboard(userId, viewerId = userId) {
   let transactionCategoryEntries = [];
   let transactionVendorEntries = [];
   let incomeEntries = [];
+  let incomeReceipts = [];
   let refundPaise = 0;
   if (me?.familyAccountId) {
     const visibility = await buildTransactionVisibilityFilter(null, {
@@ -119,14 +134,33 @@ async function buildDashboard(userId, viewerId = userId) {
     ]);
     const settled = entries.filter(tx => !offsets.has(String(tx._id)));
     const txs = settled.filter(tx => tx.type !== 'INCOME');
-    incomeEntries = settled.filter(tx => {
-      if (tx.type !== 'INCOME') return false;
-      const narration = tx.recipient?.name || tx.sender?.name || '';
-      const refund = tx.metadata?.origin !== 'MANUAL' && tx.batchId &&
-        /^\s*(?:(?:upi|imps|neft|card|pos|cr)[\s/:-]+)*(?:refund|purchase reversal)\b/i.test(narration);
-      if (refund) refundPaise += tx.amountPaise || 0;
-      return !refund;
-    });
+    const incomeRows = settled.filter(tx => tx.type === 'INCOME');
+    const incomeSourceNames = new Map(
+      incomes.map(income => [
+        String(income._id),
+        income.title || income.category || 'Income source',
+      ]),
+    );
+    incomeReceipts = incomeRows
+      .map(tx => {
+        const refund = isRefundReceipt(tx);
+        if (refund) refundPaise += tx.amountPaise || 0;
+        else incomeEntries.push(tx);
+        const linkId = tx.financeLink?.resource === 'income' && tx.financeLink.recordId
+          ? String(tx.financeLink.recordId)
+          : null;
+        return {
+          id: String(tx._id),
+          name: incomeReceiptName(tx),
+          amountPaise: tx.amountPaise || 0,
+          occurredAt: tx.occurredAt,
+          category: tx.category || 'Other',
+          mode: tx.mode || 'OTHER',
+          isRefund: refund,
+          linkedSource: linkId ? (incomeSourceNames.get(linkId) || 'Income source') : null,
+        };
+      })
+      .sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
     transactionSpendThisMonth = txs.reduce((s, t) => s + (t.amountPaise || 0), 0) / 100;
     transactionCountThisMonth = txs.length;
     const vendorIds = [...new Set(txs.flatMap(t => t.recipientVendorRef ? [String(t.recipientVendorRef)] : []))];
@@ -185,6 +219,7 @@ async function buildDashboard(userId, viewerId = userId) {
     monthEnd,
   });
   const netMonthlyFlow = round2(income.received + refundPaise / 100 - transactionSpendThisMonth);
+  const receivedWithRefunds = round2(income.received + refundPaise / 100);
   const monthlyBurnBreakdown = {
     Subscriptions: round2(subs
       .filter(sub => activeInMonth(sub, monthStart, monthEnd))
@@ -196,13 +231,15 @@ async function buildDashboard(userId, viewerId = userId) {
     netMonthlyFlow,
     monthlyIncome: income.received,
     monthlyObligations: transactionSpendThisMonth,
-    receivedIncomeThisMonth: round2(income.received + refundPaise / 100),
+    receivedIncomeThisMonth: receivedWithRefunds,
     incomeExcludingRefundsThisMonth: income.received,
     plannedIncomeThisMonth: income.planned,
     spentThisMonth: transactionSpendThisMonth,
     refundsThisMonth: refundPaise / 100,
-    savingsRatePct: income.received > 0
-      ? round2((netMonthlyFlow / income.received) * 100)
+    incomeReceipts,
+    incomeReceiptCount: incomeReceipts.length,
+    savingsRatePct: receivedWithRefunds > 0
+      ? round2((netMonthlyFlow / receivedWithRefunds) * 100)
       : 0,
     upcomingPayments: upcoming,
     monthlyBurnBreakdown,

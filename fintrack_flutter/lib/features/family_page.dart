@@ -171,7 +171,7 @@ class _FamilyPageState extends State<FamilyPage> {
               width: 42,
               height: 42,
               decoration: brutal(
-                color: FinStackColors.brandYellow,
+                color: FinStackColors.accentSurface,
                 border: 2,
                 shadow: 2,
               ),
@@ -198,7 +198,7 @@ class _FamilyPageState extends State<FamilyPage> {
     final code = '${family?['inviteCode'] ?? ''}';
     return [
       BrutalCard(
-        color: FinStackColors.brandYellow,
+        color: FinStackColors.accentSurface,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 10,
@@ -210,7 +210,7 @@ class _FamilyPageState extends State<FamilyPage> {
                   Text(name, style: Theme.of(context).textTheme.titleLarge),
                   if (code.isNotEmpty) ...[
                     const SizedBox(height: 9),
-                    const Text('INVITE CODE', style: FinStackType.caption),
+                    Text('INVITE CODE', style: FinStackType.caption),
                     SelectableText(
                       code,
                       style: FinStackType.amount.copyWith(
@@ -226,7 +226,7 @@ class _FamilyPageState extends State<FamilyPage> {
               BrutalIconButton(
                 icon: Icons.sync,
                 tooltip: 'Rotate invite code',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 size: 34,
                 onPressed: rotating ? null : rotateCode,
               )
@@ -234,7 +234,7 @@ class _FamilyPageState extends State<FamilyPage> {
               BrutalIconButton(
                 icon: Icons.copy_outlined,
                 tooltip: 'Copy invite code',
-                color: Colors.white,
+                color: FinStackColors.surface,
                 size: 34,
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: code));
@@ -249,12 +249,12 @@ class _FamilyPageState extends State<FamilyPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('MEMBERS', style: FinStackType.caption),
+            Text('MEMBERS', style: FinStackType.caption),
             const SizedBox(height: 8),
             if (members.isEmpty) const Text('No members found.'),
             for (final (index, member) in members.whereType<Map>().indexed) ...[
               if (index != 0)
-                const Divider(
+                Divider(
                   height: 1,
                   thickness: 1,
                   color: FinStackColors.outlineVariant,
@@ -269,7 +269,7 @@ class _FamilyPageState extends State<FamilyPage> {
       ),
       if (admin && requests.isNotEmpty) ...[
         const SizedBox(height: 13),
-        const Text('JOIN REQUESTS', style: FinStackType.caption),
+        Text('JOIN REQUESTS', style: FinStackType.caption),
         const SizedBox(height: 8),
         for (final item in requests.whereType<Map>())
           Padding(
