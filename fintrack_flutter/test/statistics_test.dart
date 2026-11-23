@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:fintrack_flutter/core/api_client.dart';
 import 'package:fintrack_flutter/core/spending_statistics.dart';
 import 'package:fintrack_flutter/features/shell.dart';
+import 'package:fintrack_flutter/features/statistics_page.dart';
+import 'package:fintrack_flutter/theme/finstack_theme.dart';
 import 'package:fintrack_flutter/widgets/spending_breakdown.dart';
 import 'package:fintrack_flutter/widgets/spending_trend.dart';
 import 'package:flutter/material.dart';
@@ -147,6 +149,67 @@ void main() {
         (label: 'Groceries', value: 45.0),
       ]);
       expect(groceries.previousPaise, 0);
+    },
+  );
+
+  testWidgets(
+    'comparison tracks show both period colors and fit exact amounts',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: finStackTheme(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: SpendingChanges(
+                changes: const [
+                  (label: 'Investment', current: 2500000, previous: 0),
+                  (label: 'Family', current: 50000, previous: 198012),
+                ],
+                byVendor: false,
+                previousRange: DateTimeRange(
+                  start: DateTime(2026, 10),
+                  end: DateTime(2026, 10, 22),
+                ),
+                showAll: false,
+                onToggle: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final card = find.byType(SpendingChanges);
+      Finder fills(Color color) => find.descendant(
+        of: card,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ColoredBox && widget.color == color,
+        ),
+      );
+      final selected = fills(FinStackColors.accentPurple);
+      final prior = fills(const Color(0xFF7B7465));
+      expect(selected, findsNWidgets(2));
+      expect(prior, findsOneWidget);
+      expect(tester.getSize(selected.first).height, 11);
+      expect(tester.getSize(prior).height, 11);
+      expect(
+        tester.getSize(prior).width / tester.getSize(selected.first).width,
+        closeTo(198012 / 2500000, 0.001),
+      );
+
+      final exactAmount = find.descendant(
+        of: card,
+        matching: find.text('₹1,980.12'),
+      );
+      expect(tester.widget<Text>(exactAmount).softWrap, isFalse);
+      await tester.binding.setSurfaceSize(const Size(320, 740));
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      await tester.pumpAndSettle();
+      expect(exactAmount, findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 

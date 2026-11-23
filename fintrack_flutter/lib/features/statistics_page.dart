@@ -272,7 +272,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     ),
                   ],
                   const SizedBox(height: 14),
-                  _SpendingChanges(
+                  SpendingChanges(
                     changes: view.changes(byVendor: _byVendor),
                     byVendor: _byVendor,
                     previousRange: ranges.previous,
@@ -1289,8 +1289,9 @@ class _CalendarDay extends StatelessWidget {
   }
 }
 
-class _SpendingChanges extends StatelessWidget {
-  const _SpendingChanges({
+class SpendingChanges extends StatelessWidget {
+  const SpendingChanges({
+    super.key,
     required this.changes,
     required this.byVendor,
     required this.previousRange,
@@ -1298,7 +1299,15 @@ class _SpendingChanges extends StatelessWidget {
     required this.onToggle,
   });
 
-  static const _previousColor = Color(0xFF8D8677);
+  static const _previousColor = Color(0xFF7B7465);
+  static const _amountStyle = TextStyle(
+    fontFamily: FinStackType.mono,
+    fontFamilyFallback: _monoFallback,
+    fontSize: 12,
+    letterSpacing: 0,
+    fontWeight: FontWeight.w700,
+    color: FinStackColors.onSurface,
+  );
 
   final List<SpendingChange> changes;
   final bool byVendor;
@@ -1313,6 +1322,20 @@ class _SpendingChanges extends StatelessWidget {
       (max, row) => math.max(max, math.max(row.current, row.previous)),
     );
     final visible = showAll ? changes : changes.take(5).toList();
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    );
+    var amountWidth = 0.0;
+    for (final change in visible) {
+      for (final amount in [change.current, change.previous]) {
+        painter.text = TextSpan(text: spendingInr(amount), style: _amountStyle);
+        painter.layout();
+        amountWidth = math.max(amountWidth, painter.width.ceilToDouble() + 2);
+      }
+    }
+    painter.dispose();
     return BrutalCard(
       padding: const EdgeInsets.all(15),
       child: Column(
@@ -1349,63 +1372,77 @@ class _SpendingChanges extends StatelessWidget {
               ],
             ),
           ),
-          for (var index = 0; index < visible.length; index++)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                border: index == visible.length - 1
-                    ? null
-                    : Border(
-                        bottom: BorderSide(
-                          color: FinStackColors.onSurface.withValues(
-                            alpha: .14,
-                          ),
-                        ),
-                      ),
-              ),
-              child: Column(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Keep one plot width for every category, even when the exact
+              // amounts use different numbers of digits.
+              final amountsAboveBars = constraints.maxWidth - amountWidth < 112;
+              return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    visible[index].label,
-                    style: const TextStyle(
-                      fontFamily: FinStackType.display,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                  for (final (index, change) in visible.indexed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        border: index == visible.length - 1
+                            ? null
+                            : const Border(
+                                bottom: BorderSide(
+                                  color: FinStackColors.chartGrid,
+                                ),
+                              ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            change.label,
+                            style: const TextStyle(
+                              fontFamily: FinStackType.display,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            spendingDelta(change.current, change.previous),
+                            style: const TextStyle(
+                              fontFamily: FinStackType.mono,
+                              fontFamilyFallback: _monoFallback,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: FinStackColors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _ComparisonBar(
+                            label: 'Selected period',
+                            value: change.current,
+                            max: maxAmount,
+                            color: FinStackColors.accentPurple,
+                            amountStyle: _amountStyle,
+                            amountWidth: amountWidth,
+                            amountAboveBar: amountsAboveBars,
+                          ),
+                          const SizedBox(height: 6),
+                          _ComparisonBar(
+                            label: 'Previous period',
+                            value: change.previous,
+                            max: maxAmount,
+                            color: _previousColor,
+                            amountStyle: _amountStyle.copyWith(
+                              color: FinStackColors.onSurfaceVariant,
+                            ),
+                            amountWidth: amountWidth,
+                            amountAboveBar: amountsAboveBars,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    spendingDelta(
-                      visible[index].current,
-                      visible[index].previous,
-                    ),
-                    style: const TextStyle(
-                      fontFamily: FinStackType.mono,
-                      fontFamilyFallback: _monoFallback,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: FinStackColors.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _DualBar(
-                    label: 'Selected period',
-                    value: visible[index].current,
-                    max: maxAmount,
-                    color: FinStackColors.accentPurple,
-                  ),
-                  const SizedBox(height: 5),
-                  _DualBar(
-                    label: 'Previous period',
-                    value: visible[index].previous,
-                    max: maxAmount,
-                    color: _previousColor,
-                    muted: true,
-                  ),
                 ],
-              ),
-            ),
+              );
+            },
+          ),
           if (changes.length > 5) ...[
             const SizedBox(height: 12),
             BrutalButton(
@@ -1421,65 +1458,74 @@ class _SpendingChanges extends StatelessWidget {
   }
 }
 
-class _DualBar extends StatelessWidget {
-  const _DualBar({
+class _ComparisonBar extends StatelessWidget {
+  const _ComparisonBar({
     required this.label,
     required this.value,
     required this.max,
     required this.color,
-    this.muted = false,
+    required this.amountStyle,
+    required this.amountWidth,
+    required this.amountAboveBar,
   });
 
   final String label;
   final int value;
   final int max;
   final Color color;
-  final bool muted;
+  final TextStyle amountStyle;
+  final double amountWidth;
+  final bool amountAboveBar;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: ExcludeSemantics(
-            child: SizedBox(
-              height: 9,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: value <= 0 ? 0 : (value / max).clamp(0.0, 1.0),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: color,
-                      border: Border.all(
-                        color: FinStackColors.onSurface,
-                        width: 1.5,
-                      ),
-                    ),
+    final formatted = spendingInr(value);
+    final amount = Text(
+      formatted,
+      semanticsLabel: '$label, $formatted',
+      maxLines: 1,
+      softWrap: false,
+      textAlign: TextAlign.end,
+      style: amountStyle,
+    );
+    final track = ExcludeSemantics(
+      child: SizedBox(
+        height: 11,
+        child: ColoredBox(
+          color: FinStackColors.surfaceVariant,
+          child: value <= 0
+              ? const SizedBox.expand()
+              : Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FractionallySizedBox(
+                    widthFactor: (value / max).clamp(0.0, 1.0),
+                    heightFactor: 1,
+                    child: ColoredBox(color: color),
                   ),
                 ),
-              ),
-            ),
-          ),
         ),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 56,
-          child: Text(
-            spendingInr(value),
-            semanticsLabel: '$label, ${spendingInr(value)}',
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontFamily: FinStackType.mono,
-              fontFamilyFallback: _monoFallback,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: muted
-                  ? FinStackColors.onSurfaceVariant
-                  : FinStackColors.onSurface,
-            ),
+      ),
+    );
+
+    if (amountAboveBar) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: FittedBox(fit: BoxFit.scaleDown, child: amount),
           ),
-        ),
+          const SizedBox(height: 3),
+          track,
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(child: track),
+        const SizedBox(width: 12),
+        SizedBox(width: amountWidth, child: amount),
       ],
     );
   }
